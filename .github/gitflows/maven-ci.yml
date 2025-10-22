@@ -1,0 +1,22 @@
+name: Maven CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  build:
+    run-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: action/checkout@v4
+      - name: setup JDK 17
+        uses: action/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+      - name: Build and Test with Maven
+        run: mvn -B clean test --file pom.xml
+
+
