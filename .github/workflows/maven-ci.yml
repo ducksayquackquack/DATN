@@ -10,7 +10,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: action/checkout@v4
-      - name: setup JDK 17
+      - name: Set up JDK 17
         uses: action/setup-java@v3
         with:
           distribution: 'temurin'
