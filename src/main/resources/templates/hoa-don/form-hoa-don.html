@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Test CRUD Hóa Đơn</title>
+</head>
+<body>
+
+<h2>✅ Test CRUD – Hóa Đơn</h2>
+
+<!-- NÚT THÊM -->
+<a href="/hoa-don/create">➕ Tạo Hóa Đơn</a>
+
+<br><br>
+
+<table border="1" cellpadding="8" cellspacing="0">
+    <tr>
+        <th>ID</th>
+        <th>Mã HĐ</th>
+        <th>Nhân viên</th>
+        <th>Khách hàng</th>
+        <th>Phí ship</th>
+        <th>Giá sau GG</th>
+        <th>Thành tiền</th>
+        <th>Ngày tạo</th>
+        <th>Trạng thái</th>
+        <th>Hành động</th>
+    </tr>
+
+    <tr th:each="hd : ${list}">
+        <td th:text="${hd.id}"></td>
+
+        <td th:text="${hd.maHoaDon}"></td>
+
+        <!-- ManyToOne -->
+        <td th:text="${hd.nhanVien != null ? hd.nhanVien.tenNhanVien : ''}"></td>
+        <td th:text="${hd.khachHang != null ? hd.khachHang.tenKhachHang : ''}"></td>
+
+        <td th:text="${hd.phiShip}"></td>
+        <td th:text="${hd.giaSauGiamGia}"></td>
+        <td th:text="${hd.thanhTien}"></td>
+
+        <td th:text="${hd.ngayTao != null ? #temporals.format(hd.ngayTao,'dd/MM/yyyy HH:mm') : ''}"></td>
+
+        <td th:text="${hd.trangThai}"></td>
+
+        <!-- CRUD -->
+        <td>
+            <a th:href="@{/hoa-don/edit/{id}(id=${hd.id})}">✏️ Sửa</a>
+            |
+            <a th:href="@{/hoa-don/delete/{id}(id=${hd.id})}"
+               onclick="return confirm('Xoá hóa đơn này?')">
+                🗑️ Xoá
+            </a>
+        </td>
+    </tr>
+</table>
+
+</body>
+</html>
