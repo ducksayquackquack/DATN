@@ -1,4 +1,5 @@
 package org.example.datnnhom03.Model;
+// TODO: DanhMuc CRUD
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
