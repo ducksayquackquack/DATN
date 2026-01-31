@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title th:text="${sp.id == null ? 'Thêm mới Sản phẩm' : 'Chỉnh sửa Sản phẩm'}"></title>
+</head>
+<body>
+
+<h2 th:text="${sp.id == null ? 'Thêm mới Sản phẩm' : 'Chỉnh sửa Sản phẩm'}"></h2>
+
+<form th:action="@{/san-pham/save}" method="post" th:object="${sp}">
+    <input type="hidden" th:field="*{id}" />
+
+    <div>
+        <label>Mã sản phẩm</label><br/>
+        <input type="text" th:field="*{maSanPham}" placeholder="Nhập mã sản phẩm" required/>
+    </div>
+
+    <div>
+        <label>Tên sản phẩm</label><br/>
+        <input type="text" th:field="*{tenSanPham}" placeholder="Nhập tên sản phẩm" required/>
+    </div>
+
+    <div>
+        <label>Mô tả</label><br/>
+        <textarea th:field="*{moTa}" placeholder="Nhập mô tả sản phẩm"></textarea>
+    </div>
+
+    <div>
+        <label>Ngày tạo</label><br/>
+        <input type="datetime-local" th:field="*{ngayTao}"/>
+    </div>
+
+    <div>
+        <label>Ngày sửa</label><br/>
+        <input type="datetime-local" th:field="*{ngaySua}"/>
+    </div>
+
+    <div>
+        <label>Trạng thái</label><br/>
+        <select th:field="*{trangThai}">
+            <option value="Hoạt động" th:selected="${sp.trangThai == 'Hoạt động'}">Hoạt động</option>
+            <option value="Ngừng hoạt động" th:selected="${sp.trangThai == 'Ngừng hoạt động'}">Ngừng hoạt động</option>
+        </select>
+    </div>
+
+    <br/>
+    <button type="submit">💾 Lưu</button>
+    <a th:href="@{/san-pham}">⬅ Quay lại</a>
+</form>
+
+</body>
+</html>

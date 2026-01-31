@@ -1,70 +1,65 @@
 package org.example.datnnhom03.Controller;
 
 import org.example.datnnhom03.Model.MauSac;
-import org.example.datnnhom03.Service.MauSacService;
-import org.springframework.http.ResponseEntity;
+import org.example.datnnhom03.Repository.MauSacRepository;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import java.time.LocalDateTime;
 
-@RestController
-@RequestMapping("/api/mau-sac")
+@Controller
+@RequestMapping("/mau-sac")
 public class MauSacController {
 
-    private final MauSacService mauSacService;
+    private final MauSacRepository mauSacRepository;
 
-    public MauSacController(MauSacService mauSacService) {
-        this.mauSacService = mauSacService;
+    public MauSacController(MauSacRepository mauSacRepository) {
+        this.mauSacRepository = mauSacRepository;
     }
 
-    // GET: /api/mau-sac
     @GetMapping
-    public ResponseEntity<List<MauSac>> getAll() {
-        return ResponseEntity.ok(mauSacService.findAll());
+    public String index(Model model) {
+        model.addAttribute("list", mauSacRepository.findAll());
+        return "mausac/mau-sac";
     }
 
-    // GET: /api/mau-sac/{id}
-    @GetMapping("/{id}")
-    public ResponseEntity<MauSac> getById(@PathVariable Integer id) {
-        MauSac ms = mauSacService.findById(id);
+    @GetMapping("/create")
+    public String createForm(Model model) {
+        model.addAttribute("ms", new MauSac());
+        return "mausac/form-mau-sac";
+    }
+
+    @PostMapping("/save")
+    public String save(@ModelAttribute("ms") MauSac ms) {
+        if (ms.getId() == null) {
+            ms.setNgayTao(LocalDateTime.now());
+            ms.setNgaySua(LocalDateTime.now());
+            mauSacRepository.save(ms);
+        } else {
+            MauSac old = mauSacRepository.findById(ms.getId()).orElseThrow();
+            old.setMaMau(ms.getMaMau());
+            old.setTenMau(ms.getTenMau());
+            old.setTrangThai(ms.getTrangThai());
+            old.setNgaySua(LocalDateTime.now());
+            mauSacRepository.save(old);
+        }
+        return "redirect:/mau-sac";
+    }
+
+    @GetMapping("/edit/{id}")
+    public String editForm(@PathVariable Integer id, Model model) {
+        MauSac ms = mauSacRepository.findById(id).orElse(null);
         if (ms == null) {
-            return ResponseEntity.notFound().build();
+            return "redirect:/mau-sac";
         }
-        return ResponseEntity.ok(ms);
+        model.addAttribute("ms", ms);
+        return "mausac/form-mau-sac";
     }
 
-    // POST: /api/mau-sac
-    @PostMapping
-    public ResponseEntity<MauSac> create(@RequestBody MauSac mauSac) {
-        MauSac created = mauSacService.create(mauSac);
-        return ResponseEntity.ok(created);
-    }
-
-    // PUT: /api/mau-sac/{id}
-    @PutMapping("/{id}")
-    public ResponseEntity<MauSac> update(@PathVariable Integer id, @RequestBody MauSac mauSac) {
-        // check tồn tại trước để trả về 404 đúng chuẩn
-        MauSac existing = mauSacService.findById(id);
-        if (existing == null) {
-            return ResponseEntity.notFound().build();
-        }
-
-        // đảm bảo update đúng bản ghi theo id trên URL
-        mauSac.setId(id);
-
-        MauSac updated = mauSacService.update(id, mauSac);
-        return ResponseEntity.ok(updated);
-    }
-
-    // DELETE: /api/mau-sac/{id}
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        MauSac existing = mauSacService.findById(id);
-        if (existing == null) {
-            return ResponseEntity.notFound().build();
-        }
-
-        mauSacService.delete(id);
-        return ResponseEntity.noContent().build();
+    @GetMapping("/delete/{id}")
+    public String delete(@PathVariable Integer id) {
+        mauSacRepository.deleteById(id);
+        return "redirect:/mau-sac";
     }
 }

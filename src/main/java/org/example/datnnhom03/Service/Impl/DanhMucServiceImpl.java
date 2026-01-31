@@ -1,7 +1,7 @@
 package org.example.datnnhom03.Service.Impl;
 
 import org.example.datnnhom03.Model.DanhMuc;
-import org.example.datnnhom03.Repsotiory.DanhMucRepository;
+import org.example.datnnhom03.Repository.DanhMucRepository;
 import org.example.datnnhom03.Service.DanhMucService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;

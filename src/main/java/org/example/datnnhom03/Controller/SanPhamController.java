@@ -2,52 +2,68 @@ package org.example.datnnhom03.Controller;
 
 import org.example.datnnhom03.Model.SanPham;
 import org.example.datnnhom03.Service.SanPhamService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import java.time.LocalDateTime;
 
-@RestController
-@RequestMapping("/api/san-pham")
+@Controller
+@RequestMapping("/san-pham")
 public class SanPhamController {
 
-    @Autowired
-    private SanPhamService sanPhamService;
+    private final SanPhamService sanPhamService;
 
-    // CREATE
-    @PostMapping
-    public ResponseEntity<SanPham> create(@RequestBody SanPham sanPham) {
-        SanPham created = sanPhamService.create(sanPham);
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    public SanPhamController(SanPhamService sanPhamService) {
+        this.sanPhamService = sanPhamService;
     }
 
-    // UPDATE
-    @PutMapping("/{id}")
-    public ResponseEntity<SanPham> update(@PathVariable Integer id, @RequestBody SanPham sanPham) {
-        SanPham updated = sanPhamService.update(id, sanPham);
-        return ResponseEntity.ok(updated);
-    }
-
-    // DELETE
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        sanPhamService.delete(id);
-        return ResponseEntity.noContent().build();
-    }
-
-    // FIND BY ID
-    @GetMapping("/{id}")
-    public ResponseEntity<SanPham> findById(@PathVariable Integer id) {
-        SanPham sp = sanPhamService.findById(id);
-        return ResponseEntity.ok(sp);
-    }
-
-    // FIND ALL
+    // Danh sách sản phẩm
     @GetMapping
-    public ResponseEntity<List<SanPham>> findAll() {
-        List<SanPham> list = sanPhamService.findAll();
-        return ResponseEntity.ok(list);
+    public String index(Model model) {
+        model.addAttribute("list", sanPhamService.findAll());
+        return "sanpham/san-pham";
+    }
+
+    // Form tạo mới sản phẩm
+    @GetMapping("/create")
+    public String createForm(Model model) {
+        model.addAttribute("sp", new SanPham());
+        return "sanpham/form-san-pham";
+    }
+
+    // Lưu tạo mới hoặc cập nhật sản phẩm
+    @PostMapping("/save")
+    public String save(@ModelAttribute("sp") SanPham sp) {
+        if (sp.getId() == null) {
+            sp.setNgayTao(LocalDateTime.now());
+            sanPhamService.create(sp);
+        } else {
+            SanPham old = sanPhamService.findById(sp.getId());
+            old.setTenSanPham(sp.getTenSanPham());
+            old.setMoTa(sp.getMoTa());
+            old.setTrangThai(sp.getTrangThai());
+            old.setNgaySua(LocalDateTime.now());
+            sanPhamService.update(old.getId(), old);
+        }
+        return "redirect:/san-pham";
+    }
+
+    // Form chỉnh sửa sản phẩm
+    @GetMapping("/edit/{id}")
+    public String editForm(@PathVariable Integer id, Model model) {
+        SanPham sp = sanPhamService.findById(id);
+        if (sp == null) {
+            return "redirect:/san-pham";
+        }
+        model.addAttribute("sp", sp);
+        return "sanpham/form-san-pham";
+    }
+
+    // Xóa sản phẩm
+    @GetMapping("/delete/{id}")
+    public String delete(@PathVariable Integer id) {
+        sanPhamService.delete(id);
+        return "redirect:/san-pham";
     }
 }

@@ -1,7 +1,7 @@
 package org.example.datnnhom03.Service.Impl;
 
 import org.example.datnnhom03.Model.KichThuoc;
-import org.example.datnnhom03.Repsotiory.KichThuocRepository;
+import org.example.datnnhom03.Repository.KichThuocRepository;
 import org.example.datnnhom03.Service.KichThuocService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;

@@ -1,7 +1,7 @@
 package org.example.datnnhom03.Service.Impl;
 
 import org.example.datnnhom03.Model.PTTT;
-import org.example.datnnhom03.Repsotiory.PTTTRepository;
+import org.example.datnnhom03.Repository.PTTTRepository;
 import org.example.datnnhom03.Service.PTTTService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
