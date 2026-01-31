@@ -1,7 +1,7 @@
 package org.example.datnnhom03.Service.Impl;
 
 import org.example.datnnhom03.Model.SanPham;
-import org.example.datnnhom03.Repsotiory.SanPhamRepository;
+import org.example.datnnhom03.Repository.SanPhamRepository;
 import org.example.datnnhom03.Service.SanPhamService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;

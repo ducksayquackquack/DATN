@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Thêm danh mục</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 40px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+            background: #fff;
+            padding: 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+        }
+
+        h1 {
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 8px 14px;
+            border-radius: 4px;
+            text-decoration: none;
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .btn-add { background: #2ecc71; }
+        .btn-edit { background: #f39c12; }
+        .btn-delete { background: #e74c3c; }
+        .btn-back { background: #7f8c8d; }
+        .btn-save { background: #3498db; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+        }
+
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            text-align: left;
+        }
+
+        th {
+            background: #f0f2f5;
+        }
+
+        tr:hover {
+            background: #fafafa;
+        }
+
+        .actions a {
+            margin-right: 6px;
+        }
+
+        .form-group {
+            margin-bottom: 14px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: bold;
+        }
+
+        input {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+    </style>
+
+</head>
+<body>
+
+<div class="container">
+    <h1>THÊM DANH MỤC</h1>
+
+    <form th:action="@{/danh-muc/store}" th:object="${dm}" method="post">
+
+        <div class="form-group">
+            <label>Mã danh mục</label>
+            <input type="text" th:field="*{maDanhMuc}" required>
+        </div>
+
+        <div class="form-group">
+            <label>Tên danh mục</label>
+            <input type="text" th:field="*{tenDanhMuc}" required>
+        </div>
+
+        <div class="form-group">
+            <label>Trạng thái</label>
+            <input type="text" th:field="*{trangThai}">
+        </div>
+
+        <button class="btn btn-save" type="submit">Lưu</button>
+        <a class="btn btn-back" th:href="@{/danh-muc}">Quay lại</a>
+    </form>
+</div>
+
+</body>
+</html>
+

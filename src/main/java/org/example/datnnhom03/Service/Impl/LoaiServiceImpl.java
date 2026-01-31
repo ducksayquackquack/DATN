@@ -1,7 +1,7 @@
 package org.example.datnnhom03.Service.Impl;
 
 import org.example.datnnhom03.Model.Loai;
-import org.example.datnnhom03.Repsotiory.LoaiRepository;
+import org.example.datnnhom03.Repository.LoaiRepository;
 import org.example.datnnhom03.Service.LoaiService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;

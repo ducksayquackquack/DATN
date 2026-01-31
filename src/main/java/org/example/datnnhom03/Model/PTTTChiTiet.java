@@ -20,8 +20,6 @@ public class PTTTChiTiet {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    // ====== Quan hệ ======
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "idHoaDon")
     private HoaDon hoaDon;
@@ -29,8 +27,6 @@ public class PTTTChiTiet {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "idPTTT")
     private PTTT phuongThucThanhToan;
-
-    // ====== Thông tin ======
 
     @Column(name = "soTien")
     private Double soTien;

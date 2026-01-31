@@ -1,4 +1,4 @@
-package org.example.datnnhom03.Repsotiory;
+package org.example.datnnhom03.Repository;
 
 import org.example.datnnhom03.Model.KhuyenMai;
 import org.springframework.data.jpa.repository.JpaRepository;

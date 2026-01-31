@@ -1,7 +1,7 @@
 package org.example.datnnhom03.Service.Impl;
 
 import org.example.datnnhom03.Model.MauSac;
-import org.example.datnnhom03.Repsotiory.MauSacRepository;
+import org.example.datnnhom03.Repository.MauSacRepository;
 import org.example.datnnhom03.Service.MauSacService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;

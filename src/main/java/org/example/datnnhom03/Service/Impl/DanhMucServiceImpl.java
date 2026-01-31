@@ -1,7 +1,7 @@
 package org.example.datnnhom03.Service.Impl;
 
 import org.example.datnnhom03.Model.DanhMuc;
-import org.example.datnnhom03.Repsotiory.DanhMucRepository;
+import org.example.datnnhom03.Repository.DanhMucRepository;
 import org.example.datnnhom03.Service.DanhMucService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -15,18 +15,8 @@ public class DanhMucServiceImpl implements DanhMucService {
     private DanhMucRepository danhMucRepository;
 
     @Override
-    public DanhMuc create(DanhMuc danhMuc) {
-        return danhMucRepository.save(danhMuc);
-    }
-
-    @Override
-    public DanhMuc update(Integer id, DanhMuc danhMuc) {
-        return danhMucRepository.save(danhMuc);
-    }
-
-    @Override
-    public void delete(Integer id) {
-        danhMucRepository.deleteById(id);
+    public List<DanhMuc> findAll() {
+        return danhMucRepository.findAll();
     }
 
     @Override
@@ -35,8 +25,13 @@ public class DanhMucServiceImpl implements DanhMucService {
     }
 
     @Override
-    public List<DanhMuc> findAll() {
-        return danhMucRepository.findAll();
+    public DanhMuc save(DanhMuc danhMuc) {
+        return danhMucRepository.save(danhMuc);
+    }
+
+    @Override
+    public void delete(Integer id) {
+        danhMucRepository.deleteById(id);
     }
 }
 

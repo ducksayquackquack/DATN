@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Danh Mục</title>
+
+    <style>
+        body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 40px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: auto;
+            background: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 28px;
+            letter-spacing: 0.5px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            color: #fff;
+            font-size: 14px;
+            border: none;
+            cursor: pointer;
+            transition: 0.2s ease;
+        }
+
+        .btn-add { background: #27ae60; }
+        .btn-edit { background: #f39c12; }
+        .btn-delete { background: #e74c3c; }
+
+        .btn:hover {
+            opacity: 0.92;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 14px 12px;
+            border-bottom: 1px solid #e5e7eb;
+            text-align: left;
+        }
+
+        th {
+            background: #f2f4f7;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        tr:hover {
+            background: #f9fafb;
+        }
+
+        .badge {
+            padding: 6px 14px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 500;
+            display: inline-block;
+            background: #e9f7ef;
+            color: #1e874b;
+        }
+
+        .actions a {
+            margin-right: 6px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="header">
+        <h1>DANH MỤC</h1>
+        <a class="btn btn-add" th:href="@{/danh-muc/create}">
+            Thêm danh mục
+        </a>
+    </div>
+
+    <table>
+        <thead>
+        <tr>
+            <th>ID</th>
+            <th>Mã</th>
+            <th>Tên</th>
+            <th>Trạng thái</th>
+            <th>Hành động</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:each="dm : ${list}">
+            <td th:text="${dm.id}"></td>
+            <td th:text="${dm.maDanhMuc}"></td>
+            <td th:text="${dm.tenDanhMuc}"></td>
+
+            <td>
+                <span class="badge">Hoạt động</span>
+            </td>
+
+            <td class="actions">
+                <a class="btn btn-edit"
+                   th:href="@{/danh-muc/edit/{id}(id=${dm.id})}">
+                    Sửa
+                </a>
+                <a class="btn btn-delete"
+                   th:href="@{/danh-muc/delete/{id}(id=${dm.id})}"
+                   onclick="return confirm('Xóa danh mục này?')">
+                    Xóa
+                </a>
+            </td>
+        </tr>
+        </tbody>
+    </table>
+
+</div>
+
+</body>
+</html>

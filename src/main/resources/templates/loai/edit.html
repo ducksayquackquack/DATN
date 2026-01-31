@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Sửa Loại</title>
+
+    <style>
+        body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 40px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: auto;
+            background: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+        }
+
+        h1 {
+            margin-bottom: 24px;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+        .actions {
+            margin-top: 24px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 18px;
+            border-radius: 8px;
+            text-decoration: none;
+            color: #fff;
+            font-size: 14px;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn-save { background: #3498db; }
+        .btn-back { background: #7f8c8d; }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>SỬA LOẠI</h1>
+
+    <form th:action="@{/loai/update}" method="post">
+
+        <input type="hidden" name="id" th:value="${loai.id}">
+
+        <div class="form-group">
+            <label>Mã loại</label>
+            <input type="text" name="maLoai" th:value="${loai.maLoai}" required>
+        </div>
+
+        <div class="form-group">
+            <label>Tên loại</label>
+            <input type="text" name="tenLoai" th:value="${loai.tenLoai}" required>
+        </div>
+
+        <div class="form-group">
+            <label>Trạng thái</label>
+            <input type="text" name="trangThai" th:value="${loai.trangThai}">
+        </div>
+
+        <div class="actions">
+            <button class="btn btn-save" type="submit">Cập nhật</button>
+            <a class="btn btn-back" th:href="@{/loai}">Quay lại</a>
+        </div>
+
+    </form>
+
+</div>
+
+</body>
+</html>
