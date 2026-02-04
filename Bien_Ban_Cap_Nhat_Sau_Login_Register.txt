@@ -1,0 +1,43 @@
+Các file đã thêm và chỉnh sửa trong quá trình hoàn thiện Login, Register:
+- Controller:
+ +  CustomerController
+ +  EmployeeController
+ +  LoginController (Update)
+ +  RegisterController
+- DTO:
+ + RegisterDTO
+- Model:
+ +  KhachHang (Update)
+ +  NhanVien (Update)
+ +  TaiKhoan (Update)
+- Repository(Ông nào đặt tên là Respotiory lú vcl)
+ +  TaiKhoanRepository (Update)
+- Security (Config Remake)
+ +  CustomAuthenticationSuccessHandler
+ +  CustomUserDetailsService
+ +  PasswordEncoderConfig (Chưa sử dụng, đang tắt Encoder)
+ +  SecurityConfig (Remake, csrf.disable() để test)
+- Service/Impl
+ +  RegisterService
+ +  RegisterServiceImpl
+- Templates:
+ +  customer/home.html
+ +  employee/dashboard.html
+ +  login.html (Update)
+ +  register.html
+- application.properties (Đổi sang DB DirtyWave3)
+
+LƯU Ý:
+- validate Login:
+ +  CustomUserDetailService:
+	.Email có tồn tại không
+	.Trạng thái tài khoản
+ +  DAOAuthenticationProvider (Trong SecurityConfig)
+	.So khớp mật khẩu
+	.User có hợp lệ không
+- validate Register:
+ +  DTO:
+	.Email (NotBlank, @)
+	.matKhau (NotBlank, Size min=6)
+ +  RegisterServiceImpl:
+	.Trùng email

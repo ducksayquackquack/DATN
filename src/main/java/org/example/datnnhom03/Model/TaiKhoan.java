@@ -8,25 +8,33 @@ import lombok.*;
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
-@Table(name = "TaiKhoan")
+@Table(
+        name = "TaiKhoan",
+        uniqueConstraints = {
+                @UniqueConstraint(columnNames = "email")
+        }
+)
 public class TaiKhoan {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @Column(name = "vaiTro")
-    private String vaiTro;
+    @Column(name = "vaiTro", nullable = false)
+    private String vaiTro; // ADMIN, EMPLOYEE, CUSTOMER
 
-    @Column(name = "email")
+    @Column(name = "email", nullable = false)
     private String email;
 
-    @Column(name = "matKhau")
+    @Column(name = "matKhau", nullable = false)
     private String matKhau;
 
     @Column(name = "avatar")
     private String avatar;
 
-    @Column(name = "trangThai")
-    private String trangThai;
+    @Column(name = "trangThaiHoatDong")
+    private String trangThaiHoatDong;
 
+    @Column(name = "trangThaiTaiKhoan", nullable = false)
+    private String trangThaiTaiKhoan; // Kích hoạt / Khóa
 }

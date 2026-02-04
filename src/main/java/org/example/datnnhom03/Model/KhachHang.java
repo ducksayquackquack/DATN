@@ -1,34 +1,35 @@
 package org.example.datnnhom03.Model;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.Date;
 
 @Entity
 @Getter
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
-@Table(name = "KhachHang")
+@Table(
+        name = "KhachHang",
+        uniqueConstraints = {
+                @UniqueConstraint(columnNames = "idTaiKhoan")
+        }
+)
 public class KhachHang {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @ManyToOne
-    @JoinColumn(name = "idTaiKhoan")
+    @OneToOne
+    @JoinColumn(name = "idTaiKhoan", nullable = false)
     private TaiKhoan taiKhoan;
 
-    @Column(name = "maKhachHang")
+    @Column(name = "maKhachHang", nullable = false)
     private String maKhachHang;
 
-    @Column(name = "tenKhachHang")
+    @Column(name = "tenKhachHang", nullable = false)
     private String tenKhachHang;
 
     @Column(name = "gioiTinh")

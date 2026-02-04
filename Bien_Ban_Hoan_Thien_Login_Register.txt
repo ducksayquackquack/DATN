@@ -1,0 +1,143 @@
+BIÊN BẢN XÁC NHẬN HOÀN THÀNH CÁC ĐẦU VIỆC
+MODULE AUTH – LOGIN / REGISTER / ROLE (DIRTYWAVES)
+
+
+1. Security & Authentication
+
+- Đã xoá SecurityConfig hardcode InMemoryUser
+
+- Đã tạo SecurityConfig mới đăng nhập bằng email + mật khẩu từ DB
+
+- Đã cấu hình AuthenticationProvider + UserDetailsService chuẩn Spring Security
+
+- Đã sử dụng NoOpPasswordEncoder để test đồ án (không sửa dữ liệu DB cũ)
+
+- Đã tắt CSRF tạm thời để xử lý form POST login/register
+
+- Đã whitelist các URL public: /login, /register, /css/, /js/, /images/**
+
+
+2. Entity & Repository phục vụ đăng nhập
+
+- Đã chuẩn hoá entity TaiKhoan theo SQL hiện tại
+
+ +  email, matKhau, vaiTro
+
+ +  trangThaiTaiKhoan, trangThaiHoatDong
+
+- Đã cập nhật TaiKhoanRepository
+
+ +  findByEmail (login)
+
+ +  existsByEmail (register)
+
+
+3. CustomUserDetailsService
+
+- Đã tạo CustomUserDetailsService đọc dữ liệu từ TaiKhoan
+
+- Đã map role đúng chuẩn ROLE_ADMIN / ROLE_EMPLOYEE / ROLE_CUSTOMER
+
+- Đã chặn đăng nhập với tài khoản có trạng thái bị khóa
+
+
+4. Login
+
+- Đã tạo LoginController (GET /login)
+
+- Đã thiết kế login.html
+
+- Form email + password
+
+- Hiển thị lỗi đăng nhập
+
+- Link sang trang register
+
+- Login hoạt động đúng với dữ liệu trong DB
+
+
+5. Register
+
+- Đã thiết kế RegisterDTO + validate
+
+- Đã tạo RegisterController (GET/POST /register)
+
+- Đã tạo RegisterService + RegisterServiceImpl
+
+ +  Check trùng email
+
+ +  Tạo TaiKhoan role CUSTOMER
+
+ +  Tạo KhachHang liên kết TaiKhoan
+
+- Đã thiết kế register.html đồng bộ giao diện login
+
+- Register thành công redirect về login
+
+
+6. Phân quyền & Redirect theo role
+
+- Đã cấu hình phân quyền URL:
+
+ +  /admin/** → ADMIN
+
+ +  /employee/** → EMPLOYEE, ADMIN
+
+ +  /customer/** → CUSTOMER, ADMIN
+
+- Đã tạo CustomAuthenticationSuccessHandler
+
+- Đã redirect sau login theo role:
+
+ +  ADMIN → /admin/khuyen-mai
+
+ +  EMPLOYEE → /employee
+
+ +  CUSTOMER → /customer/home
+
+- Đã loại bỏ defaultSuccessUrl, dùng successHandler hoàn toàn
+
+
+7. Controller theo role
+
+- Đã tách controller theo từng role:
+
+ +  admin
+
+ +  employee
+
+ +  customer
+
+- Không dùng chung controller giữa các role
+
+- Đã đảm bảo redirect khớp URL controller, không 404, không vòng lặp
+
+
+8. Template theo role
+
+- Đã tổ chức templates rõ ràng:
+
+ +  templates/admin/**
+
+ +  templates/employee/**
+
+ +  templates/customer/**
+
+- Đã tạo HTML tạm cho employee & customer để test luồng phân quyền
+
+9. Trạng thái xác nhận
+
+- Login: HOẠT ĐỘNG
+
+- Register: HOẠT ĐỘNG
+
+- Phân quyền role: ĐÚNG
+
+- Redirect theo role: ĐÚNG
+
+- Không ảnh hưởng module admin cũ
+
+- Sẵn sàng mở rộng chức năng theo từng role
+
+KẾT LUẬN:
+- Toàn bộ chức năng Login – Register – Phân quyền – Redirect theo role đã hoàn thành, hoạt động ổn định, đúng kiến trúc
