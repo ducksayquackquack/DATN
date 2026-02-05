@@ -1,57 +1,101 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <title>Test CRUD Nhân Viên</title>
+    <meta charset="UTF-8" />
+    <title>Form Nhân Viên</title>
 </head>
-<body>
 
-<h2>✅ Test CRUD – Nhân Viên</h2>
+<body style="margin:0;background:#f3f6f8;font-family:Arial">
+<div style="min-height:100vh;display:flex;flex-direction:column;">
 
-<!-- NÚT THÊM -->
-<a href="/nhan-vien/create">➕ Thêm nhân viên</a>
+    <div th:replace="layout/header :: header"></div>
 
-<br><br>
+    <div style="display:flex;flex:1;">
+        <div th:replace="layout/sidebar :: sidebar"></div>
 
-<table border="1" cellpadding="8" cellspacing="0">
-    <tr>
-        <th>ID</th>
-        <th>Mã</th>
-        <th>Tên</th>
-        <th>Giới tính</th>
-        <th>Ngày sinh</th>
-        <th>SĐT</th>
-        <th>Địa chỉ</th>
-        <th>Trạng thái</th>
-        <th>Hành động</th>
-    </tr>
+        <div style="flex:1;padding:18px;">
+            <div style="background:#fff;border:1px solid #cfd8df;padding:18px;max-width:700px;">
 
-    <tr th:each="nv : ${list}">
-        <td th:text="${nv.id}"></td>
-        <td th:text="${nv.maNhanVien}"></td>
-        <td th:text="${nv.tenNhanVien}"></td>
-        <td th:text="${nv.gioiTinh}"></td>
+                <h1 th:text="${nv.id == null ? 'Thêm Nhân Viên' : 'Cập Nhật Nhân Viên'}"></h1>
 
-        <!-- Format LocalDate -->
-        <td th:text="${nv.ngaySinh != null ? #temporals.format(nv.ngaySinh,'dd/MM/yyyy') : ''}"></td>
+                <form th:object="${nv}"
+                      th:action="${nv.id == null}
+                                 ? @{/admin/nhan-vien/store}
+                                 : @{/admin/nhan-vien/update}"
+                      method="post">
 
-        <td th:text="${nv.soDienThoai}"></td>
-        <td th:text="${nv.diaChi}"></td>
-        <td th:text="${nv.trangThaiHoatDong}"></td>
+                    <input type="hidden" th:field="*{id}">
 
-        <!-- CRUD BUTTON -->
-        <td>
-            <a th:href="@{/nhan-vien/edit/{id}(id=${nv.id})}">
-                ✏️ Sửa
-            </a>
-            |
-            <a th:href="@{/nhan-vien/delete/{id}(id=${nv.id})}"
-               onclick="return confirm('Xoá nhân viên này?')">
-                🗑️ Xoá
-            </a>
-        </td>
-    </tr>
-</table>
+                    <table cellpadding="6" style="width:100%;">
+                        <tr>
+                            <td>Mã nhân viên</td>
+                            <td>
+                                <input type="text" th:field="*{maNhanVien}" style="width:100%;">
+                            </td>
+                        </tr>
 
+                        <tr>
+                            <td>Tên nhân viên</td>
+                            <td>
+                                <input type="text" th:field="*{tenNhanVien}" style="width:100%;">
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Giới tính</td>
+                            <td>
+                                <select th:field="*{gioiTinh}" style="width:100%;">
+                                    <option value="Nam">Nam</option>
+                                    <option value="Nữ">Nữ</option>
+                                </select>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Ngày sinh</td>
+                            <td>
+                                <input type="date" th:field="*{ngaySinh}" style="width:100%;">
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Số điện thoại</td>
+                            <td>
+                                <input type="text" th:field="*{soDienThoai}" style="width:100%;">
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Địa chỉ</td>
+                            <td>
+                                <input type="text" th:field="*{diaChi}" style="width:100%;">
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Trạng thái</td>
+                            <td>
+                                <select th:field="*{trangThai}" style="width:100%;">
+                                    <option value="Hoạt động">Hoạt động</option>
+                                    <option value="Nghỉ">Nghỉ</option>
+                                </select>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <div style="margin-top:14px;text-align:right;">
+                        <a th:href="@{/admin/nhan-vien}" class="dw-btn">Hủy</a>
+                        <button type="submit" class="dw-btn">
+                            <span th:text="${nv.id == null ? 'Lưu' : 'Cập nhật'}"></span>
+                        </button>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div th:replace="layout/footer :: footer"></div>
+</div>
 </body>
 </html>

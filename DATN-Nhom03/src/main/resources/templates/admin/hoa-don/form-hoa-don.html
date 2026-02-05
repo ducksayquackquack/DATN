@@ -1,60 +1,123 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <title>Test CRUD Hóa Đơn</title>
+    <meta charset="UTF-8" />
+    <title>Form Hóa Đơn</title>
 </head>
-<body>
 
-<h2>✅ Test CRUD – Hóa Đơn</h2>
+<body style="margin:0;background:#f3f6f8;font-family:Arial">
+<div style="min-height:100vh;display:flex;flex-direction:column;">
 
-<!-- NÚT THÊM -->
-<a href="/hoa-don/create">➕ Tạo Hóa Đơn</a>
+    <div th:replace="layout/header :: header"></div>
 
-<br><br>
+    <div style="display:flex;flex:1;">
+        <div th:replace="layout/sidebar :: sidebar"></div>
 
-<table border="1" cellpadding="8" cellspacing="0">
-    <tr>
-        <th>ID</th>
-        <th>Mã HĐ</th>
-        <th>Nhân viên</th>
-        <th>Khách hàng</th>
-        <th>Phí ship</th>
-        <th>Giá sau GG</th>
-        <th>Thành tiền</th>
-        <th>Ngày tạo</th>
-        <th>Trạng thái</th>
-        <th>Hành động</th>
-    </tr>
+        <div style="flex:1;padding:18px;">
+            <div style="background:#fff;border:1px solid #cfd8df;padding:18px;max-width:700px;">
 
-    <tr th:each="hd : ${list}">
-        <td th:text="${hd.id}"></td>
+                <h1 th:text="${hd.id == null ? 'Thêm Hóa Đơn' : 'Cập Nhật Hóa Đơn'}"></h1>
 
-        <td th:text="${hd.maHoaDon}"></td>
+                <form th:object="${hd}"
+                      th:action="${hd.id == null}
+                                 ? @{/hoa-don/store}
+                                 : @{/hoa-don/update}"
+                      method="post">
 
-        <!-- ManyToOne -->
-        <td th:text="${hd.nhanVien != null ? hd.nhanVien.tenNhanVien : ''}"></td>
-        <td th:text="${hd.khachHang != null ? hd.khachHang.tenKhachHang : ''}"></td>
+                    <input type="hidden" th:field="*{id}">
+                    <input type="hidden" th:field="*{ngayTao}">
 
-        <td th:text="${hd.phiShip}"></td>
-        <td th:text="${hd.giaSauGiamGia}"></td>
-        <td th:text="${hd.thanhTien}"></td>
+                    <table cellpadding="6" style="width:100%;">
+                        <tr>
+                            <td>Mã hóa đơn</td>
+                            <td><input type="text" th:field="*{maHoaDon}" style="width:100%;"></td>
+                        </tr>
 
-        <td th:text="${hd.ngayTao != null ? #temporals.format(hd.ngayTao,'dd/MM/yyyy HH:mm') : ''}"></td>
+                        <tr>
+                            <td>Nhân viên</td>
+                            <td>
+                                <select th:field="*{nhanVien.id}" style="width:100%;" required>
+                                    <option value="">-- Chọn nhân viên --</option>
+                                    <option th:each="nv : ${listNV}"
+                                            th:value="${nv.id}"
+                                            th:text="${nv.tenNhanVien}"></option>
+                                </select>
+                            </td>
+                        </tr>
 
-        <td th:text="${hd.trangThai}"></td>
+                        <tr>
+                            <td>Khách hàng</td>
+                            <td>
+                                <select th:field="*{khachHang.id}" style="width:100%;" required>
+                                    <option value="">-- Chọn khách hàng --</option>
+                                    <option th:each="kh : ${listKH}"
+                                            th:value="${kh.id}"
+                                            th:text="${kh.tenKhachHang}"></option>
+                                </select>
+                            </td>
+                        </tr>
 
-        <!-- CRUD -->
-        <td>
-            <a th:href="@{/hoa-don/edit/{id}(id=${hd.id})}">✏️ Sửa</a>
-            |
-            <a th:href="@{/hoa-don/delete/{id}(id=${hd.id})}"
-               onclick="return confirm('Xoá hóa đơn này?')">
-                🗑️ Xoá
-            </a>
-        </td>
-    </tr>
-</table>
+                        <tr>
+                            <td>SĐT nhận hàng</td>
+                            <td><input type="text" th:field="*{soDienThoaiNhanHang}" style="width:100%;"></td>
+                        </tr>
 
+                        <tr>
+                            <td>Địa chỉ nhận hàng</td>
+                            <td><input type="text" th:field="*{diaChiNhanHang}" style="width:100%;"></td>
+                        </tr>
+
+                        <tr>
+                            <td>Phí ship</td>
+                            <td><input type="number" step="0.01" th:field="*{phiShip}" style="width:100%;"></td>
+                        </tr>
+
+                        <tr>
+                            <td>Giá sau giảm giá</td>
+                            <td><input type="number" step="0.01" th:field="*{giaSauGiamGia}" style="width:100%;"></td>
+                        </tr>
+
+                        <tr>
+                            <td>Thành tiền</td>
+                            <td><input type="number" step="0.01" th:field="*{thanhTien}" style="width:100%;"></td>
+                        </tr>
+
+                        <tr>
+                            <td>Ngày nhận hàng dự kiến</td>
+                            <td><input type="date" th:field="*{ngayNhanHangDuKien}" style="width:100%;"></td>
+                        </tr>
+
+                        <tr>
+                            <td>Ngày nhận hàng mong muốn</td>
+                            <td><input type="date" th:field="*{ngayNhanHangMongMuon}" style="width:100%;"></td>
+                        </tr>
+
+                        <tr>
+                            <td>Trạng thái</td>
+                            <td>
+                                <select th:field="*{trangThai}" style="width:100%;">
+                                    <option value="Chờ xác nhận">Chờ xác nhận</option>
+                                    <option value="Đang giao">Đang giao</option>
+                                    <option value="Hoàn thành">Hoàn thành</option>
+                                    <option value="Huỷ">Huỷ</option>
+                                </select>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <div style="margin-top:14px;text-align:right;">
+                        <a th:href="@{/hoa-don}" class="dw-btn">Hủy</a>
+                        <button type="submit" class="dw-btn">
+                            <span th:text="${hd.id == null ? 'Lưu' : 'Cập nhật'}"></span>
+                        </button>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div th:replace="layout/footer :: footer"></div>
+</div>
 </body>
 </html>

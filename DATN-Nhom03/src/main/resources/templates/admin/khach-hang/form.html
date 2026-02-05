@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title th:text="${kh.id == null ? 'Thêm Khách hàng mới' : 'Chỉnh sửa Khách hàng'}"></title>
+</head>
+
+<body style="margin:0;">
+
+<div style="display:flex; min-height:100vh;">
+
+    <!-- SIDEBAR -->
+    <div th:replace="layout/sidebar :: sidebar"></div>
+
+    <!-- NỘI DUNG -->
+    <main style="flex:1; padding:20px;">
+        <h2 th:text="${kh.id == null ? 'Thêm Khách hàng mới' : 'Chỉnh sửa Khách hàng'}"></h2>
+
+        <form th:action="@{/admin/khach-hang/save}"
+              th:object="${kh}"
+              method="post">
+
+            <input type="hidden" th:field="*{id}" />
+
+            <div>
+                <label>Mã khách hàng</label><br />
+                <input type="text" th:field="*{maKhachHang}" required />
+            </div>
+
+            <div>
+                <label>Tên khách hàng</label><br />
+                <input type="text" th:field="*{tenKhachHang}" required />
+            </div>
+
+            <div>
+                <label>Giới tính</label><br />
+                <select th:field="*{gioiTinh}">
+                    <option value="Nam">Nam</option>
+                    <option value="Nữ">Nữ</option>
+                </select>
+            </div>
+
+            <div>
+                <label>Ngày sinh</label><br />
+                <input type="date" th:field="*{ngaySinh}" />
+            </div>
+
+            <div>
+                <label>SĐT</label><br />
+                <input type="text" th:field="*{soDienThoai}" />
+            </div>
+
+            <div>
+                <label>Trạng thái</label><br />
+                <select th:field="*{trangThai}">
+                    <option value="Hoạt động">Hoạt động</option>
+                    <option value="Ngừng hoạt động">Ngừng hoạt động</option>
+                </select>
+            </div>
+
+            <br>
+            <button type="submit">💾 Lưu</button>
+            <a th:href="@{/admin/khach-hang}">⬅ Quay lại</a>
+        </form>
+    </main>
+
+</div>
+
+</body>
+</html>

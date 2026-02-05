@@ -60,5 +60,50 @@
                 Hóa Đơn
             </a>
         </li>
+        <li>
+            <a th:href="@{/admin/khach-hang}"
+               class="dw-sidebar-link"
+               th:classappend="${activeMenu}=='khach-hang' ? ' active' : ''">
+                Khách hàng
+            </a>
+        </li>
+
+        <li>
+            <a th:href="@{/admin/mau-sac}"
+               class="dw-sidebar-link"
+               th:classappend="${activeMenu}=='mau-sac' ? ' active' : ''">
+                Màu sắc
+            </a>
+        </li>
+
+        <li>
+            <a th:href="@{/admin/san-pham}"
+               class="dw-sidebar-link"
+               th:classappend="${activeMenu}=='san-pham' ? ' active' : ''">
+                Sản phẩm
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/phuong-thuc-thanh-toan}"
+               class="dw-sidebar-link"
+               th:classappend="${activeMenu}=='phuong-thuc-thanh-toan' ? ' active' : ''">
+                Phương thức thanh toán
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/loai}"
+               class="dw-sidebar-link"
+               th:classappend="${activeMenu}=='loai' ? ' active' : ''">
+                Loại
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/danh-muc}"
+               class="dw-sidebar-link"
+               th:classappend="${activeMenu}=='danh-muc' ? ' active' : ''">
+                Danh mục
+            </a>
+        </li>
+
     </ul>
 </div>

@@ -6,66 +6,80 @@ import org.example.datnnhom03.Repository.KhachHangRepository;
 import org.example.datnnhom03.Repository.NhanVienRepository;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.ModelAttribute;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 
 @Controller
+@RequestMapping("/admin/hoa-don")
 public class AdminHoaDonController {
+
     private final HoaDonRepsitory hoaDonRepsitory;
     private final NhanVienRepository nhanVienRepository;
     private final KhachHangRepository khachHangRepository;
 
-    public AdminHoaDonController(HoaDonRepsitory hoaDonRepsitory, NhanVienRepository nhanVienRepository, KhachHangRepository khachHangRepository) {
+    public AdminHoaDonController(HoaDonRepsitory hoaDonRepsitory,
+                                 NhanVienRepository nhanVienRepository,
+                                 KhachHangRepository khachHangRepository) {
         this.hoaDonRepsitory = hoaDonRepsitory;
         this.nhanVienRepository = nhanVienRepository;
         this.khachHangRepository = khachHangRepository;
     }
 
-    @GetMapping("/admin/hoa-don")
-    public String index(Model model) {
+    /* =========================
+       LIST
+       ========================= */
+    @GetMapping
+    public String list(Model model) {
+        model.addAttribute("activeMenu", "hoa-don");
         model.addAttribute("list", hoaDonRepsitory.findAll());
-        return "admin/hoa-don/form-hoa-don";
+        return "admin/hoa-don/list-hoa-don";
     }
 
-
-    // HIỂN THỊ FORM ADD
-    @GetMapping("/admin/hoa-don/create")
+    /* =========================
+       OPEN FORM - CREATE
+       ========================= */
+    @GetMapping("/create")
     public String create(Model model) {
+        model.addAttribute("activeMenu", "hoa-don");
         model.addAttribute("hd", new HoaDon());
         model.addAttribute("listNV", nhanVienRepository.findAll());
         model.addAttribute("listKH", khachHangRepository.findAll());
-        return "admin/hoa-don/add-hoa-don";
+        return "admin/hoa-don/form-hoa-don";
     }
 
-    // LƯU HÓA ĐƠN
-    @PostMapping("/admin/hoa-don/store")
+    /* =========================
+       SUBMIT CREATE
+       ========================= */
+    @PostMapping("/store")
     public String store(@ModelAttribute("hd") HoaDon hd) {
         hd.setNgayTao(LocalDateTime.now());
         hoaDonRepsitory.save(hd);
         return "redirect:/admin/hoa-don";
     }
-    // XÓA HÓA ĐƠN
-    @GetMapping("/admin/hoa-don/delete/{id}")
-    public String delete(@PathVariable Integer id) {
-        hoaDonRepsitory.deleteById(id);
-        return "redirect:/admin/hoa-don";
-    }
-    // SỬA HÓA ĐƠN
-    @GetMapping("/admin/hoa-don/edit/{id}")
+
+    /* =========================
+       OPEN FORM - UPDATE
+       ========================= */
+    @GetMapping("/edit/{id}")
     public String edit(@PathVariable Integer id, Model model) {
+
         HoaDon hd = hoaDonRepsitory.findById(id).orElse(null);
+        if (hd == null) {
+            return "redirect:/admin/hoa-don";
+        }
+
+        model.addAttribute("activeMenu", "hoa-don");
         model.addAttribute("hd", hd);
         model.addAttribute("listNV", nhanVienRepository.findAll());
         model.addAttribute("listKH", khachHangRepository.findAll());
-        return "admin/hoa-don/edit-hoa-don";
+        return "admin/hoa-don/form-hoa-don";
     }
 
-    // CẬP NHẬT HÓA ĐƠN
-    @PostMapping("/admin/hoa-don/update")
+    /* =========================
+       SUBMIT UPDATE
+       ========================= */
+    @PostMapping("/update")
     public String update(@ModelAttribute("hd") HoaDon formHd) {
 
         HoaDon dbHd = hoaDonRepsitory.findById(formHd.getId()).orElse(null);
@@ -89,4 +103,12 @@ public class AdminHoaDonController {
         return "redirect:/admin/hoa-don";
     }
 
+    /* =========================
+       DELETE
+       ========================= */
+    @GetMapping("/delete/{id}")
+    public String delete(@PathVariable Integer id) {
+        hoaDonRepsitory.deleteById(id);
+        return "redirect:/admin/hoa-don";
+    }
 }
