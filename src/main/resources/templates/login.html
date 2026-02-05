@@ -1,0 +1,167 @@
+<!-- File: src/main/resources/templates/login.html -->
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Đăng nhập</title>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #f4f6f8;
+            color: #111827;
+        }
+
+        .login-page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            box-sizing: border-box;
+        }
+
+        .login-card {
+            width: 400px;
+            max-width: 100%;
+            background: #ffffff;
+            padding: 26px;
+            border-radius: 12px;
+            box-shadow: 0 10px 24px rgba(17, 24, 39, 0.10);
+            box-sizing: border-box;
+        }
+
+        .login-header {
+            margin-bottom: 18px;
+        }
+
+        .login-header h1 {
+            margin: 0 0 6px 0;
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .login-header p {
+            margin: 0;
+            color: #6b7280;
+            font-size: 13px;
+        }
+
+        .login-body {
+            margin-bottom: 14px;
+        }
+
+        .field {
+            margin-bottom: 12px;
+        }
+
+        .field input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            box-sizing: border-box;
+            outline: none;
+            font-size: 14px;
+            background: #ffffff;
+            color: #111827;
+        }
+
+        .field input:focus {
+            border-color: #9ca3af;
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #111827;
+            border-radius: 10px;
+            background: #111827;
+            color: #ffffff;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            box-sizing: border-box;
+        }
+
+        .btn-submit:hover {
+            background: #0b0f19;
+        }
+
+        .alert {
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-size: 13px;
+            box-sizing: border-box;
+            margin-bottom: 12px;
+        }
+
+        .alert-error {
+            background: #fde8e8;
+            color: #991b1b;
+            border: 1px solid #f3b4b4;
+        }
+
+        .alert-success {
+            background: #eaf7ee;
+            color: #166534;
+            border: 1px solid #b7e1c3;
+        }
+
+        .login-footer {
+            text-align: center;
+            color: #6b7280;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+<div class="login-page">
+    <div class="login-card">
+        <div class="login-header">
+            <h1>Đăng nhập</h1>
+            <p>Vui lòng nhập email và mật khẩu để tiếp tục</p>
+        </div>
+
+        <div class="login-body">
+            <div class="alert alert-error" th:if="${param.error}">
+                Email hoặc mật khẩu không đúng
+            </div>
+
+            <div class="alert alert-success" th:if="${param.logout}">
+                Đã đăng xuất thành công
+            </div>
+
+            <form action="/login" method="post">
+                <div class="field">
+                    <input type="email"
+                           name="username"
+                           placeholder="Email"
+                           required />
+                </div>
+
+                <div class="field">
+                    <input type="password"
+                           name="password"
+                           placeholder="Mật khẩu"
+                           required />
+                </div>
+
+                <button type="submit" class="btn-submit">Đăng nhập</button>
+            </form>
+        </div>
+
+        <div class="login-footer">
+            <style>
+                .login-footer a { color:#111827; text-decoration:none; font-weight:600; }
+                .login-footer a:hover { text-decoration: underline; }
+            </style>
+            Chưa có tài khoản? <a th:href="@{/register}">Đăng ký</a>
+        </div>
+    </div>
+</div>
+</body>
+</html>

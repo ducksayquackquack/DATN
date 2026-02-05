@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>Form Phương Thức Thanh Toán - DirtyWaves Admin</title>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+    <h2>DirtyWaves Admin</h2>
+    <hr />
+</header>
+
+<!-- Layout: Sidebar + Content -->
+<table style="width: 100%; border-collapse: collapse;">
+    <tr>
+
+        <!-- Sidebar -->
+        <td style="width: 220px; vertical-align: top; border-right: 1px solid #ccc; padding: 10px;">
+            <h3>Menu</h3>
+            <ul>
+                <li>
+                    <a th:href="@{/admin/phuong-thuc-thanh-toan}">
+                        Phương thức thanh toán
+                    </a>
+                </li>
+            </ul>
+        </td>
+
+        <!-- Content -->
+        <td style="vertical-align: top; padding: 10px;">
+
+            <h1 th:text="${pttt.id != null ? 'Cập nhật PTTT' : 'Thêm PTTT'}">
+                Form PTTT
+            </h1>
+
+            <!-- FORM CREATE -->
+            <form th:if="${pttt.id == null}"
+                  th:object="${pttt}"
+                  th:action="@{/admin/phuong-thuc-thanh-toan/create}"
+                  method="post">
+
+                <table cellpadding="6">
+                    <tr>
+                        <td>Mã</td>
+                        <td>
+                            <input type="text" th:field="*{ma}" />
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>Tên</td>
+                        <td>
+                            <input type="text" th:field="*{ten}" />
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>Mô tả</td>
+                        <td>
+                            <input type="text" th:field="*{moTa}" />
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>Trạng thái</td>
+                        <td>
+                            <select th:field="*{trangThai}">
+                                <option value="Hoạt động">Hoạt động</option>
+                                <option value="Ngừng">Ngừng</option>
+                            </select>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td></td>
+                        <td>
+                            <button type="submit">Lưu</button>
+                            <a th:href="@{/admin/phuong-thuc-thanh-toan}">Hủy</a>
+                        </td>
+                    </tr>
+                </table>
+            </form>
+
+            <!-- FORM UPDATE -->
+            <form th:if="${pttt.id != null}"
+                  th:object="${pttt}"
+                  th:action="@{/admin/phuong-thuc-thanh-toan/update/{id}(id=${pttt.id})}"
+                  method="post">
+
+                <input type="hidden" th:field="*{id}" />
+
+                <table cellpadding="6">
+                    <tr>
+                        <td>Mã</td>
+                        <td>
+                            <input type="text" th:field="*{ma}" readonly />
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>Tên</td>
+                        <td>
+                            <input type="text" th:field="*{ten}" />
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>Mô tả</td>
+                        <td>
+                            <input type="text" th:field="*{moTa}" />
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>Trạng thái</td>
+                        <td>
+                            <select th:field="*{trangThai}">
+                                <option value="Hoạt động">Hoạt động</option>
+                                <option value="Ngừng">Ngừng</option>
+                            </select>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td></td>
+                        <td>
+                            <button type="submit">Cập nhật</button>
+                            <a th:href="@{/admin/phuong-thuc-thanh-toan}">Hủy</a>
+                        </td>
+                    </tr>
+                </table>
+            </form>
+
+        </td>
+    </tr>
+</table>
+
+</body>
+</html>

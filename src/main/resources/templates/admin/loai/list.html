@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>Quản lý Loại - DirtyWaves Admin</title>
+
+    <style>
+        .dw-btn {
+            display: inline-block;
+            padding: 8px 12px;
+            border: 1px solid #cfd8df;
+            background: #eef3f6;
+            color: #111827;
+            text-decoration: none;
+            cursor: pointer;
+            box-sizing: border-box;
+        }
+        .dw-btn:hover {
+            background: #f6f2ea;
+        }
+        .dw-btn-sm {
+            padding: 4px 8px;
+            background: #f4f7f9;
+        }
+
+        .dw-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+        }
+        .dw-table thead {
+            background: #eef3f6;
+        }
+        .dw-table th, .dw-table td {
+            padding: 8px;
+            border: 1px solid #cfd8df;
+            text-align: left;
+        }
+    </style>
+</head>
+
+<body style="margin:0;background:#f3f6f8;font-family:Arial, Helvetica, sans-serif;">
+<div style="min-height:100vh;display:flex;flex-direction:column;">
+
+    <div th:replace="layout/header :: header"></div>
+
+    <div style="display:flex;flex:1;">
+
+        <div th:replace="layout/sidebar :: sidebar"></div>
+
+        <div style="flex:1;padding:18px;box-sizing:border-box;">
+
+            <div style="background:#fff;border:1px solid #cfd8df;padding:18px 20px;">
+
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                    <h1 style="margin:0;font-size:20px;">Quản lý Loại</h1>
+                    <a th:href="@{/admin/loai/create}" class="dw-btn">+ Thêm</a>
+                </div>
+
+                <table class="dw-table">
+                    <thead>
+                    <tr>
+                        <th>Mã loại</th>
+                        <th>Tên loại</th>
+                        <th>Trạng thái</th>
+                        <th>Ngày tạo</th>
+                        <th>Ngày sửa</th>
+                        <th style="width:140px;">Hành động</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:if="${loais == null || #lists.isEmpty(loais)}">
+                        <td colspan="6">Chưa có dữ liệu.</td>
+                    </tr>
+                    <tr th:each="l : ${loais}">
+                        <td th:text="${l.maLoai}"></td>
+                        <td th:text="${l.tenLoai}"></td>
+                        <td th:text="${l.trangThai}"></td>
+                        <td th:text="${l.ngayTao != null ? #temporals.format(l.ngayTao,'yyyy-MM-dd HH:mm:ss') : '-'}"></td>
+                        <td th:text="${l.ngaySua != null ? #temporals.format(l.ngaySua,'yyyy-MM-dd HH:mm:ss') : '-'}"></td>
+                        <td>
+                            <a th:href="@{/admin/loai/update/{id}(id=${l.id})}"
+                               class="dw-btn dw-btn-sm">Sửa</a>
+                            <a th:href="@{/admin/loai/delete/{id}(id=${l.id})}"
+                               class="dw-btn dw-btn-sm"
+                               style="margin-left:6px;"
+                               onclick="return confirm('Xóa loại này?')">
+                                Xóa
+                            </a>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+
+            </div>
+
+            <!-- MODAL -->
+            <div th:if="${loai != null}"
+                 style="position:fixed;inset:0;background:rgba(17,24,39,0.35);
+                        display:flex;align-items:center;justify-content:center;z-index:9999;">
+
+                <div style="width:420px;background:#fff;border:1px solid #cfd8df;
+                            padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,0.18);">
+
+                    <h2 th:text="${loai.id == null ? 'Thêm Loại' : 'Cập Nhật Loại'}"></h2>
+
+                    <form th:object="${loai}"
+                          th:action="${loai.id == null}
+                                     ? @{/admin/loai/create}
+                                     : @{/admin/loai/update/{id}(id=${loai.id})}"
+                          method="post">
+
+                        <input type="hidden" th:field="*{id}" />
+
+                        <table style="width:100%;" cellpadding="6">
+                            <tr>
+                                <td>Mã loại</td>
+                                <td>
+                                    <input type="text"
+                                           th:field="*{maLoai}"
+                                           th:readonly="${loai.id != null}"
+                                           style="width:100%;padding:8px;border:1px solid #cfd8df;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Tên loại</td>
+                                <td>
+                                    <input type="text"
+                                           th:field="*{tenLoai}"
+                                           style="width:100%;padding:8px;border:1px solid #cfd8df;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Trạng thái</td>
+                                <td>
+                                    <select th:field="*{trangThai}"
+                                            style="width:100%;padding:8px;border:1px solid #cfd8df;">
+                                        <option value="Hoạt động">Hoạt động</option>
+                                        <option value="Ngừng">Ngừng</option>
+                                    </select>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div style="margin-top:12px;text-align:right;">
+                            <a th:href="@{/admin/loai}"
+                               class="dw-btn"
+                               style="background:#f4f7f9;">Hủy</a>
+                            <button type="submit" class="dw-btn">
+                                <span th:text="${loai.id == null ? 'Lưu' : 'Cập nhật'}"></span>
+                            </button>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div th:replace="layout/footer :: footer"></div>
+</div>
+</body>
+</html>

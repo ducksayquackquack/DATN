@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Thêm Hóa Đơn</title>
+</head>
+<body>
+
+<h2>➕ Thêm hóa đơn</h2>
+
+<form th:action="@{/hoa-don/store}"
+      method="post"
+      th:object="${hd}">
+
+    <div>
+        <label>Mã hóa đơn</label><br>
+        <input type="text" th:field="*{maHoaDon}">
+    </div>
+
+    <!-- ====== NHÂN VIÊN ====== -->
+    <div>
+        <label>Nhân viên</label><br>
+        <select th:field="*{nhanVien.id}" required>
+            <option value="">-- Chọn nhân viên --</option>
+            <option th:each="nv : ${listNV}"
+                    th:value="${nv.id}"
+                    th:text="${nv.tenNhanVien}">
+            </option>
+        </select>
+    </div>
+
+    <!-- ====== KHÁCH HÀNG ====== -->
+    <div>
+        <label>Khách hàng</label><br>
+        <select th:field="*{khachHang.id}" required>
+            <option value="">-- Chọn khách hàng --</option>
+            <option th:each="kh : ${listKH}"
+                    th:value="${kh.id}"
+                    th:text="${kh.tenKhachHang}">
+            </option>
+        </select>
+    </div>
+
+    <div>
+        <label>SĐT nhận hàng</label><br>
+        <input type="text" th:field="*{soDienThoaiNhanHang}">
+    </div>
+
+    <div>
+        <label>Địa chỉ nhận hàng</label><br>
+        <input type="text" th:field="*{diaChiNhanHang}">
+    </div>
+
+    <div>
+        <label>Phí ship</label><br>
+        <input type="number" step="0.01" th:field="*{phiShip}">
+    </div>
+
+    <div>
+        <label>Giá sau giảm giá</label><br>
+        <input type="number" step="0.01" th:field="*{giaSauGiamGia}">
+    </div>
+
+    <div>
+        <label>Thành tiền</label><br>
+        <input type="number" step="0.01" th:field="*{thanhTien}">
+    </div>
+
+    <div>
+        <label>Ngày nhận hàng dự kiến</label><br>
+        <input type="date" th:field="*{ngayNhanHangDuKien}">
+    </div>
+
+    <div>
+        <label>Ngày nhận hàng mong muốn</label><br>
+        <input type="date" th:field="*{ngayNhanHangMongMuon}">
+    </div>
+
+    <div>
+        <label>Trạng thái</label><br>
+        <select th:field="*{trangThai}">
+            <option value="Chờ xác nhận">Chờ xác nhận</option>
+            <option value="Đang giao">Đang giao</option>
+            <option value="Hoàn thành">Hoàn thành</option>
+            <option value="Huỷ">Huỷ</option>
+        </select>
+    </div>
+
+    <br>
+    <button type="submit">💾 Lưu hóa đơn</button>
+    <a href="/hoa-don">⬅ Quay lại</a>
+</form>
+
+</body>
+</html>

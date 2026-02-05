@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>Quản lý Danh Mục - DirtyWaves Admin</title>
+
+    <style>
+        .dw-btn {
+            display: inline-block;
+            padding: 8px 12px;
+            border: 1px solid #cfd8df;
+            background: #eef3f6;
+            color: #111827;
+            text-decoration: none;
+            cursor: pointer;
+            box-sizing: border-box;
+        }
+        .dw-btn:hover {
+            background: #f6f2ea;
+        }
+        .dw-btn-sm {
+            padding: 4px 8px;
+            background: #f4f7f9;
+        }
+
+        .dw-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+        }
+        .dw-table thead {
+            background: #eef3f6;
+        }
+        .dw-table th, .dw-table td {
+            padding: 8px;
+            border: 1px solid #cfd8df;
+            text-align: left;
+        }
+    </style>
+</head>
+
+<body style="margin:0;background:#f3f6f8;font-family:Arial, Helvetica, sans-serif;">
+<div style="min-height:100vh;display:flex;flex-direction:column;">
+
+    <div th:replace="layout/header :: header"></div>
+
+    <div style="display:flex;flex:1;">
+
+        <div th:replace="layout/sidebar :: sidebar"></div>
+
+        <div style="flex:1;padding:18px;box-sizing:border-box;">
+
+            <div style="background:#fff;border:1px solid #cfd8df;padding:18px 20px;">
+
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                    <h1 style="margin:0;font-size:20px;">Quản lý Danh Mục</h1>
+                    <a th:href="@{/admin/danh-muc/create}" class="dw-btn">+ Thêm</a>
+                </div>
+
+                <table class="dw-table">
+                    <thead>
+                    <tr>
+                        <th>Mã danh mục</th>
+                        <th>Tên danh mục</th>
+                        <th>Trạng thái</th>
+                        <th>Ngày tạo</th>
+                        <th>Ngày sửa</th>
+                        <th style="width:140px;">Hành động</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:if="${danhMucs == null || #lists.isEmpty(danhMucs)}">
+                        <td colspan="6">Chưa có dữ liệu.</td>
+                    </tr>
+                    <tr th:each="dm : ${danhMucs}">
+                        <td th:text="${dm.maDanhMuc}"></td>
+                        <td th:text="${dm.tenDanhMuc}"></td>
+                        <td th:text="${dm.trangThai}"></td>
+                        <td th:text="${dm.ngayTao != null ? #temporals.format(dm.ngayTao,'yyyy-MM-dd HH:mm:ss') : '-'}"></td>
+                        <td th:text="${dm.ngaySua != null ? #temporals.format(dm.ngaySua,'yyyy-MM-dd HH:mm:ss') : '-'}"></td>
+                        <td>
+                            <a th:href="@{/admin/danh-muc/update/{id}(id=${dm.id})}"
+                               class="dw-btn dw-btn-sm">Sửa</a>
+                            <a th:href="@{/admin/danh-muc/delete/{id}(id=${dm.id})}"
+                               class="dw-btn dw-btn-sm"
+                               style="margin-left:6px;"
+                               onclick="return confirm('Xóa danh mục này?')">
+                                Xóa
+                            </a>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+
+            </div>
+
+            <!-- MODAL -->
+            <div th:if="${danhMuc != null}"
+                 style="position:fixed;inset:0;background:rgba(17,24,39,0.35);
+                        display:flex;align-items:center;justify-content:center;z-index:9999;">
+
+                <div style="width:420px;background:#fff;border:1px solid #cfd8df;
+                            padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,0.18);">
+
+                    <h2 th:text="${danhMuc.id == null ? 'Thêm Danh Mục' : 'Cập Nhật Danh Mục'}"></h2>
+
+                    <form th:object="${danhMuc}"
+                          th:action="${danhMuc.id == null}
+                                     ? @{/admin/danh-muc/create}
+                                     : @{/admin/danh-muc/update/{id}(id=${danhMuc.id})}"
+                          method="post">
+
+                        <input type="hidden" th:field="*{id}" />
+
+                        <table style="width:100%;" cellpadding="6">
+                            <tr>
+                                <td>Mã danh mục</td>
+                                <td>
+                                    <input type="text"
+                                           th:field="*{maDanhMuc}"
+                                           th:readonly="${danhMuc.id != null}"
+                                           style="width:100%;padding:8px;border:1px solid #cfd8df;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Tên danh mục</td>
+                                <td>
+                                    <input type="text"
+                                           th:field="*{tenDanhMuc}"
+                                           style="width:100%;padding:8px;border:1px solid #cfd8df;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Trạng thái</td>
+                                <td>
+                                    <select th:field="*{trangThai}"
+                                            style="width:100%;padding:8px;border:1px solid #cfd8df;">
+                                        <option value="Hoạt động">Hoạt động</option>
+                                        <option value="Ngừng">Ngừng</option>
+                                    </select>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div style="margin-top:12px;text-align:right;">
+                            <a th:href="@{/admin/danh-muc}"
+                               class="dw-btn"
+                               style="background:#f4f7f9;">Hủy</a>
+                            <button type="submit" class="dw-btn">
+                                <span th:text="${danhMuc.id == null ? 'Lưu' : 'Cập nhật'}"></span>
+                            </button>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div th:replace="layout/footer :: footer"></div>
+</div>
+</body>
+</html>
