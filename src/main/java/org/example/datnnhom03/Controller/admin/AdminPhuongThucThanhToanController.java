@@ -1,7 +1,7 @@
 package org.example.datnnhom03.Controller.admin;
 
-import org.example.datnnhom03.Service.PhuongThucThanhToanService;
-import org.example.datnnhom03.dto.PhuongThucThanhToanDTO;
+import org.example.datnnhom03.Model.PTTT;
+import org.example.datnnhom03.Service.PTTTService;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
@@ -12,9 +12,9 @@ import java.util.ArrayList;
 @RequestMapping("/admin/phuong-thuc-thanh-toan")
 public class AdminPhuongThucThanhToanController {
 
-    private final PhuongThucThanhToanService service;
+    private final PTTTService service;
 
-    public AdminPhuongThucThanhToanController(PhuongThucThanhToanService service) {
+    public AdminPhuongThucThanhToanController(PTTTService service) {
         this.service = service;
     }
 
@@ -29,40 +29,38 @@ public class AdminPhuongThucThanhToanController {
     public String openCreate(Model model) {
         model.addAttribute("activeMenu", "pttt");
         model.addAttribute("pttts", service.findAll());
-        model.addAttribute("pttt", new PhuongThucThanhToanDTO());
+        model.addAttribute("pttt", new PTTT());
         model.addAttribute("errors", new ArrayList<>());
         return "admin/phuong-thuc-thanh-toan/list";
     }
 
     @PostMapping("/create")
-    public String create(@ModelAttribute("pttt") PhuongThucThanhToanDTO dto,
-                         Model model) {
-
-        service.create(dto);
+    public String create(@ModelAttribute("pttt") PTTT pttt) {
+        service.create(pttt);
         return "redirect:/admin/phuong-thuc-thanh-toan";
     }
 
     @GetMapping("/update/{id}")
     public String openUpdate(@PathVariable Integer id, Model model) {
 
-        PhuongThucThanhToanDTO dto = service.findById(id);
-        if (dto == null) {
+        PTTT pttt = service.findById(id);
+        if (pttt == null) {
             return "redirect:/admin/phuong-thuc-thanh-toan";
         }
 
         model.addAttribute("activeMenu", "pttt");
         model.addAttribute("pttts", service.findAll());
-        model.addAttribute("pttt", dto);
+        model.addAttribute("pttt", pttt);
         model.addAttribute("errors", new ArrayList<>());
         return "admin/phuong-thuc-thanh-toan/list";
     }
 
     @PostMapping("/update/{id}")
     public String update(@PathVariable Integer id,
-                         @ModelAttribute("pttt") PhuongThucThanhToanDTO dto,
-                         Model model) {
+                         @ModelAttribute("pttt") PTTT pttt) {
 
-        service.update(id, dto);
+        pttt.setId(id);
+        service.update(id, pttt);
         return "redirect:/admin/phuong-thuc-thanh-toan";
     }
 
