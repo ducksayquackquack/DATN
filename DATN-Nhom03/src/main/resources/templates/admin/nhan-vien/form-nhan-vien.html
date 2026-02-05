@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Test CRUD Nhân Viên</title>
+</head>
+<body>
+
+<h2>✅ Test CRUD – Nhân Viên</h2>
+
+<!-- NÚT THÊM -->
+<a href="/nhan-vien/create">➕ Thêm nhân viên</a>
+
+<br><br>
+
+<table border="1" cellpadding="8" cellspacing="0">
+    <tr>
+        <th>ID</th>
+        <th>Mã</th>
+        <th>Tên</th>
+        <th>Giới tính</th>
+        <th>Ngày sinh</th>
+        <th>SĐT</th>
+        <th>Địa chỉ</th>
+        <th>Trạng thái</th>
+        <th>Hành động</th>
+    </tr>
+
+    <tr th:each="nv : ${list}">
+        <td th:text="${nv.id}"></td>
+        <td th:text="${nv.maNhanVien}"></td>
+        <td th:text="${nv.tenNhanVien}"></td>
+        <td th:text="${nv.gioiTinh}"></td>
+
+        <!-- Format LocalDate -->
+        <td th:text="${nv.ngaySinh != null ? #temporals.format(nv.ngaySinh,'dd/MM/yyyy') : ''}"></td>
+
+        <td th:text="${nv.soDienThoai}"></td>
+        <td th:text="${nv.diaChi}"></td>
+        <td th:text="${nv.trangThaiHoatDong}"></td>
+
+        <!-- CRUD BUTTON -->
+        <td>
+            <a th:href="@{/nhan-vien/edit/{id}(id=${nv.id})}">
+                ✏️ Sửa
+            </a>
+            |
+            <a th:href="@{/nhan-vien/delete/{id}(id=${nv.id})}"
+               onclick="return confirm('Xoá nhân viên này?')">
+                🗑️ Xoá
+            </a>
+        </td>
+    </tr>
+</table>
+
+</body>
+</html>
