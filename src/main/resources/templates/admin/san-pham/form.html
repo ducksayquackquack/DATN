@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="${sp.id == null ? 'Thêm mới Sản phẩm' : 'Chỉnh sửa Sản phẩm'}"></title>
+</head>
+
+<body style="margin:0; display:flex; min-height:100vh; font-family:Arial, sans-serif;">
+
+<!-- SIDEBAR -->
+<div th:replace="layout/sidebar :: sidebar"></div>
+
+<!-- NỘI DUNG -->
+<main style="flex:1; padding:16px;">
+
+    <h2 th:text="${sp.id == null ? 'Thêm mới Sản phẩm' : 'Chỉnh sửa Sản phẩm'}"></h2>
+
+    <form th:action="@{/admin/san-pham/save}"
+          th:object="${sp}"
+          method="post">
+
+        <input type="hidden" th:field="*{id}"/>
+
+        <div>
+            <label>Mã sản phẩm</label><br/>
+            <input type="text" th:field="*{maSanPham}" required/>
+        </div>
+
+        <div>
+            <label>Tên sản phẩm</label><br/>
+            <input type="text" th:field="*{tenSanPham}" required/>
+        </div>
+
+        <div>
+            <label>Mô tả</label><br/>
+            <textarea th:field="*{moTa}"></textarea>
+        </div>
+
+        <div>
+            <label>Trạng thái</label><br/>
+            <select th:field="*{trangThai}">
+                <option value="Hoạt động">Hoạt động</option>
+                <option value="Ngừng hoạt động">Ngừng hoạt động</option>
+            </select>
+        </div>
+
+        <br/>
+
+        <button type="submit">💾 Lưu</button>
+        <a th:href="@{/admin/san-pham}">⬅ Quay lại</a>
+    </form>
+
+</main>
+</body>
+</html>

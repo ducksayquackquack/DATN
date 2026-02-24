@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>Quản lý Hóa Đơn</title>
+
+    <style>
+        .dw-btn {
+            display:inline-block;
+            padding:8px 12px;
+            border:1px solid #cfd8df;
+            background:#eef3f6;
+            color:#111827;
+            text-decoration:none;
+        }
+        .dw-btn:hover { background:#f6f2ea; }
+        .dw-btn-sm { padding:4px 8px; }
+
+        .dw-table {
+            width:100%;
+            border-collapse:collapse;
+            background:#fff;
+        }
+        .dw-table th,.dw-table td {
+            border:1px solid #cfd8df;
+            padding:8px;
+            text-align:left;
+        }
+        .dw-table thead { background:#eef3f6; }
+    </style>
+</head>
+
+<body style="margin:0;background:#f3f6f8;font-family:Arial">
+<div style="min-height:100vh;display:flex;flex-direction:column;">
+
+    <div th:replace="layout/header :: header"></div>
+
+    <div style="display:flex;flex:1;">
+        <div th:replace="layout/sidebar :: sidebar"></div>
+
+        <div style="flex:1;padding:18px;">
+            <div style="background:#fff;border:1px solid #cfd8df;padding:18px;">
+
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                    <h1 style="margin:0;font-size:20px;">Quản lý Hóa Đơn</h1>
+                    <a th:href="@{/hoa-don/create}" class="dw-btn">+ Thêm</a>
+                </div>
+
+                <table class="dw-table">
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Mã HĐ</th>
+                        <th>Nhân viên</th>
+                        <th>Khách hàng</th>
+                        <th>Phí ship</th>
+                        <th>Giá sau GG</th>
+                        <th>Thành tiền</th>
+                        <th>Ngày tạo</th>
+                        <th>Trạng thái</th>
+                        <th style="width:140px;">Hành động</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:if="${list == null || #lists.isEmpty(list)}">
+                        <td colspan="10">Chưa có dữ liệu.</td>
+                    </tr>
+                    <tr th:each="hd : ${list}">
+                        <td th:text="${hd.id}"></td>
+                        <td th:text="${hd.maHoaDon}"></td>
+                        <td th:text="${hd.nhanVien != null ? hd.nhanVien.tenNhanVien : ''}"></td>
+                        <td th:text="${hd.khachHang != null ? hd.khachHang.tenKhachHang : ''}"></td>
+                        <td th:text="${hd.phiShip}"></td>
+                        <td th:text="${hd.giaSauGiamGia}"></td>
+                        <td th:text="${hd.thanhTien}"></td>
+                        <td th:text="${hd.ngayTao != null ? #temporals.format(hd.ngayTao,'dd/MM/yyyy HH:mm') : ''}"></td>
+                        <td th:text="${hd.trangThai}"></td>
+                        <td>
+                            <a th:href="@{/hoa-don/edit/{id}(id=${hd.id})}"
+                               class="dw-btn dw-btn-sm">Sửa</a>
+                            <a th:href="@{/hoa-don/delete/{id}(id=${hd.id})}"
+                               class="dw-btn dw-btn-sm"
+                               style="margin-left:6px;"
+                               onclick="return confirm('Xoá hóa đơn này?')">Xóa</a>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+
+            </div>
+        </div>
+    </div>
+
+    <div th:replace="layout/footer :: footer"></div>
+</div>
+</body>
+</html>

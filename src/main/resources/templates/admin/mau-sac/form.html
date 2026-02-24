@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="${ms.id == null ? 'Thêm Màu sắc mới' : 'Chỉnh sửa Màu sắc'}"></title>
+</head>
+
+<body style="margin:0; display:flex; min-height:100vh; font-family:Arial, sans-serif;">
+
+<!-- SIDEBAR -->
+<div th:replace="layout/sidebar :: sidebar"></div>
+
+<!-- NỘI DUNG CHÍNH -->
+<main style="flex:1; padding:16px;">
+    <h2 th:text="${ms.id == null ? 'Thêm Màu sắc mới' : 'Chỉnh sửa Màu sắc'}"></h2>
+
+    <form th:action="@{/admin/mau-sac/save}"
+          th:object="${ms}"
+          method="post">
+
+        <input type="hidden" th:field="*{id}"/>
+
+        <div>
+            <label>Mã màu</label><br/>
+            <input type="text" th:field="*{maMau}" required />
+        </div>
+
+        <div>
+            <label>Tên màu</label><br/>
+            <input type="text" th:field="*{tenMau}" required />
+        </div>
+
+        <div>
+            <label>Trạng thái</label><br/>
+            <select th:field="*{trangThai}">
+                <option value="Hoạt động">Hoạt động</option>
+                <option value="Ngừng hoạt động">Ngừng hoạt động</option>
+            </select>
+        </div>
+
+        <br/>
+
+        <button type="submit">💾 Lưu</button>
+        <a th:href="@{/admin/mau-sac}">⬅ Quay lại</a>
+    </form>
+</main>
+
+</body>
+</html>
