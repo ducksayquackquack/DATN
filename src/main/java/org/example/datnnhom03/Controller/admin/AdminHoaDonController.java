@@ -103,9 +103,6 @@ public class AdminHoaDonController {
         return "redirect:/admin/hoa-don";
     }
 
-    /* =========================
-       DELETE
-       ========================= */
     @GetMapping("/delete/{id}")
     public String delete(@PathVariable Integer id) {
         hoaDonRepsitory.deleteById(id);

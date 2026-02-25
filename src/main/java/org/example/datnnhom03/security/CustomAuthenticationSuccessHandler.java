@@ -1,15 +1,16 @@
 package org.example.datnnhom03.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 
 @Component
 public class CustomAuthenticationSuccessHandler implements AuthenticationSuccessHandler {
@@ -21,29 +22,20 @@ public class CustomAuthenticationSuccessHandler implements AuthenticationSuccess
             Authentication authentication
     ) throws IOException, ServletException {
 
-        Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
 
-        String redirectUrl = "/login"; // fallback an toàn
+        // Get first role
+        String role = authentication.getAuthorities()
+                .iterator()
+                .next()
+                .getAuthority();
 
-        for (GrantedAuthority authority : authorities) {
-            String role = authority.getAuthority();
+        Map<String, Object> data = new HashMap<>();
+        data.put("username", authentication.getName());
+        data.put("role", role);
 
-            if ("ROLE_ADMIN".equals(role)) {
-                redirectUrl = "/admin/kich-thuoc";
-                break;
-            }
-
-            if ("ROLE_EMPLOYEE".equals(role)) {
-                redirectUrl = "/employee/dashboard";
-                break;
-            }
-
-            if ("ROLE_CUSTOMER".equals(role)) {
-                redirectUrl = "/customer/home";
-                break;
-            }
-        }
-
-        response.sendRedirect(redirectUrl);
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.writeValue(response.getOutputStream(), data);
     }
 }

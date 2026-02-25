@@ -26,8 +26,6 @@ public class AdminNhanVienController {
 
     @GetMapping("/create")
     public String create(Model model) {
-        model.addAttribute("activeMenu", "nhan-vien");
-        model.addAttribute("nv", new NhanVien());
         return "admin/nhan-vien/form-nhan-vien";
     }
 

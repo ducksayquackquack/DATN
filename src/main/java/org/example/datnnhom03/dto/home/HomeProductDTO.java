@@ -1,20 +1,22 @@
 package org.example.datnnhom03.dto.home;
 
+import java.math.BigDecimal;
+
 public class HomeProductDTO {
 
-    private Long id;
+    private Integer id;
     private String maSanPham;
     private String tenSanPham;
     private String moTa;
     private Double giaBan;
-    private Integer giaTriKhuyenMai;
-    private Long idDanhMuc;
+    private BigDecimal giaTriKhuyenMai; // ← CHANGED HERE
+    private Integer idDanhMuc;
 
-    public Long getId() {
+    public Integer getId() {
         return id;
     }
 
-    public void setId(Long id) {
+    public void setId(Integer id) {
         this.id = id;
     }
 
@@ -50,19 +52,19 @@ public class HomeProductDTO {
         this.giaBan = giaBan;
     }
 
-    public Integer getGiaTriKhuyenMai() {
+    public BigDecimal getGiaTriKhuyenMai() {   // ← CHANGED
         return giaTriKhuyenMai;
     }
 
-    public void setGiaTriKhuyenMai(Integer giaTriKhuyenMai) {
+    public void setGiaTriKhuyenMai(BigDecimal giaTriKhuyenMai) {  // ← CHANGED
         this.giaTriKhuyenMai = giaTriKhuyenMai;
     }
 
-    public Long getIdDanhMuc() {
+    public Integer getIdDanhMuc() {
         return idDanhMuc;
     }
 
-    public void setIdDanhMuc(Long idDanhMuc) {
+    public void setIdDanhMuc(Integer idDanhMuc) {
         this.idDanhMuc = idDanhMuc;
     }
 }

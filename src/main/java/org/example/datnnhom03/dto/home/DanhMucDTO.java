@@ -2,15 +2,15 @@ package org.example.datnnhom03.dto.home;
 
 public class DanhMucDTO {
 
-    private Long id;
+    private Integer id;
     private String maDanhMuc;
     private String tenDanhMuc;
 
-    public Long getId() {
+    public Integer getId() {
         return id;
     }
 
-    public void setId(Long id) {
+    public void setId(Integer id) {
         this.id = id;
     }
 

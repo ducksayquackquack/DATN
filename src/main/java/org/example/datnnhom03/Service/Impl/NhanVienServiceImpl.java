@@ -19,8 +19,6 @@ public class NhanVienServiceImpl implements NhanVienService {
 
     @Override
     public NhanVien create(NhanVien nhanVien) {
-        nhanVien.setNgayTao(LocalDateTime.now());
-        nhanVien.setNgaySua(LocalDateTime.now());
         return nhanVienRepository.save(nhanVien);
     }
 

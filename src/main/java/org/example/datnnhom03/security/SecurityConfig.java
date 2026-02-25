@@ -9,6 +9,11 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -34,39 +39,68 @@ public class SecurityConfig {
         return provider;
     }
 
+    // 🔥 CORS CONFIG FOR SPRING SECURITY
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOriginPatterns(List.of("*")); // allow all (dev)
+        config.setAllowedMethods(List.of("*"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source =
+                new UrlBasedCorsConfigurationSource();
+
+        source.registerCorsConfiguration("/**", config);
+
+        return source;
+    }
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+
         http
-                // ⚠️ TEST POSTMAN → tạm thời disable CSRF
+                // 🔥 IMPORTANT: enable CORS inside security
+                .cors(cors -> {})
                 .csrf(csrf -> csrf.disable())
 
                 .authenticationProvider(authenticationProvider())
+
                 .authorizeHttpRequests(auth -> auth
-                        // ✅ CHO PHÉP API TEST POSTMAN
                         .requestMatchers("/api/**").permitAll()
-
-                        // public MVC
-                        .requestMatchers("/login", "/register", "/css/**", "/js/**", "/images/**").permitAll()
-
-                        // admin MVC
+                        .requestMatchers(
+                                "/login",
+                                "/register",
+                                "/css/**",
+                                "/js/**",
+                                "/images/**"
+                        ).permitAll()
                         .requestMatchers("/admin/**").hasRole("ADMIN")
-
-                        // employee MVC
                         .requestMatchers("/employee/**").hasAnyRole("EMPLOYEE", "ADMIN")
-
-                        // customer MVC
                         .requestMatchers("/customer/**").hasAnyRole("CUSTOMER", "ADMIN")
-
                         .anyRequest().authenticated()
                 )
 
-                // GIỮ NGUYÊN FORM LOGIN MVC
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            if (request.getRequestURI().startsWith("/api")) {
+                                response.setStatus(401);
+                                response.setContentType("application/json");
+                                response.getWriter().write("{\"error\":\"unauthorized\"}");
+                            } else {
+                                response.sendRedirect("/login");
+                            }
+                        })
+                )
+
                 .formLogin(form -> form
                         .loginPage("/login")
                         .loginProcessingUrl("/login")
                         .successHandler(successHandler)
                         .permitAll()
                 )
+
                 .logout(logout -> logout
                         .logoutUrl("/logout")
                         .logoutSuccessUrl("/login?logout")

@@ -1,5 +1,6 @@
 package org.example.datnnhom03.Model;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -8,7 +9,6 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Date;
 
 @Entity
 @Getter
@@ -17,6 +17,7 @@ import java.util.Date;
 @NoArgsConstructor
 @Table(name = "SanPhamChiTiet")
 public class SanPhamChiTiet {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
@@ -35,6 +36,7 @@ public class SanPhamChiTiet {
 
     @ManyToOne
     @JoinColumn(name = "idSanPham")
+    @JsonBackReference
     private SanPham sanPham;
 
     @ManyToOne

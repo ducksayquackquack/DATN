@@ -25,8 +25,6 @@ public class HoaDonChiTiet {
     @JoinColumn(name = "idSanPhamChiTiet")
     private SanPhamChiTiet sanPhamChiTiet;
 
-    // ====== Thông tin ======
-
     @Column(name = "soLuong")
     private Integer soLuong;
 

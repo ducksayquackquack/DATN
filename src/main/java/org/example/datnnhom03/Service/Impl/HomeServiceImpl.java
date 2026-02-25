@@ -34,27 +34,37 @@ public class HomeServiceImpl implements HomeService {
 
         List<HomeProductDTO> products = new ArrayList<>();
         List<DanhMucDTO> categories = danhMucService.getActiveDanhMucDTO();
-
         List<SanPham> sanPhams = sanPhamService.getSanPhamHoatDong();
 
         for (SanPham sanPham : sanPhams) {
 
-            SanPhamChiTiet spct = sanPhamService.getOneActiveSanPhamChiTiet(sanPham.getId());
+            SanPhamChiTiet spct =
+                    sanPhamService.getOneActiveSanPhamChiTiet(sanPham.getId());
+
             if (spct == null) {
                 continue;
             }
 
             HomeProductDTO dto = new HomeProductDTO();
+
             dto.setId(sanPham.getId());
             dto.setMaSanPham(sanPham.getMaSanPham());
             dto.setTenSanPham(sanPham.getTenSanPham());
             dto.setMoTa(sanPham.getMoTa());
-            dto.setGiaBan(spct.getGiaBan());
-            dto.setIdDanhMuc(sanPham.getDanhMuc().getId());
 
-            if (spct.getKhuyenMai() != null) {
+            // BigDecimal -> Double
+            if (spct.getGiaBan() != null) {
+                dto.setGiaBan(spct.getGiaBan().doubleValue());
+            }
+
+            // DanhMuc comes from SanPhamChiTiet
+            if (spct.getDanhMuc() != null) {
+                dto.setIdDanhMuc(spct.getDanhMuc().getId());
+            }
+
+            if (sanPham.getIdKhuyenMai() != null) {
                 dto.setGiaTriKhuyenMai(
-                        khuyenMaiService.getGiaTriKhuyenMai(spct.getKhuyenMai().getId())
+                        khuyenMaiService.getGiaTriKhuyenMai(sanPham.getIdKhuyenMai())
                 );
             }
 

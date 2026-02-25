@@ -43,9 +43,4 @@ public class KhachHang {
     @Column(name = "trangThai")
     private String trangThai;
 
-    @Column(name = "ngayTao")
-    private LocalDateTime ngayTao;
-
-    @Column(name = "ngaySua")
-    private LocalDateTime ngaySua;
 }

@@ -17,8 +17,6 @@ public class KhachHangServiceImpl implements KhachHangService {
 
     @Override
     public KhachHang create(KhachHang khachHang) {
-        khachHang.setNgayTao(LocalDateTime.now());
-        khachHang.setNgaySua(LocalDateTime.now());
         return khachHangRepository.save(khachHang);
     }
 

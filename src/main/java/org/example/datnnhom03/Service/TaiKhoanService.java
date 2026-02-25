@@ -14,5 +14,5 @@ public interface TaiKhoanService {
 
     TaiKhoanDTO update(Integer id, TaiKhoanDTO dto);
 
-    void delete(Integer id); // soft delete
+    void delete(Integer id);
 }

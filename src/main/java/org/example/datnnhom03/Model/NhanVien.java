@@ -53,9 +53,4 @@ public class NhanVien {
     @Column(name = "anh")
     private String anh;
 
-    @Column(name = "ngayTao")
-    private LocalDateTime ngayTao;
-
-    @Column(name = "ngaySua")
-    private LocalDateTime ngaySua;
 }

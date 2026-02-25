@@ -11,6 +11,7 @@ import lombok.*;
 @NoArgsConstructor
 @Table(name = "TaiKhoan")
 public class TaiKhoan {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
@@ -18,7 +19,7 @@ public class TaiKhoan {
     @Column(name = "vaiTro")
     private String vaiTro;
 
-    @Column(name = "email")
+    @Column(name = "email", unique = true)
     private String email;
 
     @JsonIgnore
@@ -33,5 +34,4 @@ public class TaiKhoan {
 
     @Column(name = "trangThaiTaiKhoan")
     private String trangThaiTaiKhoan;
-
 }

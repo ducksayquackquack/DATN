@@ -18,7 +18,6 @@ public class AdminDanhMucController {
         this.service = service;
     }
 
-    /* LIST */
     @GetMapping
     public String list(Model model) {
         model.addAttribute("activeMenu", "danh-muc");
@@ -26,7 +25,7 @@ public class AdminDanhMucController {
         return "admin/danh-muc/list";
     }
 
-    /* OPEN CREATE MODAL */
+
     @GetMapping("/create")
     public String openCreate(Model model) {
         model.addAttribute("activeMenu", "danh-muc");

@@ -1,7 +1,7 @@
 package org.example.datnnhom03.Controller.api;
 
-import org.example.datnnhom03.dto.home.HomeResponseDTO;
 import org.example.datnnhom03.Service.HomeService;
+import org.example.datnnhom03.dto.home.HomeResponseDTO;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,10 +17,6 @@ public class HomeApiController {
 
     @GetMapping
     public ResponseEntity<HomeResponseDTO> getHomeData() {
-        HomeResponseDTO response = new HomeResponseDTO(
-                homeService.getHomeProducts(),
-                homeService.getActiveCategories()
-        );
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(homeService.getHomeData());
     }
 }
