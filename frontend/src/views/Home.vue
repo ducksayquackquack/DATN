@@ -611,7 +611,7 @@ export default {
 </script>
   <style>
     :root{
-      --bg:#0b0c10;
+      --bg:#0d0e0e;
       --card:#12141a;
       --muted:#9aa3b2;
       --text:#eef2ff;
@@ -1028,4 +1028,13 @@ export default {
       .split{grid-template-columns: 1fr}
       .hero h1{font-size:34px}
     }
+    .home {
+  min-height: 100vh;
+  background:
+    radial-gradient(900px 700px at 20% -10%, rgba(94,234,212,.12), transparent 55%),
+    radial-gradient(900px 700px at 90% 10%, rgba(255,204,0,.10), transparent 50%),
+    #0b0c10;
+
+  color: #eef2ff;
+}
   </style>

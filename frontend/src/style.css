@@ -72,3 +72,12 @@ button:focus-visible {
   justify-content: center;
   align-items: center;
 }
+
+/* html, body, #app {
+  height: 100%;
+  margin: 0;
+  background:
+    radial-gradient(900px 700px at 20% -10%, rgba(94,234,212,.12), transparent 55%),
+    radial-gradient(900px 700px at 90% 10%, rgba(255,204,0,.10), transparent 50%),
+    #0b0c10;
+} */

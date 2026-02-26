@@ -1,94 +1,132 @@
 <template>
   <div class="admin-layout">
-    <div
-      class="sidebar"
-      :class="{ expanded }"
-      @mouseenter="expanded = true"
-      @mouseleave="expanded = false"
-    >
+
+    <!-- SIDEBAR -->
+    <div class="sidebar" :class="{ expanded }">
+
       <div class="admin-logo">
-        <img :src="logo" class="logo-img" :class="{ hidden: expanded }" />
-        <span class="logo-text" :class="{ show: expanded }">
-          DirtyWave Admin
-        </span>
+        <!-- ONLY LOGO NOW -->
+        <img :src="logo" class="logo-img" />
       </div>
 
       <nav>
+        <router-link to="/admin/dashboard">
+          <BarChart3 class="icon" />
+          <span v-if="expanded">Thống Kê</span>
+        </router-link>
+
         <router-link to="/admin/san-pham">
-          <component :is="Shirt" class="icon" />
+          <Shirt class="icon" />
           <span v-if="expanded">Sản Phẩm</span>
         </router-link>
 
         <router-link to="/admin/danh-muc">
-          <component :is="LayoutList" class="icon" />
+          <LayoutList class="icon" />
           <span v-if="expanded">Danh Mục</span>
         </router-link>
 
         <router-link to="/admin/loai">
-          <component :is="Tag" class="icon" />
+          <Tag class="icon" />
           <span v-if="expanded">Loại</span>
         </router-link>
 
         <router-link to="/admin/kich-thuoc">
-          <component :is="Ruler" class="icon" />
+          <Ruler class="icon" />
           <span v-if="expanded">Kích Thước</span>
         </router-link>
 
         <router-link to="/admin/mau-sac">
-          <component :is="Palette" class="icon" />
+          <Palette class="icon" />
           <span v-if="expanded">Màu Sắc</span>
         </router-link>
 
         <router-link to="/admin/khuyen-mai">
-          <component :is="BadgePercent" class="icon" />
+          <BadgePercent class="icon" />
           <span v-if="expanded">Khuyến Mãi</span>
         </router-link>
 
         <hr />
 
         <router-link to="/admin/hoa-don">
-          <component :is="FileText" class="icon" />
+          <FileText class="icon" />
           <span v-if="expanded">Hóa Đơn</span>
         </router-link>
 
         <router-link to="/admin/pttt">
-          <component :is="CreditCard" class="icon" />
+          <CreditCard class="icon" />
           <span v-if="expanded">PTTT</span>
         </router-link>
 
         <hr />
 
         <router-link to="/admin/khach-hang">
-          <component :is="Users" class="icon" />
+          <Users class="icon" />
           <span v-if="expanded">Khách Hàng</span>
         </router-link>
 
         <router-link to="/admin/nhan-vien">
-          <component :is="UserCog" class="icon" />
+          <UserCog class="icon" />
           <span v-if="expanded">Nhân Viên</span>
         </router-link>
 
         <router-link to="/admin/tai-khoan">
-          <component :is="UserCircle" class="icon" />
+          <UserCircle class="icon" />
           <span v-if="expanded">Tài Khoản</span>
         </router-link>
       </nav>
     </div>
 
-    <div class="content">
-      <div class="content-card">
-        <router-view v-slot="{ Component }">
-          <transition name="page" mode="out-in">
-            <component :is="Component" />
-          </transition>
-        </router-view>
+    <!-- MAIN -->
+    <div class="main">
+
+      <!-- HEADER -->
+      <div class="admin-header">
+        <div class="left">
+          <Menu class="menu-icon" @click="toggleSidebar" />
+        </div>
+
+        <div class="right">
+
+          <!-- Notification (badge removed) -->
+          <div class="notify">
+            <Bell />
+          </div>
+
+          <!-- Profile -->
+          <div class="profile" @click="toggleDropdown">
+            <img src="https://i.pravatar.cc/40" />
+            <div v-if="showDropdown" class="dropdown">
+              <div class="dropdown-item">
+                Tài khoản của tôi
+              </div>
+
+              <div class="dropdown-item logout" @click.stop="logout">
+                Đăng xuất
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
+
+      <!-- CONTENT -->
+      <div class="content">
+        <div class="content-card">
+          <router-view v-slot="{ Component }">
+            <transition name="page" mode="out-in">
+              <component :is="Component" />
+            </transition>
+          </router-view>
+        </div>
+      </div>
+
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from "vue"
+import { ref, onMounted, onBeforeUnmount } from "vue"
+import { useRouter } from "vue-router"
 import logo from "@/assets/dirtywave.png"
 
 import {
@@ -102,10 +140,45 @@ import {
   CreditCard,
   Users,
   UserCog,
-  UserCircle
+  UserCircle,
+  Menu,
+  Bell,
+  BarChart3
 } from "lucide-vue-next"
 
+const router = useRouter()
+
 const expanded = ref(false)
+const showDropdown = ref(false)
+
+const toggleSidebar = () => {
+  expanded.value = !expanded.value
+}
+
+const toggleDropdown = () => {
+  showDropdown.value = !showDropdown.value
+}
+
+const handleClickOutside = (event) => {
+  const dropdown = document.querySelector(".profile")
+  if (dropdown && !dropdown.contains(event.target)) {
+    showDropdown.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener("click", handleClickOutside)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener("click", handleClickOutside)
+})
+
+const logout = () => {
+  localStorage.removeItem("token")
+  showDropdown.value = false
+  router.replace("/")
+}
 </script>
 
 <style scoped>
@@ -118,15 +191,16 @@ const expanded = ref(false)
     #0b0f16;
 }
 
-/* SIDEBAR */
 .sidebar {
   width: 80px;
   background: rgba(15,18,25,.95);
   color: #cbd5e1;
   transition: width .3s ease;
-  padding: 24px 12px;
+  padding: 16px 12px;
   overflow: hidden;
   border-right: 1px solid rgba(255,255,255,.06);
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar.expanded {
@@ -150,7 +224,7 @@ const expanded = ref(false)
   justify-content: center;
   padding: 14px 0;
   width: 56px;
-  margin: 0 auto 12px auto; 
+  margin: 0 auto 12px auto;
 }
 
 .sidebar a:hover {
@@ -164,14 +238,101 @@ const expanded = ref(false)
   font-weight: 600;
 }
 
-/* CONTENT */
+.admin-logo {
+  height: 90px;
+  margin-bottom: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.logo-img {
+  width: 70px;
+  transition: width .3s ease;
+  filter: brightness(0) invert(1);
+}
+
+.sidebar.expanded .logo-img {
+  width: 115px;
+  transform: scale(1.53);
+}
+
+.admin-header {
+  height: 70px;
+  background: rgba(20,24,33,.95);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 30px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+
+.menu-icon {
+  cursor: pointer;
+  color: white;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.notify {
+  cursor: pointer;
+  color: white;
+}
+
+.profile {
+  position: relative;
+  cursor: pointer;
+}
+
+.profile img {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+}
+
+.dropdown {
+  position: absolute;
+  right: 0;
+  top: 55px;
+  background: #1e293b;
+  width: 200px;
+  border-radius: 14px;
+  box-shadow: 0 20px 40px rgba(0,0,0,.4);
+  overflow: hidden;
+  animation: fadeIn .2s ease;
+}
+
+.dropdown-item {
+  padding: 14px 18px;
+  color: white;
+  transition: background .2s;
+}
+
+.dropdown-item:hover {
+  background: rgba(255,255,255,.06);
+}
+
+.logout {
+  color: #ef4444;
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
 .content {
   flex: 1;
   padding: 40px;
   overflow-y: auto;
 }
 
-/* GLASS CARD */
 .content-card {
   background: rgba(20,24,33,.95);
   border-radius: 26px;
@@ -181,63 +342,6 @@ const expanded = ref(false)
   color: #e5e7eb;
 }
 
-/* 🔥 ONLY FIX PAGE TITLES */
-.content-card > h1 {
-  color: #ffffff !important;
-  font-weight: 600;
-}
-
-/* Small text */
-.content-card small {
-  color: rgba(255,255,255,.6);
-}
-
-/* INPUTS */
-.content-card input,
-.content-card select {
-  background: rgba(255,255,255,.08);
-  border: 1px solid rgba(255,255,255,.15);
-  color: white;
-}
-
-.content-card input::placeholder {
-  color: rgba(255,255,255,.5);
-}
-
-/* TABLE FIX */
-.content-card table {
-  background: transparent;
-  color: #e5e7eb;
-}
-
-.content-card thead {
-  background: rgba(255,255,255,.08);
-}
-
-.content-card th {
-  color: #ffffff;
-  font-weight: 600;
-}
-
-.content-card tbody tr {
-  background: rgba(255,255,255,.04);
-  transition: background .2s ease;
-}
-
-.content-card tbody tr:hover {
-  background: rgba(255,255,255,.08);
-}
-
-.content-card td {
-  border-top: 1px solid rgba(255,255,255,.08);
-}
-
-.content-card .btn,
-.content-card button {
-  color: white;
-}
-
-/* TRANSITION */
 .page-enter-from {
   opacity: 0;
   transform: translateY(12px);
@@ -253,42 +357,8 @@ const expanded = ref(false)
   transform: translateY(-6px);
 }
 
-/* LOGO */
-.admin-logo {
-  position: relative;
-  height: 90px;
-  margin-bottom: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-
-.logo-img {
-  width: 52px;
-  transition: opacity .25s ease, transform .25s ease;
-  filter: brightness(0) invert(1);
-}
-
-.logo-img.hidden {
-  opacity: 0;
-  transform: scale(.9);
-}
-
-.logo-text {
-  position: absolute;
-  white-space: nowrap;
-  opacity: 0;
-  transition: opacity .25s ease, transform .25s ease;
-  transform: translateY(4px);
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: .5px;
-  color: white;
-}
-
-.logo-text.show {
-  opacity: 1;
-  transform: translateY(0);
-}
-
 </style>

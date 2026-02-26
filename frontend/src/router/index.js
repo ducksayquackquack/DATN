@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 
 import AdminLayout from "@/components/admin/AdminLayout.vue";
-import AdminDashboard from "@/views/admin/AdminDashboard.vue";
+import AdminDashboard from "@/views/admin/dashboard/Dashboard.vue";
 import DanhMuc from "@/views/admin/danhmuc/DanhMuc.vue";
 import Loai from "@/views/admin/loai/Loai.vue";
 import KichThuoc from "@/views/admin/kichthuoc/KichThuoc.vue";
@@ -22,12 +22,10 @@ const routes = [
     path: "/",
     component: Login,
   },
-
   {
     path: "/home",
-    component: Home, 
+    component: Home,
   },
-
   {
     path: "/admin",
     component: AdminLayout,
@@ -45,11 +43,11 @@ const routes = [
       { path: "pttt", component: PhuongThucThanhToan },
       { path: "khach-hang", component: KhachHang },
       { path: "nhan-vien", component: NhanVien },
-      { path: "tai-khoan", component: TaiKhoan },
+      { path: "tai-khoan", component: TaiKhoan }
     ],
   },
 ];
-
+  
 const router = createRouter({
   history: createWebHistory(),
   routes,
