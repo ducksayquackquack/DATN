@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin • Chi tiết hoá đơn</title>
+  <link rel="stylesheet" href="/admin/assets/admin.css"/>
+</head>
+<body>
+<!-- DÙNG CHUNG: sidebar + topbar -->
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <b>ADMIN</b>
+        <small>Quản trị bán áo</small>
+      </div>
+    </div>
+
+    <div class="nav">
+      <div class="navgrp">
+        <h4>Vận hành</h4>
+        <a data-path="/admin/hoa-don/list-hoa-don.html" href="/admin/hoa-don/list-hoa-don.html">
+          <span class="left">🧾 Hoá đơn</span><span class="badge">list</span>
+        </a>
+        <a data-path="/admin/san-pham/list.html" href="/admin/san-pham/list.html">
+          <span class="left">👕 Sản phẩm</span><span class="badge">list</span>
+        </a>
+        <a data-path="/admin/khuyen-mai/list.html" href="/admin/khuyen-mai/list.html">
+          <span class="left">🏷️ Khuyến mãi</span><span class="badge">list</span>
+        </a>
+      </div>
+
+      <div class="navgrp">
+        <h4>Danh mục</h4>
+        <a data-path="/admin/danh-muc/list.html" href="/admin/danh-muc/list.html"><span class="left">📚 Danh mục</span></a>
+        <a data-path="/admin/loai/list.html" href="/admin/loai/list.html"><span class="left">🧩 Loại</span></a>
+        <a data-path="/admin/kich-thuoc/list.html" href="/admin/kich-thuoc/list.html"><span class="left">📏 Kích thước</span></a>
+        <a data-path="/admin/mau-sac/list.html" href="/admin/mau-sac/list.html"><span class="left">🎨 Màu sắc</span></a>
+        <a data-path="/admin/phuong-thuc-thanh-toan/list.html" href="/admin/phuong-thuc-thanh-toan/list.html">
+          <span class="left">💳 Phương thức TT</span>
+        </a>
+      </div>
+
+      <div class="navgrp">
+        <h4>Tài khoản</h4>
+        <a data-path="/admin/khach-hang/list.html" href="/admin/khach-hang/list.html"><span class="left">👥 Khách hàng</span></a>
+        <a data-path="/admin/nhan-vien/list-nhan-vien.html" href="/admin/nhan-vien/list-nhan-vien.html"><span class="left">🧑‍💼 Nhân viên</span></a>
+      </div>
+    </div>
+
+    <div style="margin-top:14px" class="muted">
+      <small>Tip: <kbd>Ctrl</kbd> + <kbd>K</kbd> để tìm nhanh (demo)</small>
+    </div>
+  </aside>
+
+  <div class="content">
+    <div class="topbar">
+      <div class="row">
+        <div class="search">
+          <span>🔎</span>
+          <input placeholder="Tìm mã hoá đơn, tên sản phẩm, khách hàng..." />
+          <kbd>Ctrl K</kbd>
+        </div>
+        <div class="userbox">
+          <button class="btn" onclick="toast('Demo: notifications')">🔔</button>
+          <div class="avatar">A</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN: mỗi trang thay phần này -->
+    <main class="wrap">
+      <!-- content here -->
+    </main>
+  </div>
+</div>
+
+  <main class="wrap">
+    <div class="grid cols2">
+      <div class="card">
+        <div class="head">
+          <div>
+            <h1>Hoá đơn #HD1002</h1>
+            <small class="muted">Tạo: 2026-02-26 • Kênh: Online</small>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <a class="btn" href="/admin/hoa-don/list-hoa-don.html">← Quay lại</a>
+            <button class="btn" onclick="toast('In (demo)')">🖨️ In</button>
+            <button class="btn primary" onclick="toast('Cập nhật (demo)')">Lưu</button>
+          </div>
+        </div>
+
+        <div class="body">
+          <div class="grid cols2">
+            <div class="card" style="border-radius:14px">
+              <div class="head"><h2>Khách hàng</h2><small class="muted">Thông tin nhận hàng</small></div>
+              <div class="body">
+                <b>Nguyễn Văn A</b>
+                <div class="muted">0909 000 111 • a@gmail.com</div>
+                <div style="margin-top:10px" class="muted">12 Nguyễn Trãi, Q1, TP.HCM</div>
+              </div>
+            </div>
+
+            <div class="card" style="border-radius:14px">
+              <div class="head"><h2>Trạng thái</h2><small class="muted">Workflow</small></div>
+              <div class="body">
+                <label>Cập nhật trạng thái</label>
+                <select>
+                  <option>Chờ xác nhận</option>
+                  <option>Đang chuẩn bị</option>
+                  <option>Đang giao</option>
+                  <option>Hoàn thành</option>
+                  <option>Huỷ</option>
+                </select>
+                <small class="muted">BE xử lý rule: huỷ/hoàn thành không cho sửa nữa...</small>
+              </div>
+            </div>
+          </div>
+
+          <hr class="sep"/>
+
+          <div class="card" style="border-radius:14px">
+            <div class="head"><h2>Sản phẩm</h2><small class="muted">Line items</small></div>
+            <div class="body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Sản phẩm</th>
+                    <th style="width:120px" class="center">SL</th>
+                    <th style="width:160px" class="right">Đơn giá</th>
+                    <th style="width:160px" class="right">Thành tiền</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><b>Áo thun cotton 220gsm</b><div class="muted" style="font-size:12px">Đen • M</div></td>
+                    <td class="center">2</td>
+                    <td class="right">329.000₫</td>
+                    <td class="right">658.000₫</td>
+                  </tr>
+                  <tr>
+                    <td><b>Jeans slim co giãn</b><div class="muted" style="font-size:12px">Xanh • 30</div></td>
+                    <td class="center">1</td>
+                    <td class="right">649.000₫</td>
+                    <td class="right">649.000₫</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div class="grid cols2" style="margin-top:12px">
+                <div>
+                  <label>Ghi chú đơn</label>
+                  <textarea placeholder="Ghi chú từ khách / nội bộ..."></textarea>
+                </div>
+                <div class="card" style="border-radius:14px">
+                  <div class="body">
+                    <div style="display:flex;justify-content:space-between" class="muted"><span>Tạm tính</span><span>1.307.000₫</span></div>
+                    <div style="display:flex;justify-content:space-between" class="muted"><span>Giảm giá</span><span>-57.000₫</span></div>
+                    <div style="display:flex;justify-content:space-between" class="muted"><span>Phí ship</span><span>0₫</span></div>
+                    <hr class="sep"/>
+                    <div style="display:flex;justify-content:space-between"><b>Tổng</b><b>1.250.000₫</b></div>
+                    <div style="margin-top:10px">
+                      <label>Phương thức thanh toán</label>
+                      <select><option>COD</option><option>Chuyển khoản</option></select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="head">
+          <h2>Timeline</h2>
+          <small class="muted">Log thao tác</small>
+        </div>
+        <div class="body">
+          <div class="card" style="border-radius:14px; margin-bottom:10px">
+            <div class="body">
+              <b>Đơn được tạo</b>
+              <div class="muted">2026-02-26 10:12 • by Admin</div>
+            </div>
+          </div>
+          <div class="card" style="border-radius:14px; margin-bottom:10px">
+            <div class="body">
+              <b>Chờ xác nhận</b>
+              <div class="muted">2026-02-26 10:12</div>
+            </div>
+          </div>
+
+          <hr class="sep"/>
+
+          <button class="btn danger" onclick="confirmDelete('HD1002') && toast('Đã huỷ (demo)')">Huỷ đơn</button>
+          <small class="muted" style="display:block;margin-top:8px">Huỷ đơn nên yêu cầu lý do + hoàn kho (rule BE).</small>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/admin/assets/admin.js"></script>
+</body>
+</html>

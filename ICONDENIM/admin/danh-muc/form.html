@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin • Form danh mục</title>
+  <link rel="stylesheet" href="/admin/assets/admin.css"/>
+</head>
+<body>
+
+  <!-- ===== LAYOUT CHUNG ===== -->
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <b>ADMIN</b>
+          <small>Quản trị bán áo</small>
+        </div>
+      </div>
+
+      <div class="nav">
+        <div class="navgrp">
+          <h4>Vận hành</h4>
+          <a data-path="/admin/hoa-don/list-hoa-don.html" href="/admin/hoa-don/list-hoa-don.html"><span class="left">🧾 Hoá đơn</span><span class="badge">list</span></a>
+          <a data-path="/admin/san-pham/list.html" href="/admin/san-pham/list.html"><span class="left">👕 Sản phẩm</span><span class="badge">list</span></a>
+          <a data-path="/admin/khuyen-mai/list.html" href="/admin/khuyen-mai/list.html"><span class="left">🏷️ Khuyến mãi</span><span class="badge">list</span></a>
+        </div>
+
+        <div class="navgrp">
+          <h4>Danh mục</h4>
+          <a data-path="/admin/danh-muc/list.html" href="/admin/danh-muc/list.html"><span class="left">📚 Danh mục</span></a>
+          <a data-path="/admin/loai/list.html" href="/admin/loai/list.html"><span class="left">🧩 Loại</span></a>
+          <a data-path="/admin/kich-thuoc/list.html" href="/admin/kich-thuoc/list.html"><span class="left">📏 Kích thước</span></a>
+          <a data-path="/admin/mau-sac/list.html" href="/admin/mau-sac/list.html"><span class="left">🎨 Màu sắc</span></a>
+          <a data-path="/admin/phuong-thuc-thanh-toan/list.html" href="/admin/phuong-thuc-thanh-toan/list.html"><span class="left">💳 Phương thức TT</span></a>
+        </div>
+
+        <div class="navgrp">
+          <h4>Tài khoản</h4>
+          <a data-path="/admin/khach-hang/list.html" href="/admin/khach-hang/list.html"><span class="left">👥 Khách hàng</span></a>
+          <a data-path="/admin/nhan-vien/list-nhan-vien.html" href="/admin/nhan-vien/list-nhan-vien.html"><span class="left">🧑‍💼 Nhân viên</span></a>
+        </div>
+      </div>
+
+      <div style="margin-top:14px" class="muted">
+        <small>Tip: <kbd>Ctrl</kbd> + <kbd>K</kbd> để tìm nhanh (demo)</small>
+      </div>
+    </aside>
+
+    <div class="content">
+      <div class="topbar">
+        <div class="row">
+          <div class="search">
+            <span>🔎</span>
+            <input placeholder="Tìm mã hoá đơn, tên sản phẩm, khách hàng..." />
+            <kbd>Ctrl K</kbd>
+          </div>
+          <div class="userbox">
+            <button class="btn" onclick="toast('Demo: notifications')">🔔</button>
+            <div class="avatar">A</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== MAIN ===== -->
+      <main class="wrap">
+        <div class="card">
+          <div class="head">
+            <div>
+              <h1>Form danh mục</h1>
+              <small class="muted">Tạo mới / cập nhật danh mục sản phẩm</small>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <a class="btn" href="/admin/danh-muc/list.html">← Quay lại</a>
+              <button class="btn primary" onclick="toast('Lưu (demo)')">Lưu</button>
+            </div>
+          </div>
+
+          <div class="body">
+            <div class="grid cols2">
+              <div class="field">
+                <label>Mã danh mục</label>
+                <input type="text" placeholder="VD: DM010" />
+                <small class="muted">Có thể để BE tự sinh</small>
+              </div>
+
+              <div class="field">
+                <label>Tên danh mục</label>
+                <input type="text" placeholder="VD: Áo / Quần / Phụ kiện" />
+              </div>
+
+              <div class="field">
+                <label>Trạng thái</label>
+                <select>
+                  <option>Active</option>
+                  <option>Inactive</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label>Thứ tự hiển thị</label>
+                <input type="number" placeholder="VD: 1" />
+                <small class="muted">Số nhỏ lên trước</small>
+              </div>
+
+              <div class="field" style="grid-column: 1 / -1">
+                <label>Mô tả</label>
+                <textarea placeholder="Mô tả ngắn: nhóm sản phẩm gồm..."></textarea>
+              </div>
+
+              <div class="field" style="grid-column: 1 / -1">
+                <label>SEO (tuỳ chọn)</label>
+                <div class="grid cols2">
+                  <input type="text" placeholder="Meta title" />
+                  <input type="text" placeholder="Slug (VD: ao-nam)" />
+                </div>
+                <small class="muted">Nếu anh có route theo slug thì lưu luôn.</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/admin/assets/admin.js"></script>
+</body>
+</html>

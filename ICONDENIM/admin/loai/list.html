@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin • Loại</title>
+  <link rel="stylesheet" href="/admin/assets/admin.css"/>
+</head>
+<body>
+
+    <!-- DÙNG CHUNG: sidebar + topbar -->
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <b>ADMIN</b>
+        <small>Quản trị bán áo</small>
+      </div>
+    </div>
+
+    <div class="nav">
+      <div class="navgrp">
+        <h4>Vận hành</h4>
+        <a data-path="/admin/hoa-don/list-hoa-don.html" href="/admin/hoa-don/list-hoa-don.html">
+          <span class="left">🧾 Hoá đơn</span><span class="badge">list</span>
+        </a>
+        <a data-path="/admin/san-pham/list.html" href="/admin/san-pham/list.html">
+          <span class="left">👕 Sản phẩm</span><span class="badge">list</span>
+        </a>
+        <a data-path="/admin/khuyen-mai/list.html" href="/admin/khuyen-mai/list.html">
+          <span class="left">🏷️ Khuyến mãi</span><span class="badge">list</span>
+        </a>
+      </div>
+
+      <div class="navgrp">
+        <h4>Danh mục</h4>
+        <a data-path="/admin/danh-muc/list.html" href="/admin/danh-muc/list.html"><span class="left">📚 Danh mục</span></a>
+        <a data-path="/admin/loai/list.html" href="/admin/loai/list.html"><span class="left">🧩 Loại</span></a>
+        <a data-path="/admin/kich-thuoc/list.html" href="/admin/kich-thuoc/list.html"><span class="left">📏 Kích thước</span></a>
+        <a data-path="/admin/mau-sac/list.html" href="/admin/mau-sac/list.html"><span class="left">🎨 Màu sắc</span></a>
+        <a data-path="/admin/phuong-thuc-thanh-toan/list.html" href="/admin/phuong-thuc-thanh-toan/list.html">
+          <span class="left">💳 Phương thức TT</span>
+        </a>
+      </div>
+
+      <div class="navgrp">
+        <h4>Tài khoản</h4>
+        <a data-path="/admin/khach-hang/list.html" href="/admin/khach-hang/list.html"><span class="left">👥 Khách hàng</span></a>
+        <a data-path="/admin/nhan-vien/list-nhan-vien.html" href="/admin/nhan-vien/list-nhan-vien.html"><span class="left">🧑‍💼 Nhân viên</span></a>
+      </div>
+    </div>
+
+    <div style="margin-top:14px" class="muted">
+      <small>Tip: <kbd>Ctrl</kbd> + <kbd>K</kbd> để tìm nhanh (demo)</small>
+    </div>
+  </aside>
+
+  <div class="content">
+    <div class="topbar">
+      <div class="row">
+        <div class="search">
+          <span>🔎</span>
+          <input placeholder="Tìm mã hoá đơn, tên sản phẩm, khách hàng..." />
+          <kbd>Ctrl K</kbd>
+        </div>
+        <div class="userbox">
+          <button class="btn" onclick="toast('Demo: notifications')">🔔</button>
+          <div class="avatar">A</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN: mỗi trang thay phần này -->
+    <main class="wrap">
+      <!-- content here -->
+    </main>
+  </div>
+</div>
+
+  <main class="wrap">
+    <div class="card">
+      <div class="head">
+        <div>
+          <h1>Loại</h1>
+          <small class="muted">Ví dụ: Slim fit / Regular / Oversize...</small>
+        </div>
+        <a class="btn primary" href="/admin/loai/form.html">+ Thêm loại</a>
+      </div>
+      <div class="body">
+        <div class="toolbar">
+          <div class="filters">
+            <input style="width:320px" type="text" placeholder="Tìm theo mã / tên..." />
+            <select style="width:220px">
+              <option>Tất cả trạng thái</option><option>Active</option><option>Inactive</option>
+            </select>
+          </div>
+          <div class="filters">
+            <select style="width:220px"><option>Mới nhất</option><option>Tên A-Z</option></select>
+          </div>
+        </div>
+
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width:90px">Mã</th>
+              <th>Tên loại</th>
+              <th style="width:140px">Trạng thái</th>
+              <th style="width:160px" class="right">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>L001</td>
+              <td><b>Slim Fit</b><div class="muted" style="font-size:12px">Ôm vừa</div></td>
+              <td><span class="pill ok">● Active</span></td>
+              <td class="right">
+                <div class="actions">
+                  <a class="iconbtn" href="/admin/loai/form.html">✏️</a>
+                  <button class="iconbtn" onclick="confirmDelete('Slim Fit') && toast('Đã xoá (demo)')">🗑️</button>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td>L002</td>
+              <td><b>Oversize</b><div class="muted" style="font-size:12px">Rộng thoải mái</div></td>
+              <td><span class="pill warn">● Inactive</span></td>
+              <td class="right">
+                <div class="actions">
+                  <a class="iconbtn" href="/admin/loai/form.html">✏️</a>
+                  <button class="iconbtn" onclick="confirmDelete('Oversize') && toast('Đã xoá (demo)')">🗑️</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="pagination">
+          <div>Hiển thị 1–10 / 10</div>
+          <div class="pager"><button class="btn">← Trước</button><span class="chip">1</span><button class="btn">Sau →</button></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/admin/assets/admin.js"></script>
+</body>
+</html>

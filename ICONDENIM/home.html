@@ -1,0 +1,1057 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Shop Denim — Trang chủ</title>
+  <meta name="description" content="Thời trang nam: áo, quần, jeans, phụ kiện. Mua sắm online nhanh chóng." />
+
+  <style>
+    :root{
+      --bg:#0b0c10;
+      --card:#12141a;
+      --muted:#9aa3b2;
+      --text:#eef2ff;
+      --line:#232735;
+      --accent:#ffcc00;
+      --accent2:#5eead4;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 18px;
+      --max: 1180px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background: radial-gradient(900px 700px at 20% -10%, rgba(94,234,212,.12), transparent 55%),
+                  radial-gradient(900px 700px at 90% 10%, rgba(255,204,0,.10), transparent 50%),
+                  var(--bg);
+      color: var(--text);
+      line-height:1.5;
+    }
+    a{color:inherit; text-decoration:none}
+    img{max-width:100%; display:block}
+    .container{max-width:var(--max); margin:0 auto; padding:0 18px}
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center; gap:10px;
+      padding:12px 16px; border-radius:999px; border:1px solid var(--line);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      cursor:pointer;
+      transition: .2s ease;
+      user-select:none;
+    }
+    .btn:hover{transform: translateY(-1px); border-color: rgba(255,204,0,.35)}
+    .btn.primary{background: linear-gradient(135deg, rgba(255,204,0,.95), rgba(94,234,212,.85)); color:#101114; border:0}
+    .btn.ghost{background:transparent}
+    .pill{
+      display:inline-flex; gap:8px; align-items:center;
+      padding:6px 10px; border:1px solid var(--line);
+      border-radius:999px; color:var(--muted); font-size:12px;
+      background: rgba(255,255,255,.03);
+    }
+
+    /* Topbar */
+    .topbar{
+      border-bottom:1px solid rgba(255,255,255,.06);
+      background: rgba(0,0,0,.18);
+      backdrop-filter: blur(10px);
+    }
+    .topbar .row{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:10px 0;
+      gap:12px;
+    }
+    .topbar small{color:var(--muted)}
+    .topbar .links{display:flex; gap:12px; align-items:center}
+    .topbar .links a{color:var(--muted); font-size:13px}
+    .topbar .links a:hover{color:var(--text)}
+
+    /* Header */
+    header{
+      position:sticky; top:0; z-index:50;
+      background: rgba(11,12,16,.65);
+      backdrop-filter: blur(12px);
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    .nav{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:14px 0;
+      gap:12px;
+    }
+    .brand{display:flex; align-items:center; gap:10px}
+    .logo{
+      width:40px; height:40px; border-radius:12px;
+      background: linear-gradient(135deg, rgba(255,204,0,.95), rgba(94,234,212,.85));
+      box-shadow: var(--shadow);
+    }
+    .brand strong{letter-spacing:.5px}
+    .menu{display:flex; align-items:center; gap:18px}
+    .menu > a{
+      color: rgba(238,242,255,.9);
+      font-weight:600;
+      font-size:14px;
+      padding:10px 8px;
+      border-radius:10px;
+    }
+    .menu > a:hover{background: rgba(255,255,255,.04)}
+    .actions{display:flex; align-items:center; gap:10px}
+    .iconbtn{
+      width:40px; height:40px; border-radius:12px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.03);
+      display:grid; place-items:center;
+      cursor:pointer;
+      transition:.2s ease;
+    }
+    .iconbtn:hover{transform: translateY(-1px); border-color: rgba(255,204,0,.35)}
+    .search{
+      display:flex; align-items:center; gap:10px;
+      padding:10px 12px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.03);
+      border-radius:999px;
+      min-width: 280px;
+    }
+    .search input{
+      width:100%; border:0; outline:0; background:transparent;
+      color:var(--text);
+      font-size:14px;
+    }
+    .hamburger{display:none}
+
+    /* Mega menu */
+    .dropdown{position:relative}
+    .dropdown-panel{
+      position:absolute; left:0; top:calc(100% + 10px);
+      width:min(720px, 90vw);
+      border-radius: var(--radius);
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(18,20,26,.95);
+      backdrop-filter: blur(12px);
+      box-shadow: var(--shadow);
+      padding:16px;
+      display:none;
+    }
+    .dropdown.open .dropdown-panel{display:block}
+    .grid2{display:grid; grid-template-columns: 1.2fr 1fr; gap:14px}
+    .panel-block{
+      border:1px solid rgba(255,255,255,.06);
+      background: rgba(255,255,255,.02);
+      border-radius: 14px;
+      padding:14px;
+    }
+    .panel-block h4{margin:0 0 8px 0; font-size:13px; color:var(--muted); letter-spacing:.3px; text-transform:uppercase}
+    .panel-links{display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px}
+    .panel-links a{
+      padding:10px 10px; border-radius:12px;
+      border:1px solid rgba(255,255,255,.06);
+      background: rgba(255,255,255,.02);
+      font-weight:600; font-size:14px;
+    }
+    .panel-links a:hover{border-color: rgba(255,204,0,.35)}
+    .panel-cta{
+      display:flex; align-items:flex-end; justify-content:space-between; gap:10px;
+      background: linear-gradient(135deg, rgba(255,204,0,.13), rgba(94,234,212,.10));
+      border:1px solid rgba(255,255,255,.08);
+    }
+    .panel-cta p{margin:8px 0 0 0; color:var(--muted); font-size:13px}
+
+    /* Hero */
+    .hero{padding:28px 0 12px}
+    .hero-wrap{
+      display:grid; grid-template-columns: 1.1fr .9fr; gap:18px;
+      align-items:stretch;
+    }
+    .hero-card{
+      border-radius: calc(var(--radius) + 8px);
+      border:1px solid rgba(255,255,255,.08);
+      background: linear-gradient(135deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      position:relative;
+      min-height: 340px;
+    }
+    .hero-card .content{padding:26px}
+    .hero h1{margin:12px 0 10px; font-size:42px; line-height:1.08}
+    .hero p{margin:0; color: var(--muted); max-width: 52ch}
+    .hero .row{display:flex; gap:10px; margin-top:16px; flex-wrap:wrap}
+
+    .hero-visual{
+      position:absolute; inset:auto -80px -90px auto;
+      width:520px; height:520px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 30% 30%, rgba(255,204,0,.9), rgba(255,204,0,.0) 55%),
+        radial-gradient(circle at 60% 60%, rgba(94,234,212,.85), rgba(94,234,212,.0) 58%);
+      filter: blur(0px);
+      opacity: .9;
+      transform: rotate(18deg);
+    }
+
+    .hero-side{
+      display:grid; gap:18px;
+    }
+    .mini-card{
+      border-radius: var(--radius);
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(18,20,26,.6);
+      box-shadow: var(--shadow);
+      padding:18px;
+      min-height: 160px;
+      position:relative;
+      overflow:hidden;
+    }
+    .mini-card h3{margin:0 0 6px 0}
+    .mini-card p{margin:0; color:var(--muted); font-size:14px}
+    .mini-card .badge{
+      position:absolute; top:14px; right:14px;
+      font-weight:800; font-size:12px; letter-spacing:.4px;
+      padding:6px 10px; border-radius:999px;
+      background: rgba(255,204,0,.16);
+      border:1px solid rgba(255,204,0,.25);
+      color: #ffe9a1;
+    }
+    .mini-card .bg{
+      position:absolute; inset:auto -30px -30px auto;
+      width:240px; height:240px; border-radius:50%;
+      background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.08), transparent 60%);
+    }
+
+    /* Sections */
+    section{padding:22px 0}
+    .section-head{
+      display:flex; align-items:flex-end; justify-content:space-between; gap:12px;
+      margin-bottom:12px;
+    }
+    .section-head h2{margin:0; font-size:22px}
+    .section-head p{margin:0; color:var(--muted); font-size:14px}
+    .cards{
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap:14px;
+    }
+    .card{
+      grid-column: span 3;
+      border-radius: var(--radius);
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(18,20,26,.55);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      display:flex; flex-direction:column;
+      min-height: 280px;
+    }
+    .card .thumb{
+      height:150px;
+      background:
+        linear-gradient(135deg, rgba(255,204,0,.12), rgba(94,234,212,.10)),
+        radial-gradient(300px 160px at 20% 30%, rgba(255,255,255,.10), transparent 60%),
+        rgba(255,255,255,.03);
+      border-bottom:1px solid rgba(255,255,255,.06);
+      position:relative;
+    }
+    .card .thumb::after{
+      content:"";
+      position:absolute; inset:16px;
+      border-radius: 14px;
+      border:1px dashed rgba(255,255,255,.12);
+    }
+    .card .body{padding:14px}
+    .card .title{font-weight:700}
+    .card .meta{display:flex; justify-content:space-between; gap:10px; margin-top:8px; color:var(--muted); font-size:13px}
+    .price{color:#eafff9}
+    .strike{opacity:.55; text-decoration: line-through; margin-left:8px}
+    .card .footer{
+      margin-top:auto; padding:12px 14px; border-top:1px solid rgba(255,255,255,.06);
+      display:flex; gap:10px; align-items:center; justify-content:space-between;
+    }
+    .chip{font-size:12px; color:var(--muted); border:1px solid rgba(255,255,255,.08); padding:6px 10px; border-radius:999px}
+
+    /* Category tiles */
+    .tiles{
+      display:grid; grid-template-columns: repeat(12, 1fr); gap:14px;
+    }
+    .tile{
+      grid-column: span 4;
+      border-radius: var(--radius);
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(18,20,26,.55);
+      box-shadow: var(--shadow);
+      padding:16px;
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      min-height: 96px;
+    }
+    .tile h3{margin:0; font-size:16px}
+    .tile span{color:var(--muted); font-size:13px}
+    .tile .dot{
+      width:44px; height:44px; border-radius:14px;
+      background: linear-gradient(135deg, rgba(255,204,0,.22), rgba(94,234,212,.14));
+      border:1px solid rgba(255,255,255,.10);
+    }
+
+    /* Promo band */
+    .promo{
+      border-radius: calc(var(--radius) + 8px);
+      border:1px solid rgba(255,255,255,.08);
+      background: linear-gradient(135deg, rgba(255,204,0,.10), rgba(94,234,212,.08));
+      box-shadow: var(--shadow);
+      padding:18px;
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      flex-wrap:wrap;
+    }
+    .promo b{color:#fff2b3}
+    .promo p{margin:6px 0 0; color:var(--muted)}
+
+    /* Store + newsletter */
+    .split{
+      display:grid; grid-template-columns: 1fr 1fr; gap:14px;
+    }
+    .panel{
+      border-radius: var(--radius);
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(18,20,26,.55);
+      box-shadow: var(--shadow);
+      padding:18px;
+    }
+    .panel h3{margin:0 0 6px}
+    .panel p{margin:0; color:var(--muted)}
+    .form{
+      margin-top:12px;
+      display:flex; gap:10px; flex-wrap:wrap;
+    }
+    .form input{
+      flex:1;
+      min-width: 220px;
+      padding:12px 14px;
+      border-radius: 999px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.03);
+      color: var(--text);
+      outline:none;
+    }
+
+    /* Footer */
+    footer{
+      margin-top: 18px;
+      border-top:1px solid rgba(255,255,255,.06);
+      padding:22px 0 40px;
+      color: var(--muted);
+    }
+    .foot{
+      display:grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap:14px;
+    }
+    .foot h4{margin:0 0 10px; color: rgba(238,242,255,.9)}
+    .foot a{display:block; padding:6px 0}
+    .foot a:hover{color: var(--text)}
+    .copyright{margin-top:18px; font-size:13px}
+
+    /* Cart drawer */
+    .drawer-backdrop{
+      position:fixed; inset:0;
+      background: rgba(0,0,0,.55);
+      display:none;
+      z-index: 100;
+    }
+    .drawer{
+      position:fixed; top:0; right:0; height:100%; width:min(420px, 92vw);
+      background: rgba(18,20,26,.96);
+      border-left:1px solid rgba(255,255,255,.08);
+      box-shadow: var(--shadow);
+      transform: translateX(100%);
+      transition: .25s ease;
+      z-index: 110;
+      display:flex; flex-direction:column;
+    }
+    .drawer.open{transform: translateX(0)}
+    .drawer-backdrop.open{display:block}
+    .drawer header{position:static; background:transparent; border:0}
+    .drawer .head{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:14px 16px;
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    .drawer .items{padding:14px 16px; display:grid; gap:10px; overflow:auto}
+    .lineitem{
+      display:flex; gap:10px; align-items:center;
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(255,255,255,.02);
+      border-radius: 14px;
+      padding:10px;
+    }
+    .lineitem .ph{
+      width:52px; height:52px; border-radius: 14px;
+      background: linear-gradient(135deg, rgba(255,204,0,.10), rgba(94,234,212,.08));
+      border:1px solid rgba(255,255,255,.08);
+    }
+    .lineitem .info{flex:1}
+    .lineitem .info b{display:block; font-size:14px}
+    .lineitem .info span{color:var(--muted); font-size:12px}
+    .drawer .foot{
+      margin-top:auto;
+      padding:14px 16px;
+      border-top:1px solid rgba(255,255,255,.06);
+      display:grid; gap:10px;
+    }
+    .totals{display:flex; justify-content:space-between; color: rgba(238,242,255,.9)}
+    .toast{
+      position: fixed; left: 50%; bottom: 16px;
+      transform: translateX(-50%);
+      background: rgba(18,20,26,.95);
+      border: 1px solid rgba(255,255,255,.10);
+      padding: 10px 12px;
+      border-radius: 999px;
+      box-shadow: var(--shadow);
+      display:none;
+      z-index: 200;
+      color: rgba(238,242,255,.95);
+      font-size: 13px;
+    }
+    .toast.show{display:block}
+
+    /* Responsive */
+    @media (max-width: 980px){
+      .hero-wrap{grid-template-columns: 1fr; }
+      .search{display:none}
+      .cards .card{grid-column: span 6}
+      .tiles .tile{grid-column: span 6}
+      .foot{grid-template-columns: 1fr 1fr}
+    }
+    @media (max-width: 640px){
+      .menu{display:none}
+      .hamburger{display:grid}
+      .cards .card{grid-column: span 12}
+      .tiles .tile{grid-column: span 12}
+      .split{grid-template-columns: 1fr}
+      .hero h1{font-size:34px}
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="container">
+      <div class="row">
+        <small>Freeship theo mốc đơn • Đổi size dễ dàng • Hỗ trợ nhanh qua chat</small>
+        <div class="links">
+          <a href="#stores">Cửa hàng</a>
+          <a href="#policy">Chính sách</a>
+          <a href="#member">Membership</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header>
+    <div class="container">
+      <div class="nav">
+        <a class="brand" href="#">
+          <div class="logo" aria-hidden="true"></div>
+          <div>
+            <strong>DENIM STORE</strong><br/>
+            <small style="color:var(--muted); font-size:12px">Menswear • Jeans • Essentials</small>
+          </div>
+        </a>
+
+        <nav class="menu" aria-label="Chính">
+          <div class="dropdown" data-dropdown>
+            <a href="#all" data-trigger>Áo nam ▾</a>
+            <div class="dropdown-panel" role="menu">
+              <div class="grid2">
+                <div class="panel-block">
+                  <h4>Danh mục áo</h4>
+                  <div class="panel-links">
+                    <a href="#category" data-cat="Áo thun">Áo thun</a>
+                    <a href="#category" data-cat="Polo">Polo</a>
+                    <a href="#category" data-cat="Sơ mi">Sơ mi</a>
+                    <a href="#category" data-cat="Áo khoác">Áo khoác</a>
+                    <a href="#category" data-cat="Hoodie">Hoodie</a>
+                    <a href="#category" data-cat="Nỉ/Len">Nỉ/Len</a>
+                  </div>
+                </div>
+                <div class="panel-block panel-cta">
+                  <div>
+                    <h4 style="margin:0; color:rgba(238,242,255,.9)">Bộ sưu tập mới</h4>
+                    <p>Mix đồ công sở & đi chơi, form dễ mặc.</p>
+                    <div style="margin-top:10px">
+                      <button class="btn primary" onclick="scrollToId('new')">Xem New Arrivals</button>
+                    </div>
+                  </div>
+                  <span class="pill">New • 2026</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="dropdown" data-dropdown>
+            <a href="#all" data-trigger>Quần nam ▾</a>
+            <div class="dropdown-panel" role="menu">
+              <div class="grid2">
+                <div class="panel-block">
+                  <h4>Danh mục quần</h4>
+                  <div class="panel-links">
+                    <a href="#category" data-cat="Jeans">Jeans</a>
+                    <a href="#category" data-cat="Kaki/Chino">Kaki/Chino</a>
+                    <a href="#category" data-cat="Quần tây">Quần tây</a>
+                    <a href="#category" data-cat="Jogger">Jogger</a>
+                    <a href="#category" data-cat="Short">Short</a>
+                    <a href="#category" data-cat="Set đồ">Set đồ</a>
+                  </div>
+                </div>
+                <div class="panel-block panel-cta">
+                  <div>
+                    <h4 style="margin:0; color:rgba(238,242,255,.9)">Jeans chủ lực</h4>
+                    <p>Co giãn, nhẹ, thoáng — hợp mặc cả ngày.</p>
+                    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
+                      <span class="pill">AIRFLEX</span>
+                      <span class="pill">Lightweight</span>
+                      <span class="pill">ProCool</span>
+                    </div>
+                  </div>
+                  <button class="btn" onclick="scrollToId('best')">Bán chạy</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <a href="#outlet">Outlet</a>
+          <a href="#stores">Cửa hàng</a>
+        </nav>
+
+        <div class="actions">
+          <div class="search" role="search">
+            <span aria-hidden="true">🔎</span>
+            <input id="q" placeholder="Tìm áo, quần, jeans, phụ kiện..." />
+          </div>
+          <button class="iconbtn hamburger" aria-label="Mở menu" onclick="toggleMobileMenu()">☰</button>
+          <button class="iconbtn" aria-label="Tài khoản" onclick="toast('Demo: trang tài khoản / đăng nhập')">👤</button>
+          <button class="iconbtn" aria-label="Giỏ hàng" onclick="openCart()">🛒</button>
+        </div>
+      </div>
+
+      <!-- Mobile menu (simple) -->
+      <div id="mobileMenu" style="display:none; padding: 0 0 14px;">
+        <div class="panel" style="padding:12px; margin-bottom:10px">
+          <div class="form" style="margin:0">
+            <input id="mq" placeholder="Tìm nhanh..." />
+            <button class="btn" onclick="toast('Demo: search')">Tìm</button>
+          </div>
+        </div>
+        <div class="panel" style="padding:12px">
+          <div style="display:grid; gap:6px">
+            <a class="btn ghost" href="#category" onclick="toggleMobileMenu()">Áo nam</a>
+            <a class="btn ghost" href="#category" onclick="toggleMobileMenu()">Quần nam</a>
+            <a class="btn ghost" href="#outlet" onclick="toggleMobileMenu()">Outlet</a>
+            <a class="btn ghost" href="#stores" onclick="toggleMobileMenu()">Cửa hàng</a>
+            <a class="btn ghost" href="#member" onclick="toggleMobileMenu()">Membership</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <main class="hero">
+    <div class="container">
+      <div class="hero-wrap">
+        <div class="hero-card">
+          <div class="hero-visual" aria-hidden="true"></div>
+          <div class="content">
+            <span class="pill">Ưu đãi theo mốc đơn • Freeship</span>
+            <h1>Thời trang nam tối giản<br/>tập trung vào form & chất liệu</h1>
+            <p>
+              Template Home cho shop menswear: jeans, áo basic, công sở — tối ưu hiển thị sản phẩm và CTA mua hàng.
+              Thay ảnh/logo/text là dùng được.
+            </p>
+            <div class="row">
+              <button class="btn primary" onclick="scrollToId('best')">Mua bán chạy</button>
+              <button class="btn" onclick="scrollToId('new')">Xem hàng mới</button>
+              <button class="btn ghost" onclick="scrollToId('outlet')">Vào Outlet</button>
+            </div>
+            <div class="row" style="margin-top:12px">
+              <span class="pill">Đổi size dễ</span>
+              <span class="pill">Thanh toán COD</span>
+              <span class="pill">Hỗ trợ 7 ngày/tuần</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-side">
+          <div class="mini-card">
+            <span class="badge">NEW</span>
+            <div class="bg" aria-hidden="true"></div>
+            <h3>New Arrivals</h3>
+            <p>Áo polo, sơ mi, jeans nhẹ — cập nhật theo mùa.</p>
+            <div style="margin-top:12px">
+              <button class="btn" onclick="scrollToId('new')">Xem ngay →</button>
+            </div>
+          </div>
+
+          <div class="mini-card">
+            <span class="badge">OUTLET</span>
+            <div class="bg" aria-hidden="true"></div>
+            <h3>Giá tốt</h3>
+            <p>Deal theo mốc giá — phù hợp xả kho / clearance.</p>
+            <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap">
+              <span class="pill">199K</span>
+              <span class="pill">299K</span>
+              <span class="pill">399K</span>
+            </div>
+            <div style="margin-top:12px">
+              <button class="btn" onclick="scrollToId('outlet')">Vào Outlet →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Categories -->
+  <section id="category">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <h2>Danh mục nổi bật</h2>
+          <p>Đi thẳng tới nhóm sản phẩm chính.</p>
+        </div>
+        <a class="btn" href="#all">Xem tất cả →</a>
+      </div>
+
+      <div class="tiles">
+        <a class="tile" href="#best" onclick="filterBy('Jeans')">
+          <div>
+            <h3>Jeans</h3>
+            <span>Co giãn • dễ phối</span>
+          </div>
+          <div class="dot" aria-hidden="true"></div>
+        </a>
+
+        <a class="tile" href="#best" onclick="filterBy('Áo thun')">
+          <div>
+            <h3>Áo thun</h3>
+            <span>Basic • form chuẩn</span>
+          </div>
+          <div class="dot" aria-hidden="true"></div>
+        </a>
+
+        <a class="tile" href="#best" onclick="filterBy('Polo')">
+          <div>
+            <h3>Polo</h3>
+            <span>Gọn gàng • lịch sự</span>
+          </div>
+          <div class="dot" aria-hidden="true"></div>
+        </a>
+
+        <a class="tile" href="#best" onclick="filterBy('Sơ mi')">
+          <div>
+            <h3>Sơ mi</h3>
+            <span>Đi làm • đi chơi</span>
+          </div>
+          <div class="dot" aria-hidden="true"></div>
+        </a>
+
+        <a class="tile" href="#best" onclick="filterBy('Kaki/Chino')">
+          <div>
+            <h3>Kaki / Chino</h3>
+            <span>Dễ mặc • bền</span>
+          </div>
+          <div class="dot" aria-hidden="true"></div>
+        </a>
+
+        <a class="tile" href="#best" onclick="filterBy('Phụ kiện')">
+          <div>
+            <h3>Phụ kiện</h3>
+            <span>Nón • thắt lưng • ví</span>
+          </div>
+          <div class="dot" aria-hidden="true"></div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Best sellers -->
+  <section id="best">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <h2>Sản phẩm bán chạy</h2>
+          <p id="filterHint">Gợi ý lựa chọn theo nhu cầu.</p>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap">
+          <button class="btn" onclick="clearFilter()">Tất cả</button>
+          <button class="btn" onclick="filterBy('Jeans')">Jeans</button>
+          <button class="btn" onclick="filterBy('Polo')">Polo</button>
+          <button class="btn" onclick="filterBy('Áo thun')">Áo thun</button>
+        </div>
+      </div>
+
+      <div class="cards" id="bestGrid"></div>
+    </div>
+  </section>
+
+  <!-- Promo band -->
+  <section>
+    <div class="container">
+      <div class="promo">
+        <div>
+          <div class="pill">Voucher theo mốc đơn</div>
+          <p style="margin:8px 0 0">
+            Thêm block khuyến mãi ở giữa trang để đẩy chuyển đổi:
+            <b>giảm theo mốc</b> + <b>freeship</b> + <b>CTA rõ</b>.
+          </p>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap">
+          <button class="btn primary" onclick="toast('Demo: áp mã giảm giá')">Nhận voucher</button>
+          <button class="btn" onclick="scrollToId('outlet')">Xem Outlet</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- New arrivals -->
+  <section id="new">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <h2>Hàng mới về</h2>
+          <p>Thể hiện sản phẩm mới / collection theo mùa.</p>
+        </div>
+        <a class="btn" href="#all">Xem thêm →</a>
+      </div>
+
+      <div class="cards" id="newGrid"></div>
+    </div>
+  </section>
+
+  <!-- Outlet -->
+  <section id="outlet">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <h2>Outlet</h2>
+          <p>Clearance / xả kho: gắn tag mốc giá, đẩy mua nhanh.</p>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap">
+          <span class="pill">199K</span>
+          <span class="pill">299K</span>
+          <span class="pill">399K</span>
+        </div>
+      </div>
+
+      <div class="cards" id="outletGrid"></div>
+    </div>
+  </section>
+
+  <!-- Stores + Membership -->
+  <section id="stores">
+    <div class="container">
+      <div class="split">
+        <div class="panel">
+          <h3>Hệ thống cửa hàng</h3>
+          <p>Hiển thị nhanh 2–3 điểm bán và link “Xem tất cả chi nhánh”.</p>
+          <div style="margin-top:12px; display:grid; gap:10px">
+            <div class="panel" style="padding:12px">
+              <b>TP. HCM</b>
+              <div style="color:var(--muted); font-size:13px">Quận 1 • Quận 3 • Quận 7…</div>
+            </div>
+            <div class="panel" style="padding:12px">
+              <b>Hà Nội</b>
+              <div style="color:var(--muted); font-size:13px">Cầu Giấy / Đống Đa…</div>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap">
+              <button class="btn" onclick="toast('Demo: trang store locator')">Xem tất cả cửa hàng</button>
+              <button class="btn ghost" onclick="toast('Demo: mở Google Maps')">Chỉ đường</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" id="member">
+          <h3>Membership & Newsletter</h3>
+          <p>Tích điểm / ưu đãi sinh nhật / nhận thông báo sản phẩm mới.</p>
+          <div class="form">
+            <input id="email" type="email" placeholder="Email của anh..." />
+            <button class="btn primary" onclick="subscribe()">Đăng ký</button>
+          </div>
+          <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap">
+            <span class="pill">Ưu đãi thành viên</span>
+            <span class="pill">Thông báo drops</span>
+            <span class="pill">Early access</span>
+          </div>
+
+          <div class="panel" style="margin-top:14px">
+            <h3 style="margin:0 0 6px">Hỗ trợ nhanh</h3>
+            <p>Thêm nút chat Zalo/Messenger/Hotline ở đây.</p>
+            <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap">
+              <button class="btn" onclick="toast('Demo: mở chat')">Chat ngay</button>
+              <button class="btn ghost" onclick="toast('Demo: hotline')">Gọi hotline</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer id="policy">
+    <div class="container">
+      <div class="foot">
+        <div>
+          <div style="display:flex; align-items:center; gap:10px">
+            <div class="logo" aria-hidden="true" style="width:34px; height:34px; border-radius:12px"></div>
+            <div>
+              <strong style="color:rgba(238,242,255,.9)">DENIM STORE</strong><br/>
+              <small>Template home page • HTML/CSS/JS</small>
+            </div>
+          </div>
+          <p style="margin:12px 0 0">
+            Thay nội dung/ảnh thật của shop, tích hợp API sản phẩm, giỏ hàng, thanh toán tuỳ nền tảng (Shopify/Haravan/custom).
+          </p>
+        </div>
+
+        <div>
+          <h4>Hỗ trợ</h4>
+          <a href="#" onclick="toast('Demo: chính sách giao hàng')">Giao hàng</a>
+          <a href="#" onclick="toast('Demo: đổi trả')">Đổi trả</a>
+          <a href="#" onclick="toast('Demo: kiểm hàng')">Kiểm hàng</a>
+          <a href="#" onclick="toast('Demo: thanh toán')">Thanh toán</a>
+        </div>
+
+        <div>
+          <h4>Về chúng tôi</h4>
+          <a href="#" onclick="toast('Demo: giới thiệu')">Giới thiệu</a>
+          <a href="#" onclick="toast('Demo: cửa hàng')">Hệ thống cửa hàng</a>
+          <a href="#" onclick="toast('Demo: tuyển dụng')">Tuyển dụng</a>
+          <a href="#" onclick="toast('Demo: liên hệ')">Liên hệ</a>
+        </div>
+
+        <div>
+          <h4>Theo dõi</h4>
+          <a href="#" onclick="toast('Demo: Facebook')">Facebook</a>
+          <a href="#" onclick="toast('Demo: Instagram')">Instagram</a>
+          <a href="#" onclick="toast('Demo: TikTok')">TikTok</a>
+          <a href="#" onclick="toast('Demo: Zalo')">Zalo</a>
+        </div>
+      </div>
+
+      <div class="copyright">
+        © <span id="year"></span> Denim Store. Built as an original template (no 1:1 copying).
+      </div>
+    </div>
+  </footer>
+
+  <!-- Cart Drawer -->
+  <div class="drawer-backdrop" id="backdrop" onclick="closeCart()"></div>
+  <aside class="drawer" id="drawer" aria-label="Giỏ hàng">
+    <div class="head">
+      <b>Giỏ hàng</b>
+      <button class="iconbtn" aria-label="Đóng" onclick="closeCart()">✕</button>
+    </div>
+    <div class="items" id="cartItems"></div>
+    <div class="foot">
+      <div class="totals">
+        <span>Tạm tính</span>
+        <b id="subtotal">0₫</b>
+      </div>
+      <button class="btn primary" onclick="toast('Demo: sang checkout')">Thanh toán</button>
+      <button class="btn" onclick="closeCart()">Tiếp tục mua</button>
+    </div>
+  </aside>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    // --- Demo data (replace with real products / API) ---
+    const VND = n => new Intl.NumberFormat('vi-VN').format(n) + "₫";
+
+    const products = [
+      {id:1, name:"Jeans Slim Fit Co Giãn", cat:"Jeans", price:649000, old:799000, tag:"AIRFLEX"},
+      {id:2, name:"Polo Basic Dệt Mịn", cat:"Polo", price:399000, old:null, tag:"New"},
+      {id:3, name:"Áo Thun Cotton 220gsm", cat:"Áo thun", price:329000, old:389000, tag:"Best"},
+      {id:4, name:"Sơ Mi Oxford Dễ Ủi", cat:"Sơ mi", price:459000, old:null, tag:"Office"},
+      {id:5, name:"Quần Kaki Form Straight", cat:"Kaki/Chino", price:499000, old:599000, tag:"Daily"},
+      {id:6, name:"Áo Khoác Bomber Nhẹ", cat:"Áo khoác", price:699000, old:null, tag:"Layer"},
+    ];
+
+    const newArrivals = [
+      {id:7, name:"Jeans Lightweight 10oz", cat:"Jeans", price:629000, old:null, tag:"Lightweight"},
+      {id:8, name:"Polo Dệt Texture", cat:"Polo", price:429000, old:499000, tag:"New"},
+      {id:9, name:"Hoodie Nỉ Mỏng", cat:"Hoodie", price:559000, old:null, tag:"Drop"},
+      {id:10, name:"Áo Thun Oversize", cat:"Áo thun", price:349000, old:null, tag:"Trend"},
+    ];
+
+    const outlet = [
+      {id:11, name:"Áo Thun Basic (Outlet)", cat:"Áo thun", price:199000, old:329000, tag:"199K"},
+      {id:12, name:"Quần Short Kaki (Outlet)", cat:"Short", price:299000, old:459000, tag:"299K"},
+      {id:13, name:"Sơ Mi Flannel (Outlet)", cat:"Sơ mi", price:399000, old:559000, tag:"399K"},
+      {id:14, name:"Polo Mùa Trước (Outlet)", cat:"Polo", price:299000, old:429000, tag:"299K"},
+    ];
+
+    // --- Rendering ---
+    const bestGrid = document.getElementById('bestGrid');
+    const newGrid = document.getElementById('newGrid');
+    const outletGrid = document.getElementById('outletGrid');
+    const filterHint = document.getElementById('filterHint');
+
+    function productCard(p){
+      const old = p.old ? `<span class="strike">${VND(p.old)}</span>` : "";
+      return `
+        <article class="card" data-cat="${p.cat}">
+          <div class="thumb" aria-hidden="true"></div>
+          <div class="body">
+            <div class="title">${p.name}</div>
+            <div class="meta">
+              <span>${p.cat}</span>
+              <span class="price"><b>${VND(p.price)}</b>${old}</span>
+            </div>
+          </div>
+          <div class="footer">
+            <span class="chip">${p.tag}</span>
+            <button class="btn" onclick="addToCart(${p.id})">Thêm giỏ</button>
+          </div>
+        </article>
+      `;
+    }
+
+    function render(){
+      bestGrid.innerHTML = products.map(productCard).join("");
+      newGrid.innerHTML = newArrivals.map(productCard).join("");
+      outletGrid.innerHTML = outlet.map(productCard).join("");
+    }
+    render();
+
+    // --- Filter ---
+    let activeFilter = null;
+    function filterBy(cat){
+      activeFilter = cat;
+      filterHint.textContent = `Đang lọc: ${cat}`;
+      [...bestGrid.children].forEach(el=>{
+        el.style.display = (el.getAttribute('data-cat') === cat) ? "" : "none";
+      });
+      scrollToId('best');
+    }
+    function clearFilter(){
+      activeFilter = null;
+      filterHint.textContent = "Gợi ý lựa chọn theo nhu cầu.";
+      [...bestGrid.children].forEach(el=> el.style.display = "");
+    }
+
+    // --- Dropdown logic ---
+    document.querySelectorAll('[data-dropdown]').forEach(dd=>{
+      const trigger = dd.querySelector('[data-trigger]');
+      trigger.addEventListener('click', (e)=>{
+        e.preventDefault();
+        const isOpen = dd.classList.contains('open');
+        document.querySelectorAll('[data-dropdown].open').forEach(x=>x.classList.remove('open'));
+        if(!isOpen) dd.classList.add('open');
+      });
+    });
+    window.addEventListener('click', (e)=>{
+      if(!e.target.closest('[data-dropdown]')){
+        document.querySelectorAll('[data-dropdown].open').forEach(x=>x.classList.remove('open'));
+      }
+    });
+
+    // --- Smooth scroll ---
+    function scrollToId(id){
+      const el = document.getElementById(id);
+      if(!el) return;
+      el.scrollIntoView({behavior:'smooth', block:'start'});
+    }
+
+    // --- Mobile menu ---
+    function toggleMobileMenu(){
+      const mm = document.getElementById('mobileMenu');
+      mm.style.display = (mm.style.display === 'none' || !mm.style.display) ? 'block' : 'none';
+    }
+
+    // --- Cart demo ---
+    const drawer = document.getElementById('drawer');
+    const backdrop = document.getElementById('backdrop');
+    const cartItems = document.getElementById('cartItems');
+    const subtotalEl = document.getElementById('subtotal');
+    const cart = new Map(); // id -> qty
+
+    function openCart(){
+      backdrop.classList.add('open');
+      drawer.classList.add('open');
+      renderCart();
+    }
+    function closeCart(){
+      backdrop.classList.remove('open');
+      drawer.classList.remove('open');
+    }
+
+    function addToCart(id){
+      cart.set(id, (cart.get(id) || 0) + 1);
+      toast("Đã thêm vào giỏ");
+      openCart();
+    }
+    function dec(id){
+      const q = (cart.get(id) || 0) - 1;
+      if(q <= 0) cart.delete(id);
+      else cart.set(id, q);
+      renderCart();
+    }
+    function inc(id){
+      cart.set(id, (cart.get(id) || 0) + 1);
+      renderCart();
+    }
+
+    function getProductById(id){
+      return [...products, ...newArrivals, ...outlet].find(p=>p.id===id);
+    }
+
+    function renderCart(){
+      let sum = 0;
+      const rows = [];
+      for(const [id, qty] of cart.entries()){
+        const p = getProductById(id);
+        if(!p) continue;
+        sum += p.price * qty;
+        rows.push(`
+          <div class="lineitem">
+            <div class="ph" aria-hidden="true"></div>
+            <div class="info">
+              <b>${p.name}</b>
+              <span>${p.cat} • ${VND(p.price)}</span>
+            </div>
+            <div style="display:grid; gap:6px; justify-items:end">
+              <div style="display:flex; gap:6px; align-items:center">
+                <button class="iconbtn" style="width:34px;height:34px;border-radius:12px" onclick="dec(${id})">−</button>
+                <b style="width:22px; text-align:center">${qty}</b>
+                <button class="iconbtn" style="width:34px;height:34px;border-radius:12px" onclick="inc(${id})">+</button>
+              </div>
+              <span style="color:var(--muted); font-size:12px">${VND(p.price*qty)}</span>
+            </div>
+          </div>
+        `);
+      }
+      cartItems.innerHTML = rows.length ? rows.join("") : `<div class="panel"><b>Giỏ đang trống</b><p style="margin-top:6px">Thêm vài món để checkout nhé.</p></div>`;
+      subtotalEl.textContent = VND(sum);
+    }
+
+    // --- Toast ---
+    const toastEl = document.getElementById('toast');
+    let toastTimer = null;
+    function toast(msg){
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 1400);
+    }
+
+    // --- Subscribe ---
+    function subscribe(){
+      const email = document.getElementById('email').value.trim();
+      if(!email || !email.includes('@')) return toast('Nhập email hợp lệ');
+      document.getElementById('email').value = '';
+      toast('Đã đăng ký nhận tin (demo)');
+    }
+
+    // --- Misc ---
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Đăng ký</title>
+
+  <!-- từ /register/register.html lùi 1 cấp để tới /admin/assets -->
+  <link rel="stylesheet" href="../admin/assets/admin.css">
+  <!-- css riêng nằm cùng folder register -->
+  <link rel="stylesheet" href="./register.css">
+</head>
+<body>
+
+  <div class="auth">
+    <a class="auth-brand" href="./customer/home.html" title="Về trang chủ">
+      <div class="logo"></div>
+      <div>
+        <b>DENIM STORE</b>
+        <small>Create account</small>
+      </div>
+    </a>
+
+    <div class="card auth-card">
+      <div class="head">
+        <div>
+          <h1>Đăng ký</h1>
+          <small class="muted">Tạo tài khoản mới</small>
+        </div>
+        <span class="pill ok">New</span>
+      </div>
+
+      <div class="body">
+        <form id="registerForm" class="grid" autocomplete="on">
+          <div class="grid cols2">
+            <div class="field">
+              <label>Họ</label>
+              <input id="lastName" type="text" placeholder="Nguyễn" required>
+            </div>
+            <div class="field">
+              <label>Tên</label>
+              <input id="firstName" type="text" placeholder="Văn A" required>
+            </div>
+          </div>
+
+          <div class="grid cols2">
+            <div class="field">
+              <label>Số điện thoại</label>
+              <input id="phone" type="tel" placeholder="0909xxxxxx" required>
+            </div>
+            <div class="field">
+              <label>Email</label>
+              <input id="email" type="email" placeholder="a@gmail.com" required>
+            </div>
+          </div>
+
+          <div class="grid cols2">
+            <div class="field">
+              <label>Mật khẩu</label>
+              <div class="pw">
+                <input id="pw1" type="password" placeholder="Ít nhất 8 ký tự" required>
+                <button type="button" class="iconbtn" data-toggle="pw1" title="Hiện/ẩn">👁️</button>
+              </div>
+              <small class="muted">Gợi ý: gồm chữ + số.</small>
+            </div>
+
+            <div class="field">
+              <label>Nhập lại mật khẩu</label>
+              <div class="pw">
+                <input id="pw2" type="password" placeholder="Nhập lại" required>
+                <button type="button" class="iconbtn" data-toggle="pw2" title="Hiện/ẩn">👁️</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Địa chỉ (tuỳ chọn)</label>
+            <textarea id="address" placeholder="Số nhà, đường, quận/huyện, tỉnh/thành..."></textarea>
+          </div>
+
+          <label class="agree">
+            <input id="agree" type="checkbox" required>
+            <span>Tôi đồng ý với <a class="link" href="#" onclick="toast('Demo: điều khoản')">Điều khoản</a> và <a class="link" href="#" onclick="toast('Demo: chính sách')">Chính sách</a>.</span>
+          </label>
+
+          <button class="btn primary" type="submit">Tạo tài khoản</button>
+
+          <div class="footnote">
+            <small class="muted">Đã có tài khoản?</small>
+            <a class="link" href="/login/login.html">Đăng nhập</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="muted" style="text-align:center;font-size:13px;margin-top:12px">
+      © <span id="y"></span> Denim Store
+    </div>
+  </div>
+
+  <script src="./admin/assets/admin.js"></script>
+  <script src="./register.js"></script>
+</body>
+</html>

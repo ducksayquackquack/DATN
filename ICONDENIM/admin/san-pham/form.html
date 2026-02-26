@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin • Form sản phẩm</title>
+  <link rel="stylesheet" href="/admin/assets/admin.css"/>
+</head>
+<body>
+<!-- DÙNG CHUNG: sidebar + topbar -->
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <b>ADMIN</b>
+        <small>Quản trị bán áo</small>
+      </div>
+    </div>
+
+    <div class="nav">
+      <div class="navgrp">
+        <h4>Vận hành</h4>
+        <a data-path="/admin/hoa-don/list-hoa-don.html" href="/admin/hoa-don/list-hoa-don.html">
+          <span class="left">🧾 Hoá đơn</span><span class="badge">list</span>
+        </a>
+        <a data-path="/admin/san-pham/list.html" href="/admin/san-pham/list.html">
+          <span class="left">👕 Sản phẩm</span><span class="badge">list</span>
+        </a>
+        <a data-path="/admin/khuyen-mai/list.html" href="/admin/khuyen-mai/list.html">
+          <span class="left">🏷️ Khuyến mãi</span><span class="badge">list</span>
+        </a>
+      </div>
+
+      <div class="navgrp">
+        <h4>Danh mục</h4>
+        <a data-path="/admin/danh-muc/list.html" href="/admin/danh-muc/list.html"><span class="left">📚 Danh mục</span></a>
+        <a data-path="/admin/loai/list.html" href="/admin/loai/list.html"><span class="left">🧩 Loại</span></a>
+        <a data-path="/admin/kich-thuoc/list.html" href="/admin/kich-thuoc/list.html"><span class="left">📏 Kích thước</span></a>
+        <a data-path="/admin/mau-sac/list.html" href="/admin/mau-sac/list.html"><span class="left">🎨 Màu sắc</span></a>
+        <a data-path="/admin/phuong-thuc-thanh-toan/list.html" href="/admin/phuong-thuc-thanh-toan/list.html">
+          <span class="left">💳 Phương thức TT</span>
+        </a>
+      </div>
+
+      <div class="navgrp">
+        <h4>Tài khoản</h4>
+        <a data-path="/admin/khach-hang/list.html" href="/admin/khach-hang/list.html"><span class="left">👥 Khách hàng</span></a>
+        <a data-path="/admin/nhan-vien/list-nhan-vien.html" href="/admin/nhan-vien/list-nhan-vien.html"><span class="left">🧑‍💼 Nhân viên</span></a>
+      </div>
+    </div>
+
+    <div style="margin-top:14px" class="muted">
+      <small>Tip: <kbd>Ctrl</kbd> + <kbd>K</kbd> để tìm nhanh (demo)</small>
+    </div>
+  </aside>
+
+  <div class="content">
+    <div class="topbar">
+      <div class="row">
+        <div class="search">
+          <span>🔎</span>
+          <input placeholder="Tìm mã hoá đơn, tên sản phẩm, khách hàng..." />
+          <kbd>Ctrl K</kbd>
+        </div>
+        <div class="userbox">
+          <button class="btn" onclick="toast('Demo: notifications')">🔔</button>
+          <div class="avatar">A</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN: mỗi trang thay phần này -->
+    <main class="wrap">
+      <!-- content here -->
+    </main>
+  </div>
+</div>
+
+  <main class="wrap">
+    <div class="card">
+      <div class="head">
+        <div>
+          <h1>Form sản phẩm</h1>
+          <small class="muted">Tạo mới / cập nhật sản phẩm + biến thể</small>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <a class="btn" href="/admin/san-pham/list.html">← Quay lại</a>
+          <button class="btn" onclick="toast('Lưu nháp (demo)')">Lưu nháp</button>
+          <button class="btn primary" onclick="toast('Lưu (demo)')">Lưu</button>
+        </div>
+      </div>
+
+      <div class="body">
+        <div class="grid cols2">
+          <div class="field"><label>Tên sản phẩm</label><input type="text" placeholder="VD: Áo thun cotton 220gsm"/></div>
+          <div class="field"><label>SKU</label><input type="text" placeholder="VD: SP001"/></div>
+
+          <div class="field"><label>Danh mục</label>
+            <select><option>Áo</option><option>Quần</option><option>Phụ kiện</option></select>
+          </div>
+          <div class="field"><label>Loại/Form</label>
+            <select><option>Slim Fit</option><option>Regular</option><option>Oversize</option></select>
+          </div>
+
+          <div class="field"><label>Giá bán</label><input type="number" placeholder="329000"/></div>
+          <div class="field"><label>Giá gốc (tuỳ chọn)</label><input type="number" placeholder="389000"/></div>
+
+          <div class="field"><label>Trạng thái</label>
+            <select><option>Đang bán</option><option>Ẩn</option></select>
+          </div>
+          <div class="field"><label>Tag</label>
+            <input type="text" placeholder="VD: New, Best, Sale"/>
+          </div>
+
+          <div class="field" style="grid-column: 1 / -1">
+            <label>Mô tả</label>
+            <textarea placeholder="Chất liệu, form, hướng dẫn bảo quản..."></textarea>
+          </div>
+        </div>
+
+        <hr class="sep"/>
+
+        <div class="grid cols2">
+          <div class="card" style="border-radius:14px">
+            <div class="head">
+              <h2>Biến thể</h2>
+              <small class="muted">Màu + Size + Tồn</small>
+            </div>
+            <div class="body">
+              <table class="table">
+                <thead>
+                  <tr><th>Màu</th><th>Size</th><th class="right">Tồn</th><th class="right">Thao tác</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Đen</td><td>M</td><td class="right">30</td>
+                    <td class="right">
+                      <div class="actions">
+                        <button class="iconbtn" onclick="toast('Sửa biến thể (demo)')">✏️</button>
+                        <button class="iconbtn" onclick="toast('Xoá biến thể (demo)')">🗑️</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <button class="btn primary" onclick="toast('Thêm biến thể (demo)')">+ Thêm biến thể</button>
+            </div>
+          </div>
+
+          <div class="card" style="border-radius:14px">
+            <div class="head">
+              <h2>Ảnh sản phẩm</h2>
+              <small class="muted">Upload/URL</small>
+            </div>
+            <div class="body">
+              <div class="grid cols3">
+                <div class="card" style="border-radius:14px"><div class="body"><div class="muted">Ảnh 1</div><div class="pill">placeholder</div></div></div>
+                <div class="card" style="border-radius:14px"><div class="body"><div class="muted">Ảnh 2</div><div class="pill">placeholder</div></div></div>
+                <div class="card" style="border-radius:14px"><div class="body"><div class="muted">Ảnh 3</div><div class="pill">placeholder</div></div></div>
+              </div>
+              <div style="margin-top:10px">
+                <input type="text" placeholder="Dán URL ảnh hoặc tích hợp upload sau"/>
+              </div>
+              <small class="muted">Anh nối BE: multipart upload hoặc lưu URL DB là ok.</small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/admin/assets/admin.js"></script>
+</body>
+</html>

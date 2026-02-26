@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Đăng nhập</title>
+
+  <link rel="stylesheet" href="../admin/assets/admin.css">
+  <link rel="stylesheet" href="./login.css">
+</head>
+<body>
+
+  <div class="auth">
+    <a class="auth-brand" href="./customer/home.html" title="Về trang chủ">
+      <div class="logo"></div>
+      <div>
+        <b>DENIM STORE</b>
+        <small>Welcome back</small>
+      </div>
+    </a>
+
+    <div class="card auth-card">
+      <div class="head">
+        <div>
+          <h1>Đăng nhập</h1>
+          <small class="muted">Nhập thông tin để tiếp tục</small>
+        </div>
+        <span class="pill">Secure</span>
+      </div>
+
+      <div class="body">
+        <form id="loginForm" class="grid" autocomplete="on">
+          <div class="field">
+            <label>Email hoặc SĐT</label>
+            <input id="identity" type="text" placeholder="vd: a@gmail.com / 0909xxxxxx" required>
+            <small class="muted">Anh có thể dùng email hoặc số điện thoại.</small>
+          </div>
+
+          <div class="field">
+            <label>Mật khẩu</label>
+            <div class="pw">
+              <input id="password" type="password" placeholder="••••••••" required>
+              <button type="button" class="iconbtn" id="togglePw" title="Hiện/ẩn mật khẩu">👁️</button>
+            </div>
+            <div class="row">
+              <label class="remember">
+                <input id="remember" type="checkbox">
+                <span>Ghi nhớ đăng nhập</span>
+              </label>
+              <a class="link" href="#" onclick="toast('Demo: quên mật khẩu')">Quên mật khẩu?</a>
+            </div>
+          </div>
+
+          <button class="btn primary" type="submit">Đăng nhập</button>
+
+          <div class="or">
+            <span></span><small class="muted">hoặc</small><span></span>
+          </div>
+
+          <div class="grid cols2">
+            <button class="btn" type="button" onclick="toast('Demo: login Google')">G • Google</button>
+            <button class="btn" type="button" onclick="toast('Demo: login Facebook')">f • Facebook</button>
+          </div>
+
+          <div class="footnote">
+            <small class="muted">Chưa có tài khoản?</small>
+            <a class="link" href="/register/register.html">Tạo tài khoản</a>
+          </div>
+
+          <div class="quick">
+            <small class="muted">Đi nhanh:</small>
+            <a class="pill" href="./customer/home.html">Customer</a>
+            <a class="pill" href="./employee/dashboard.html">Employee</a>
+            <a class="pill" href="./admin/hoa-don/list-hoa-don.html">Admin</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="muted" style="text-align:center;font-size:13px;margin-top:12px">
+      © <span id="y"></span> Denim Store
+    </div>
+  </div>
+
+  <script src="./admin/assets/admin.js"></script>
+  <script src="./login.js"></script>
+</body>
+</html>
