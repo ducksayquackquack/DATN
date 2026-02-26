@@ -1,13 +1,12 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import {
-  getSanPhamList,
-  createSanPham,
-  updateSanPham,
-  deleteSanPham
-} from "@/services/sanPhamService";
+  getKhachHangList,
+  createKhachHang,
+  updateKhachHang,
+  deleteKhachHang,
+} from "@/services/khachHangService";
 
-/* ================= STATE ================= */
 const list = ref([]);
 const search = ref("");
 const show = ref(false);
@@ -15,61 +14,55 @@ const editing = ref(false);
 const currentId = ref(null);
 
 const form = ref({
-  maSanPham: "",
-  tenSanPham: "",
-  moTa: "",
-  trangThai: "Hoạt động"
+  maKhachHang: "",
+  tenKhachHang: "",
+  soDienThoai: "",
+  trangThai: "Hoạt động",
+  taiKhoan: { email: "" },
 });
 
-/* ================= FETCH ================= */
 const fetchData = async () => {
-  const res = await getSanPhamList();
-  list.value = res.data;
+  const { data } = await getKhachHangList();
+  list.value = data;
 };
 
-/* ================= SEARCH ================= */
-const filteredList = computed(() => {
-  if (!search.value) return list.value;
+const filteredList = computed(() =>
+  !search.value
+    ? list.value
+    : list.value.filter(i =>
+        i.maKhachHang?.toLowerCase().includes(search.value.toLowerCase()) ||
+        i.tenKhachHang?.toLowerCase().includes(search.value.toLowerCase()) ||
+        i.taiKhoan?.email?.toLowerCase().includes(search.value.toLowerCase()) ||
+        i.id.toString().includes(search.value)
+      )
+);
 
-  return list.value.filter(item =>
-    item.maSanPham.toLowerCase().includes(search.value.toLowerCase()) ||
-    item.tenSanPham.toLowerCase().includes(search.value.toLowerCase()) ||
-    item.id.toString().includes(search.value)
-  );
-});
-
-/* ================= OPEN MODAL ================= */
 const open = (item = null) => {
   editing.value = !!item;
   currentId.value = item?.id || null;
-
   form.value = item
-    ? { ...item }
+    ? JSON.parse(JSON.stringify(item))
     : {
-        maSanPham: "",
-        tenSanPham: "",
-        moTa: "",
-        trangThai: "Hoạt động"
+        maKhachHang: "",
+        tenKhachHang: "",
+        soDienThoai: "",
+        trangThai: "Hoạt động",
+        taiKhoan: { email: "" },
       };
-
   show.value = true;
 };
 
-/* ================= SAVE ================= */
 const save = async () => {
-  if (editing.value) {
-    await updateSanPham(currentId.value, form.value);
-  } else {
-    await createSanPham(form.value);
-  }
-
+  editing.value
+    ? await updateKhachHang(currentId.value, form.value)
+    : await createKhachHang(form.value);
   show.value = false;
   fetchData();
 };
 
-const handleDelete = async (id) => {
-  if (confirm("Bạn chắc chắn muốn xoá sản phẩm này?")) {
-    await deleteSanPham(id);
+const remove = async id => {
+  if (confirm("Xoá khách hàng này?")) {
+    await deleteKhachHang(id);
     fetchData();
   }
 };
@@ -78,15 +71,11 @@ onMounted(fetchData);
 </script>
 
 <template>
-  <div class="page">
-    <h2 class="title">Quản lý Sản Phẩm</h2>
+  <div class="admin-container">
+    <h2 class="title">Quản lý Khách Hàng</h2>
 
     <div class="top-bar">
-      <input
-        v-model="search"
-        type="text"
-        placeholder="Tìm theo ID, Mã hoặc Tên..."
-      />
+      <input v-model="search" placeholder="Tìm theo ID, Mã, Tên, Email..." />
       <button class="btn-primary" @click="open()">Thêm mới</button>
     </div>
 
@@ -96,45 +85,39 @@ onMounted(fetchData);
           <th>ID</th>
           <th>Mã</th>
           <th>Tên</th>
-          <th>Mô tả</th>
-          <th>Ngày tạo</th>
+          <th>Email</th>
+          <th>SĐT</th>
           <th>Trạng thái</th>
           <th>Hành động</th>
         </tr>
       </thead>
-
       <tbody>
         <tr v-for="item in filteredList" :key="item.id">
           <td>{{ item.id }}</td>
-          <td>{{ item.maSanPham }}</td>
-          <td>{{ item.tenSanPham }}</td>
-          <td>{{ item.moTa }}</td>
-          <td>{{ item.ngayTao?.substring(0,10) }}</td>
+          <td>{{ item.maKhachHang }}</td>
+          <td>{{ item.tenKhachHang }}</td>
+          <td>{{ item.taiKhoan?.email }}</td>
+          <td>{{ item.soDienThoai }}</td>
           <td>{{ item.trangThai }}</td>
           <td>
             <button class="btn-edit" @click="open(item)">Sửa</button>
-            <button class="btn-delete" @click="handleDelete(item.id)">
-              Xoá
-            </button>
+            <button class="btn-delete" @click="remove(item.id)">Xóa</button>
           </td>
         </tr>
-
         <tr v-if="filteredList.length === 0">
           <td colspan="7">Không có dữ liệu</td>
         </tr>
       </tbody>
     </table>
 
-    <!-- MODAL -->
     <div v-if="show" class="global-overlay">
       <div class="global-modal">
-        <h3>
-          {{ editing ? "Cập nhật Sản Phẩm" : "Thêm Sản Phẩm" }}
-        </h3>
+        <h3>{{ editing ? "Cập nhật Khách Hàng" : "Thêm Khách Hàng" }}</h3>
 
-        <input v-model="form.maSanPham" placeholder="Mã sản phẩm" />
-        <input v-model="form.tenSanPham" placeholder="Tên sản phẩm" />
-        <input v-model="form.moTa" placeholder="Mô tả" />
+        <input v-model="form.maKhachHang" placeholder="Mã khách hàng" />
+        <input v-model="form.tenKhachHang" placeholder="Tên khách hàng" />
+        <input v-model="form.taiKhoan.email" placeholder="Email" />
+        <input v-model="form.soDienThoai" placeholder="SĐT" />
 
         <select v-model="form.trangThai">
           <option value="Hoạt động">Hoạt động</option>
@@ -142,7 +125,7 @@ onMounted(fetchData);
         </select>
 
         <div class="modal-actions">
-          <button class="btn-cancel" @click="show = false">Huỷ</button>
+          <button class="btn-cancel" @click="show=false">Hủy</button>
           <button class="btn-primary" @click="save">Lưu</button>
         </div>
       </div>
@@ -151,19 +134,20 @@ onMounted(fetchData);
 </template>
 
 <style scoped>
-.page {
-  padding: 30px;
+/* Layout already provides background + card */
+.admin-container {
+  padding: 0;
 }
 
 /* Title */
 .title {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 600;
   margin-bottom: 24px;
-  color: #1e293b;
+  color: #ffffff;
 }
 
-/* Top bar */
+/* TOP BAR */
 .top-bar {
   display: flex;
   justify-content: space-between;
@@ -173,11 +157,11 @@ onMounted(fetchData);
 
 .top-bar input {
   padding: 10px 14px;
-  width: 300px;
+  width: 280px;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
-  transition: 0.2s;
   font-size: 14px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .top-bar input:focus {
@@ -186,30 +170,26 @@ onMounted(fetchData);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
-/* Table */
+/* TABLE */
 .table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  background: white;
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.04);
-}
-
-.table th,
-.table td {
-  padding: 14px;
-  text-align: center;
 }
 
 .table th {
-  background: #f8fafc;
+  padding: 14px;
+  text-align: center;
+  font-size: 14px;
   font-weight: 600;
+  background: #f8fafc;
   color: #475569;
 }
 
 .table td {
+  padding: 14px;
+  text-align: center;
+  font-size: 14px;
   border-top: 1px solid #f1f5f9;
 }
 
@@ -218,22 +198,22 @@ onMounted(fetchData);
 }
 
 .table tbody tr:hover {
-  background: #f9fafb;
+  background-color: #f9fafb;
 }
 
-/* Buttons */
+/* BUTTONS */
 button {
   border: none;
   border-radius: 8px;
   padding: 7px 14px;
   cursor: pointer;
   font-size: 13px;
-  transition: all 0.2s ease;
+  transition: transform 0.15s ease, background-color 0.2s ease;
 }
 
 .btn-primary {
   background: #2563eb;
-  color: white;
+  color: #fff;
 }
 
 .btn-primary:hover {
@@ -243,7 +223,7 @@ button {
 
 .btn-edit {
   background: #f39c12;
-  color: white;
+  color: #fff;
   margin-right: 6px;
 }
 
@@ -254,7 +234,7 @@ button {
 
 .btn-delete {
   background: #e74c3c;
-  color: white;
+  color: #fff;
 }
 
 .btn-delete:hover {
@@ -270,23 +250,23 @@ button {
   background: #b5b5b5;
 }
 
-/* Modal overlay */
+/* OVERLAY */
 .global-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0,0,0,.5);
+  backdrop-filter: blur(4px);
 
   display: flex;
   justify-content: center;
   align-items: center;
 
-  backdrop-filter: blur(4px);
   z-index: 9999;
 }
 
-/* Modal */
+/* MODAL */
 .global-modal {
-  width: 420px;
+  width: 450px;
   background: #ffffff;
   padding: 28px;
   border-radius: 16px;
@@ -299,16 +279,38 @@ button {
   animation: fadeIn 0.2s ease;
 }
 
+.global-modal input,
+.global-modal select {
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 14px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.global-modal input:focus,
+.global-modal select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
-/* Animation */
+/* Smooth modal animation */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

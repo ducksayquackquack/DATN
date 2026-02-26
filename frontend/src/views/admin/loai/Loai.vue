@@ -1,11 +1,11 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import {
-  getKichThuocList,
-  createKichThuoc,
-  updateKichThuoc,
-  deleteKichThuoc
-} from "@/services/kichThuocService";
+  getLoaiList,
+  createLoai,
+  updateLoai,
+  deleteLoai,
+} from "@/services/loaiService";
 
 const list = ref([]);
 const search = ref("");
@@ -14,13 +14,13 @@ const editing = ref(false);
 const currentId = ref(null);
 
 const form = ref({
-  maKichThuoc: "",
-  tenKichThuoc: "",
-  trangThai: "Hoạt động"
+  maLoai: "",
+  tenLoai: "",
+  trangThai: "Hoạt động",
 });
 
 const fetchData = async () => {
-  const { data } = await getKichThuocList();
+  const { data } = await getLoaiList();
   list.value = data;
 };
 
@@ -28,8 +28,8 @@ const filteredList = computed(() =>
   !search.value
     ? list.value
     : list.value.filter(i =>
-        i.maKichThuoc?.toLowerCase().includes(search.value.toLowerCase()) ||
-        i.tenKichThuoc?.toLowerCase().includes(search.value.toLowerCase()) ||
+        i.maLoai?.toLowerCase().includes(search.value.toLowerCase()) ||
+        i.tenLoai?.toLowerCase().includes(search.value.toLowerCase()) ||
         i.id.toString().includes(search.value)
       )
 );
@@ -39,21 +39,21 @@ const open = (item = null) => {
   currentId.value = item?.id || null;
   form.value = item
     ? { ...item }
-    : { maKichThuoc: "", tenKichThuoc: "", trangThai: "Hoạt động" };
+    : { maLoai: "", tenLoai: "", trangThai: "Hoạt động" };
   show.value = true;
 };
 
 const save = async () => {
   editing.value
-    ? await updateKichThuoc(currentId.value, form.value)
-    : await createKichThuoc(form.value);
+    ? await updateLoai(currentId.value, form.value)
+    : await createLoai(form.value);
   show.value = false;
   fetchData();
 };
 
 const remove = async id => {
-  if (confirm("Xoá kích thước này?")) {
-    await deleteKichThuoc(id);
+  if (confirm("Xoá loại này?")) {
+    await deleteLoai(id);
     fetchData();
   }
 };
@@ -62,8 +62,8 @@ onMounted(fetchData);
 </script>
 
 <template>
-  <div class="page">
-    <h2 class="title">Quản lý Kích Thước</h2>
+  <div class="admin-container">
+    <h2 class="title">Quản lý Loại</h2>
 
     <div class="top-bar">
       <input v-model="search" placeholder="Tìm theo ID, Mã, Tên..." />
@@ -74,8 +74,8 @@ onMounted(fetchData);
       <thead>
         <tr>
           <th>ID</th>
-          <th>Mã kích thước</th>
-          <th>Tên kích thước</th>
+          <th>Mã</th>
+          <th>Tên</th>
           <th>Trạng thái</th>
           <th>Hành động</th>
         </tr>
@@ -84,12 +84,12 @@ onMounted(fetchData);
       <tbody>
         <tr v-for="item in filteredList" :key="item.id">
           <td>{{ item.id }}</td>
-          <td>{{ item.maKichThuoc }}</td>
-          <td>{{ item.tenKichThuoc }}</td>
+          <td>{{ item.maLoai }}</td>
+          <td>{{ item.tenLoai }}</td>
           <td>{{ item.trangThai }}</td>
           <td>
             <button class="btn-edit" @click="open(item)">Sửa</button>
-            <button class="btn-delete" @click="remove(item.id)">Xoá</button>
+            <button class="btn-delete" @click="remove(item.id)">Xóa</button>
           </td>
         </tr>
 
@@ -101,10 +101,10 @@ onMounted(fetchData);
 
     <div v-if="show" class="global-overlay">
       <div class="global-modal">
-        <h3>{{ editing ? "Cập nhật Kích Thước" : "Thêm Kích Thước" }}</h3>
+        <h3>{{ editing ? "Cập nhật Loại" : "Thêm Loại" }}</h3>
 
-        <input v-model="form.maKichThuoc" placeholder="Mã kích thước" />
-        <input v-model="form.tenKichThuoc" placeholder="Tên kích thước" />
+        <input v-model="form.maLoai" placeholder="Mã loại" />
+        <input v-model="form.tenLoai" placeholder="Tên loại" />
 
         <select v-model="form.trangThai">
           <option value="Hoạt động">Hoạt động</option>
@@ -119,10 +119,9 @@ onMounted(fetchData);
     </div>
   </div>
 </template>
-
 <style scoped>
-/* Remove extra layer (layout already handles background + card) */
-.page {
+/* REMOVE second white layer */
+.admin-container {
   padding: 0;
 }
 
@@ -131,7 +130,7 @@ onMounted(fetchData);
   font-size: 24px;
   font-weight: 600;
   margin-bottom: 24px;
-  color: #1e293b;
+  color: #ffffff;
 }
 
 /* Top bar */
@@ -157,7 +156,7 @@ onMounted(fetchData);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
-/* Table */
+/* Table (NO extra background here) */
 .table {
   width: 100%;
   border-collapse: separate;
@@ -168,8 +167,8 @@ onMounted(fetchData);
 .table th {
   padding: 14px;
   text-align: center;
-  font-weight: 600;
   font-size: 14px;
+  font-weight: 600;
   background: #f8fafc;
   color: #475569;
 }
@@ -244,28 +243,24 @@ button {
 .global-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0,0,0,.5);
   backdrop-filter: blur(4px);
-
   display: flex;
   justify-content: center;
   align-items: center;
-
   z-index: 9999;
 }
 
 /* Modal */
 .global-modal {
-  width: 400px;
+  width: 420px;
   background: #ffffff;
   padding: 28px;
   border-radius: 16px;
-
   display: flex;
   flex-direction: column;
   gap: 14px;
-
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.15);
 }
 
 .global-modal input,

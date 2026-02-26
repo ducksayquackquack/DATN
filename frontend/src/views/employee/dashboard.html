@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Employee • Dashboard</title>
+
+  <!-- dùng chung asset của admin -->
+  <link rel="stylesheet" href="../admin/assets/admin.css">
+  <!-- css riêng -->
+  <link rel="stylesheet" href="./dashboard.css">
+</head>
+<body>
+
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <b>EMPLOYEE</b>
+          <small>Vận hành cửa hàng</small>
+        </div>
+      </div>
+
+      <div class="nav">
+        <div class="navgrp">
+          <h4>Tổng quan</h4>
+          <a class="active" href="./dashboard.html"><span class="left">📊 Dashboard</span></a>
+          <a href="../admin/hoa-don/list-hoa-don.html"><span class="left">🧾 Hoá đơn</span></a>
+          <a href="../admin/san-pham/list.html"><span class="left">👕 Sản phẩm</span></a>
+        </div>
+
+        <div class="navgrp">
+          <h4>Nhanh</h4>
+          <a href="../customer/home.html"><span class="left">🛍️ Xem site khách</span></a>
+          <a href="../admin/khuyen-mai/list.html"><span class="left">🏷️ Khuyến mãi</span></a>
+        </div>
+      </div>
+
+      <div style="margin-top:14px" class="muted">
+        <small>Ca làm: <b style="color:rgba(238,242,255,.9)">Sáng</b></small>
+      </div>
+    </aside>
+
+    <div class="content">
+      <div class="topbar">
+        <div class="row">
+          <div class="search">
+            <span>🔎</span>
+            <input placeholder="Tìm hoá đơn / khách / sản phẩm..." />
+            <kbd>Ctrl K</kbd>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <button class="btn" data-action="Demo: thông báo">🔔</button>
+            <div class="avatar">E</div>
+          </div>
+        </div>
+      </div>
+
+      <main class="wrap">
+        <div class="card" style="margin-bottom:14px">
+          <div class="head">
+            <div>
+              <h1>Dashboard</h1>
+              <small class="muted">Tổng quan vận hành hôm nay</small>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn" data-action="Demo: refresh">↻ Làm mới</button>
+              <a class="btn primary" href="../admin/hoa-don/form-hoa-don.html">+ Tạo hoá đơn</a>
+            </div>
+          </div>
+
+          <div class="body">
+            <div class="kpi">
+              <div class="card"><div class="body"><div class="muted">Đơn mới</div><div class="num">18</div><div class="sub">+12% so với hôm qua</div></div></div>
+              <div class="card"><div class="body"><div class="muted">Doanh thu</div><div class="num">24.5M</div><div class="sub">Chưa trừ hoàn/huỷ</div></div></div>
+              <div class="card"><div class="body"><div class="muted">Chờ xác nhận</div><div class="num">6</div><div class="sub">Cần xử lý trong 30p</div></div></div>
+              <div class="card"><div class="body"><div class="muted">Tồn kho thấp</div><div class="num">9</div><div class="sub">SKU dưới ngưỡng</div></div></div>
+            </div>
+
+            <div style="margin-top:14px" class="grid cols2">
+              <div class="card" style="border-radius:14px">
+                <div class="head">
+                  <h2>Đơn mới cần xử lý</h2>
+                  <a class="btn" href="../admin/hoa-don/list-hoa-don.html">Xem tất cả →</a>
+                </div>
+                <div class="body">
+                  <table class="table">
+                    <thead><tr><th>Mã</th><th>Khách</th><th>Trạng thái</th><th class="right">Tổng</th><th class="right">Action</th></tr></thead>
+                    <tbody>
+                      <tr>
+                        <td><b>HD1012</b></td>
+                        <td>Nguyễn Văn A</td>
+                        <td><span class="pill warn">● Chờ xác nhận</span></td>
+                        <td class="right">1.250.000₫</td>
+                        <td class="right">
+                          <div class="actions">
+                            <button class="iconbtn" data-action="Demo: nhận xử lý">✅</button>
+                            <a class="iconbtn" href="../admin/hoa-don/form-hoa-don.html">👁️</a>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td><b>HD1011</b></td>
+                        <td>Trần Thị B</td>
+                        <td><span class="pill warn">● Chờ xác nhận</span></td>
+                        <td class="right">699.000₫</td>
+                        <td class="right">
+                          <div class="actions">
+                            <button class="iconbtn" data-action="Demo: nhận xử lý">✅</button>
+                            <a class="iconbtn" href="../admin/hoa-don/form-hoa-don.html">👁️</a>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="card" style="border-radius:14px">
+                <div class="head">
+                  <h2>Tồn kho thấp</h2>
+                  <a class="btn" href="../admin/san-pham/list.html">Đi tới sản phẩm →</a>
+                </div>
+                <div class="body">
+                  <table class="table">
+                    <thead><tr><th>SKU</th><th>Sản phẩm</th><th class="right">Tồn</th><th class="right">Action</th></tr></thead>
+                    <tbody>
+                      <tr>
+                        <td>SP002</td>
+                        <td><b>Jeans slim co giãn</b><div class="muted" style="font-size:12px">Xanh • 30</div></td>
+                        <td class="right"><span class="pill bad">0</span></td>
+                        <td class="right"><button class="iconbtn" data-action="Demo: nhập kho">📦</button></td>
+                      </tr>
+                      <tr>
+                        <td>SP015</td>
+                        <td><b>Polo basic</b><div class="muted" style="font-size:12px">Đen • L</div></td>
+                        <td class="right"><span class="pill warn">3</span></td>
+                        <td class="right"><button class="iconbtn" data-action="Demo: tạo yêu cầu nhập">📝</button></td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  <div class="grid cols2" style="margin-top:12px">
+                    <button class="btn" data-action="Demo: xuất báo cáo">⬇️ Xuất báo cáo</button>
+                    <button class="btn primary" data-action="Demo: tạo phiếu nhập">+ Tạo phiếu nhập</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid cols2" style="margin-top:14px">
+              <div class="card" style="border-radius:14px">
+                <div class="head"><h2>Việc cần làm</h2><small class="muted">Checklist ca</small></div>
+                <div class="body">
+                  <div class="card" style="border-radius:14px; margin-bottom:10px"><div class="body"><b>Gọi xác nhận 6 đơn</b><div class="muted">Trước 11:00</div></div></div>
+                  <div class="card" style="border-radius:14px; margin-bottom:10px"><div class="body"><b>Soạn hàng đơn HD1012</b><div class="muted">In tem vận đơn</div></div></div>
+                  <button class="btn" data-action="Demo: thêm việc">+ Thêm việc</button>
+                </div>
+              </div>
+
+              <div class="card" style="border-radius:14px">
+                <div class="head"><h2>Ghi chú ca</h2><small class="muted">Nội bộ</small></div>
+                <div class="body">
+                  <label>Note</label>
+                  <textarea placeholder="Ghi chú bàn giao..."></textarea>
+                  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+                    <button class="btn primary" data-action="Demo: lưu note">Lưu</button>
+                    <button class="btn" data-action="Demo: gửi quản lý">Gửi quản lý</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top:14px" class="muted">© <span id="year"></span> Employee Panel</div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- JS: admin.js (toast) + dashboard.js -->
+  <script src="../admin/assets/admin.js"></script>
+  <script src="./dashboard.js"></script>
+</body>
+</html>

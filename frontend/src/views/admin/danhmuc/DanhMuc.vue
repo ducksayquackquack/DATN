@@ -1,11 +1,11 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import {
-  getKhachHangList,
-  createKhachHang,
-  updateKhachHang,
-  deleteKhachHang,
-} from "@/services/khachHangService";
+  getDanhMucList,
+  createDanhMuc,
+  updateDanhMuc,
+  deleteDanhMuc,
+} from "@/services/danhMucService";
 
 const list = ref([]);
 const search = ref("");
@@ -14,15 +14,13 @@ const editing = ref(false);
 const currentId = ref(null);
 
 const form = ref({
-  maKhachHang: "",
-  tenKhachHang: "",
-  soDienThoai: "",
+  maDanhMuc: "",
+  tenDanhMuc: "",
   trangThai: "Hoạt động",
-  taiKhoan: { email: "" },
 });
 
 const fetchData = async () => {
-  const { data } = await getKhachHangList();
+  const { data } = await getDanhMucList();
   list.value = data;
 };
 
@@ -30,9 +28,8 @@ const filteredList = computed(() =>
   !search.value
     ? list.value
     : list.value.filter(i =>
-        i.maKhachHang?.toLowerCase().includes(search.value.toLowerCase()) ||
-        i.tenKhachHang?.toLowerCase().includes(search.value.toLowerCase()) ||
-        i.taiKhoan?.email?.toLowerCase().includes(search.value.toLowerCase()) ||
+        i.maDanhMuc?.toLowerCase().includes(search.value.toLowerCase()) ||
+        i.tenDanhMuc?.toLowerCase().includes(search.value.toLowerCase()) ||
         i.id.toString().includes(search.value)
       )
 );
@@ -41,28 +38,22 @@ const open = (item = null) => {
   editing.value = !!item;
   currentId.value = item?.id || null;
   form.value = item
-    ? JSON.parse(JSON.stringify(item))
-    : {
-        maKhachHang: "",
-        tenKhachHang: "",
-        soDienThoai: "",
-        trangThai: "Hoạt động",
-        taiKhoan: { email: "" },
-      };
+    ? { ...item }
+    : { maDanhMuc: "", tenDanhMuc: "", trangThai: "Hoạt động" };
   show.value = true;
 };
 
 const save = async () => {
   editing.value
-    ? await updateKhachHang(currentId.value, form.value)
-    : await createKhachHang(form.value);
+    ? await updateDanhMuc(currentId.value, form.value)
+    : await createDanhMuc(form.value);
   show.value = false;
   fetchData();
 };
 
 const remove = async id => {
-  if (confirm("Xoá khách hàng này?")) {
-    await deleteKhachHang(id);
+  if (confirm("Xoá danh mục này?")) {
+    await deleteDanhMuc(id);
     fetchData();
   }
 };
@@ -72,10 +63,10 @@ onMounted(fetchData);
 
 <template>
   <div class="admin-container">
-    <h2 class="title">Quản lý Khách Hàng</h2>
+    <h2 class="title">Quản lý Danh Mục</h2>
 
     <div class="top-bar">
-      <input v-model="search" placeholder="Tìm theo ID, Mã, Tên, Email..." />
+      <input v-model="search" placeholder="Tìm theo ID, Mã, Tên..." />
       <button class="btn-primary" @click="open()">Thêm mới</button>
     </div>
 
@@ -85,39 +76,35 @@ onMounted(fetchData);
           <th>ID</th>
           <th>Mã</th>
           <th>Tên</th>
-          <th>Email</th>
-          <th>SĐT</th>
           <th>Trạng thái</th>
           <th>Hành động</th>
         </tr>
       </thead>
+
       <tbody>
         <tr v-for="item in filteredList" :key="item.id">
           <td>{{ item.id }}</td>
-          <td>{{ item.maKhachHang }}</td>
-          <td>{{ item.tenKhachHang }}</td>
-          <td>{{ item.taiKhoan?.email }}</td>
-          <td>{{ item.soDienThoai }}</td>
+          <td>{{ item.maDanhMuc }}</td>
+          <td>{{ item.tenDanhMuc }}</td>
           <td>{{ item.trangThai }}</td>
           <td>
             <button class="btn-edit" @click="open(item)">Sửa</button>
             <button class="btn-delete" @click="remove(item.id)">Xóa</button>
           </td>
         </tr>
+
         <tr v-if="filteredList.length === 0">
-          <td colspan="7">Không có dữ liệu</td>
+          <td colspan="5">Không có dữ liệu</td>
         </tr>
       </tbody>
     </table>
 
     <div v-if="show" class="global-overlay">
       <div class="global-modal">
-        <h3>{{ editing ? "Cập nhật Khách Hàng" : "Thêm Khách Hàng" }}</h3>
+        <h3>{{ editing ? "Cập nhật Danh Mục" : "Thêm Danh Mục" }}</h3>
 
-        <input v-model="form.maKhachHang" placeholder="Mã khách hàng" />
-        <input v-model="form.tenKhachHang" placeholder="Tên khách hàng" />
-        <input v-model="form.taiKhoan.email" placeholder="Email" />
-        <input v-model="form.soDienThoai" placeholder="SĐT" />
+        <input v-model="form.maDanhMuc" placeholder="Mã danh mục" />
+        <input v-model="form.tenDanhMuc" placeholder="Tên danh mục" />
 
         <select v-model="form.trangThai">
           <option value="Hoạt động">Hoạt động</option>
@@ -134,7 +121,6 @@ onMounted(fetchData);
 </template>
 
 <style scoped>
-/* Layout already provides background + card */
 .admin-container {
   padding: 0;
 }
@@ -144,10 +130,10 @@ onMounted(fetchData);
   font-size: 24px;
   font-weight: 600;
   margin-bottom: 24px;
-  color: #1e293b;
+  color: #f6f8fb;
 }
 
-/* TOP BAR */
+/* Top bar */
 .top-bar {
   display: flex;
   justify-content: space-between;
@@ -161,7 +147,7 @@ onMounted(fetchData);
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   font-size: 14px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: 0.2s ease;
 }
 
 .top-bar input:focus {
@@ -170,45 +156,50 @@ onMounted(fetchData);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
-/* TABLE */
+/* Table */
 .table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
+  background: #ffffff;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.05);
 }
 
-.table th {
-  padding: 14px;
-  text-align: center;
-  font-size: 14px;
-  font-weight: 600;
-  background: #f8fafc;
-  color: #475569;
-}
-
+.table th,
 .table td {
   padding: 14px;
   text-align: center;
   font-size: 14px;
+}
+
+.table th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+}
+
+.table td {
   border-top: 1px solid #f1f5f9;
 }
 
 .table tbody tr {
-  transition: background-color 0.2s ease;
+  transition: background 0.2s ease;
 }
 
 .table tbody tr:hover {
-  background-color: #f9fafb;
+  background: #f9fafb;
 }
 
-/* BUTTONS */
+/* Buttons */
 button {
   border: none;
   border-radius: 8px;
   padding: 7px 14px;
   cursor: pointer;
   font-size: 13px;
-  transition: transform 0.15s ease, background-color 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .btn-primary {
@@ -250,7 +241,7 @@ button {
   background: #b5b5b5;
 }
 
-/* OVERLAY */
+/* Overlay */
 .global-overlay {
   position: fixed;
   inset: 0;
@@ -260,14 +251,13 @@ button {
   display: flex;
   justify-content: center;
   align-items: center;
-
   z-index: 9999;
 }
 
-/* MODAL */
+/* Modal */
 .global-modal {
-  width: 450px;
-  background: #ffffff;
+  width: 420px;
+  background: #fff;
   padding: 28px;
   border-radius: 16px;
 
@@ -285,7 +275,7 @@ button {
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   font-size: 14px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: 0.2s ease;
 }
 
 .global-modal input:focus,
@@ -299,18 +289,12 @@ button {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 6px;
+  margin-top: 10px;
 }
 
-/* Smooth modal animation */
+/* Animation */
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>

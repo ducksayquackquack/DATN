@@ -1,11 +1,11 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import {
-  getLoaiList,
-  createLoai,
-  updateLoai,
-  deleteLoai,
-} from "@/services/loaiService";
+  getTaiKhoanList,
+  createTaiKhoan,
+  updateTaiKhoan,
+  deleteTaiKhoan
+} from "@/services/taiKhoanService";
 
 const list = ref([]);
 const search = ref("");
@@ -13,14 +13,17 @@ const show = ref(false);
 const editing = ref(false);
 const currentId = ref(null);
 
+const roles = ["ADMIN", "EMPLOYEE", "CUSTOMER"];
+
 const form = ref({
-  maLoai: "",
-  tenLoai: "",
-  trangThai: "Hoạt động",
+  username: "",
+  password: "",
+  vaiTro: "EMPLOYEE",
+  trangThaiHoatDong: "Hoạt động"
 });
 
 const fetchData = async () => {
-  const { data } = await getLoaiList();
+  const { data } = await getTaiKhoanList();
   list.value = data;
 };
 
@@ -28,8 +31,8 @@ const filteredList = computed(() =>
   !search.value
     ? list.value
     : list.value.filter(i =>
-        i.maLoai?.toLowerCase().includes(search.value.toLowerCase()) ||
-        i.tenLoai?.toLowerCase().includes(search.value.toLowerCase()) ||
+        i.email?.toLowerCase().includes(search.value.toLowerCase()) ||
+        i.vaiTro?.toLowerCase().includes(search.value.toLowerCase()) ||
         i.id.toString().includes(search.value)
       )
 );
@@ -37,23 +40,46 @@ const filteredList = computed(() =>
 const open = (item = null) => {
   editing.value = !!item;
   currentId.value = item?.id || null;
+
   form.value = item
-    ? { ...item }
-    : { maLoai: "", tenLoai: "", trangThai: "Hoạt động" };
+    ? {
+        username: item.email,
+        vaiTro: item.vaiTro,
+        trangThaiHoatDong: item.trangThaiHoatDong
+      }
+    : {
+        username: "",
+        password: "",
+        vaiTro: "EMPLOYEE",
+        trangThaiHoatDong: "Hoạt động"
+      };
+
   show.value = true;
 };
 
 const save = async () => {
-  editing.value
-    ? await updateLoai(currentId.value, form.value)
-    : await createLoai(form.value);
+  if (editing.value) {
+    await updateTaiKhoan(currentId.value, {
+      email: form.value.username,
+      vaiTro: form.value.vaiTro,
+      trangThaiHoatDong: form.value.trangThaiHoatDong
+    });
+  } else {
+    await createTaiKhoan({
+      email: form.value.username,
+      matKhau: form.value.password,
+      vaiTro: form.value.vaiTro,
+      trangThaiHoatDong: form.value.trangThaiHoatDong
+    });
+  }
+
   show.value = false;
   fetchData();
 };
 
 const remove = async id => {
-  if (confirm("Xoá loại này?")) {
-    await deleteLoai(id);
+  if (confirm("Xoá tài khoản này?")) {
+    await deleteTaiKhoan(id);
     fetchData();
   }
 };
@@ -63,10 +89,10 @@ onMounted(fetchData);
 
 <template>
   <div class="admin-container">
-    <h2 class="title">Quản lý Loại</h2>
+    <h2 class="title">Quản lý Tài Khoản</h2>
 
     <div class="top-bar">
-      <input v-model="search" placeholder="Tìm theo ID, Mã, Tên..." />
+      <input v-model="search" placeholder="Tìm theo ID, Username, Role..." />
       <button class="btn-primary" @click="open()">Thêm mới</button>
     </div>
 
@@ -74,8 +100,8 @@ onMounted(fetchData);
       <thead>
         <tr>
           <th>ID</th>
-          <th>Mã</th>
-          <th>Tên</th>
+          <th>Username</th>
+          <th>Role</th>
           <th>Trạng thái</th>
           <th>Hành động</th>
         </tr>
@@ -84,12 +110,12 @@ onMounted(fetchData);
       <tbody>
         <tr v-for="item in filteredList" :key="item.id">
           <td>{{ item.id }}</td>
-          <td>{{ item.maLoai }}</td>
-          <td>{{ item.tenLoai }}</td>
-          <td>{{ item.trangThai }}</td>
+          <td>{{ item.email }}</td>
+          <td>{{ item.vaiTro }}</td>
+          <td>{{ item.trangThaiHoatDong }}</td>
           <td>
             <button class="btn-edit" @click="open(item)">Sửa</button>
-            <button class="btn-delete" @click="remove(item.id)">Xóa</button>
+            <button class="btn-delete" @click="remove(item.id)">Xoá</button>
           </td>
         </tr>
 
@@ -101,12 +127,24 @@ onMounted(fetchData);
 
     <div v-if="show" class="global-overlay">
       <div class="global-modal">
-        <h3>{{ editing ? "Cập nhật Loại" : "Thêm Loại" }}</h3>
+        <h3>{{ editing ? "Cập nhật Tài Khoản" : "Thêm Tài Khoản" }}</h3>
 
-        <input v-model="form.maLoai" placeholder="Mã loại" />
-        <input v-model="form.tenLoai" placeholder="Tên loại" />
+        <input v-model="form.username" placeholder="Username" />
 
-        <select v-model="form.trangThai">
+        <input
+          v-if="!editing"
+          type="password"
+          v-model="form.password"
+          placeholder="Password"
+        />
+
+        <select v-model="form.vaiTro">
+          <option v-for="r in roles" :key="r" :value="r">
+            {{ r }}
+          </option>
+        </select>
+
+        <select v-model="form.trangThaiHoatDong">
           <option value="Hoạt động">Hoạt động</option>
           <option value="Ngừng hoạt động">Ngừng hoạt động</option>
         </select>
@@ -119,8 +157,8 @@ onMounted(fetchData);
     </div>
   </div>
 </template>
+
 <style scoped>
-/* REMOVE second white layer */
 .admin-container {
   padding: 0;
 }
@@ -130,10 +168,10 @@ onMounted(fetchData);
   font-size: 24px;
   font-weight: 600;
   margin-bottom: 24px;
-  color: #1e293b;
+  color: #ffffff;
 }
 
-/* Top bar */
+/* TOP BAR */
 .top-bar {
   display: flex;
   justify-content: space-between;
@@ -156,14 +194,13 @@ onMounted(fetchData);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
-/* Table (NO extra background here) */
+/* TABLE */
 .table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
 }
 
-/* Header */
 .table th {
   padding: 14px;
   text-align: center;
@@ -173,7 +210,6 @@ onMounted(fetchData);
   color: #475569;
 }
 
-/* Cells */
 .table td {
   padding: 14px;
   text-align: center;
@@ -181,7 +217,6 @@ onMounted(fetchData);
   border-top: 1px solid #f1f5f9;
 }
 
-/* Hover */
 .table tbody tr {
   transition: background-color 0.2s ease;
 }
@@ -190,7 +225,7 @@ onMounted(fetchData);
   background-color: #f9fafb;
 }
 
-/* Buttons */
+/* BUTTONS */
 button {
   border: none;
   border-radius: 8px;
@@ -239,7 +274,7 @@ button {
   background: #b5b5b5;
 }
 
-/* Overlay */
+/* OVERLAY */
 .global-overlay {
   position: fixed;
   inset: 0;
@@ -251,16 +286,19 @@ button {
   z-index: 9999;
 }
 
-/* Modal */
+/* MODAL */
 .global-modal {
   width: 420px;
   background: #ffffff;
   padding: 28px;
   border-radius: 16px;
+
   display: flex;
   flex-direction: column;
   gap: 14px;
+
   box-shadow: 0 20px 50px rgba(0,0,0,0.15);
+  animation: fadeIn 0.2s ease;
 }
 
 .global-modal input,
@@ -283,5 +321,18 @@ button {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+  margin-top: 6px;
+}
+
+/* Smooth modal animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

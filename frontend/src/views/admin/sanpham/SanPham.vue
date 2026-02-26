@@ -1,39 +1,36 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import {
-  getPTTT,
-  createPTTT,
-  updatePTTT,
-  deletePTTT
-} from "@/services/phuongThucThanhToanService";
+  getSanPhamList,
+  createSanPham,
+  updateSanPham,
+  deleteSanPham
+} from "@/services/sanPhamService";
 
-/* ================= STATE ================= */
-const ptttList = ref([]);
+const list = ref([]);
 const search = ref("");
 const show = ref(false);
 const editing = ref(false);
 const currentId = ref(null);
 
-const ptttForm = ref({
-  ma: "",
-  ten: "",
+const form = ref({
+  maSanPham: "",
+  tenSanPham: "",
   moTa: "",
   trangThai: "Hoạt động"
 });
 
-/* ================= FETCH ================= */
 const fetchData = async () => {
-  const res = await getPTTT();
-  ptttList.value = res.data;
+  const res = await getSanPhamList();
+  list.value = res.data;
 };
 
-/* ================= SEARCH ================= */
 const filteredList = computed(() => {
-  if (!search.value) return ptttList.value;
+  if (!search.value) return list.value;
 
-  return ptttList.value.filter(item =>
-    item.ma.toLowerCase().includes(search.value.toLowerCase()) ||
-    item.ten.toLowerCase().includes(search.value.toLowerCase()) ||
+  return list.value.filter(item =>
+    item.maSanPham.toLowerCase().includes(search.value.toLowerCase()) ||
+    item.tenSanPham.toLowerCase().includes(search.value.toLowerCase()) ||
     item.id.toString().includes(search.value)
   );
 });
@@ -43,9 +40,14 @@ const open = (item = null) => {
   editing.value = !!item;
   currentId.value = item?.id || null;
 
-  ptttForm.value = item
+  form.value = item
     ? { ...item }
-    : { ma: "", ten: "", moTa: "", trangThai: "Hoạt động" };
+    : {
+        maSanPham: "",
+        tenSanPham: "",
+        moTa: "",
+        trangThai: "Hoạt động"
+      };
 
   show.value = true;
 };
@@ -53,18 +55,18 @@ const open = (item = null) => {
 /* ================= SAVE ================= */
 const save = async () => {
   if (editing.value) {
-    await updatePTTT(currentId.value, ptttForm.value);
+    await updateSanPham(currentId.value, form.value);
   } else {
-    await createPTTT(ptttForm.value);
+    await createSanPham(form.value);
   }
+
   show.value = false;
   fetchData();
 };
 
-/* ================= DELETE ================= */
-const remove = async (id) => {
-  if (confirm("Bạn chắc chắn muốn xoá phương thức này?")) {
-    await deletePTTT(id);
+const handleDelete = async (id) => {
+  if (confirm("Bạn chắc chắn muốn xoá sản phẩm này?")) {
+    await deleteSanPham(id);
     fetchData();
   }
 };
@@ -73,10 +75,9 @@ onMounted(fetchData);
 </script>
 
 <template>
-  <div class="admin-container">
-    <h2 class="title">Quản lý Phương Thức Thanh Toán</h2>
+  <div class="page">
+    <h2 class="title">Quản lý Sản Phẩm</h2>
 
-    <!-- SEARCH + ADD -->
     <div class="top-bar">
       <input
         v-model="search"
@@ -93,6 +94,7 @@ onMounted(fetchData);
           <th>Mã</th>
           <th>Tên</th>
           <th>Mô tả</th>
+          <th>Ngày tạo</th>
           <th>Trạng thái</th>
           <th>Hành động</th>
         </tr>
@@ -101,61 +103,64 @@ onMounted(fetchData);
       <tbody>
         <tr v-for="item in filteredList" :key="item.id">
           <td>{{ item.id }}</td>
-          <td>{{ item.ma }}</td>
-          <td>{{ item.ten }}</td>
+          <td>{{ item.maSanPham }}</td>
+          <td>{{ item.tenSanPham }}</td>
           <td>{{ item.moTa }}</td>
+          <td>{{ item.ngayTao?.substring(0,10) }}</td>
           <td>{{ item.trangThai }}</td>
           <td>
             <button class="btn-edit" @click="open(item)">Sửa</button>
-            <button class="btn-delete" @click="remove(item.id)">Xoá</button>
+            <button class="btn-delete" @click="handleDelete(item.id)">
+              Xoá
+            </button>
           </td>
         </tr>
 
         <tr v-if="filteredList.length === 0">
-          <td colspan="6">Không có dữ liệu</td>
+          <td colspan="7">Không có dữ liệu</td>
         </tr>
       </tbody>
     </table>
 
-    <!-- CENTERED MODAL -->
+    <!-- MODAL -->
     <div v-if="show" class="global-overlay">
       <div class="global-modal">
         <h3>
-          {{ editing ? "Cập nhật PTTT" : "Thêm PTTT" }}
+          {{ editing ? "Cập nhật Sản Phẩm" : "Thêm Sản Phẩm" }}
         </h3>
 
-        <input v-model="ptttForm.ma" placeholder="Mã" />
-        <input v-model="ptttForm.ten" placeholder="Tên" />
-        <input v-model="ptttForm.moTa" placeholder="Mô tả" />
+        <input v-model="form.maSanPham" placeholder="Mã sản phẩm" />
+        <input v-model="form.tenSanPham" placeholder="Tên sản phẩm" />
+        <input v-model="form.moTa" placeholder="Mô tả" />
 
-        <select v-model="ptttForm.trangThai">
+        <select v-model="form.trangThai">
           <option value="Hoạt động">Hoạt động</option>
           <option value="Ngừng hoạt động">Ngừng hoạt động</option>
         </select>
 
         <div class="modal-actions">
-          <button class="btn-cancel" @click="show=false">Hủy</button>
+          <button class="btn-cancel" @click="show = false">Huỷ</button>
           <button class="btn-primary" @click="save">Lưu</button>
         </div>
       </div>
     </div>
   </div>
 </template>
+
 <style scoped>
-/* Layout already provides background + card */
-.admin-container {
-  padding: 0;
+.page {
+  padding: 30px;
 }
 
 /* Title */
 .title {
-  font-size: 24px;
-  margin-bottom: 24px;
+  font-size: 26px;
   font-weight: 600;
-  color: #1e293b;
+  margin-bottom: 24px;
+  color: #ffffff;
 }
 
-/* TOP BAR */
+/* Top bar */
 .top-bar {
   display: flex;
   justify-content: space-between;
@@ -165,11 +170,11 @@ onMounted(fetchData);
 
 .top-bar input {
   padding: 10px 14px;
-  width: 280px;
+  width: 300px;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
+  transition: 0.2s;
   font-size: 14px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .top-bar input:focus {
@@ -178,26 +183,30 @@ onMounted(fetchData);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
-/* TABLE */
+/* Table */
 .table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
+  background: white;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.04);
+}
+
+.table th,
+.table td {
+  padding: 14px;
+  text-align: center;
 }
 
 .table th {
-  padding: 14px;
-  text-align: center;
-  font-size: 14px;
-  font-weight: 600;
   background: #f8fafc;
+  font-weight: 600;
   color: #475569;
 }
 
 .table td {
-  padding: 14px;
-  text-align: center;
-  font-size: 14px;
   border-top: 1px solid #f1f5f9;
 }
 
@@ -206,22 +215,22 @@ onMounted(fetchData);
 }
 
 .table tbody tr:hover {
-  background-color: #f9fafb;
+  background: #f9fafb;
 }
 
-/* BUTTONS */
+/* Buttons */
 button {
   border: none;
   border-radius: 8px;
   padding: 7px 14px;
   cursor: pointer;
   font-size: 13px;
-  transition: transform 0.15s ease, background-color 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .btn-primary {
   background: #2563eb;
-  color: #ffffff;
+  color: white;
 }
 
 .btn-primary:hover {
@@ -231,7 +240,7 @@ button {
 
 .btn-edit {
   background: #f39c12;
-  color: #ffffff;
+  color: white;
   margin-right: 6px;
 }
 
@@ -242,7 +251,7 @@ button {
 
 .btn-delete {
   background: #e74c3c;
-  color: #ffffff;
+  color: white;
 }
 
 .btn-delete:hover {
@@ -251,27 +260,28 @@ button {
 }
 
 .btn-cancel {
-  background: #cccccc;
+  background: #ccc;
 }
 
 .btn-cancel:hover {
   background: #b5b5b5;
 }
 
-/* GLOBAL CENTER MODAL */
+/* Modal overlay */
 .global-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
+  background: rgba(0,0,0,0.5);
 
   display: flex;
   justify-content: center;
   align-items: center;
 
+  backdrop-filter: blur(4px);
   z-index: 9999;
 }
 
+/* Modal */
 .global-modal {
   width: 420px;
   background: #ffffff;
@@ -282,50 +292,20 @@ button {
   flex-direction: column;
   gap: 14px;
 
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.15);
   animation: fadeIn 0.2s ease;
-}
-
-.global-modal h3 {
-  text-align: center;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.global-modal input,
-.global-modal select {
-  padding: 10px 12px;
-  font-size: 14px;
-  border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  width: 100%;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.global-modal input:focus,
-.global-modal select:focus {
-  outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 /* Animation */
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>

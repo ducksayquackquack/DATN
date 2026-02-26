@@ -1,15 +1,16 @@
 <template>
   <div class="admin-layout">
-    <!-- SIDEBAR -->
     <div
       class="sidebar"
       :class="{ expanded }"
       @mouseenter="expanded = true"
       @mouseleave="expanded = false"
     >
-      <div class="logo">
-        <img v-if="!expanded" :src="logo" class="logo-img" />
-        <span v-else class="logo-text">DirtyWave Admin</span>
+      <div class="admin-logo">
+        <img :src="logo" class="logo-img" :class="{ hidden: expanded }" />
+        <span class="logo-text" :class="{ show: expanded }">
+          DirtyWave Admin
+        </span>
       </div>
 
       <nav>
@@ -74,15 +75,14 @@
       </nav>
     </div>
 
-    <!-- CONTENT -->
     <div class="content">
-    <div class="content-card">
-      <router-view v-slot="{ Component }">
-        <transition name="page" mode="out-in">
-          <component :is="Component" />
-        </transition>
-      </router-view>
-    </div>
+      <div class="content-card">
+        <router-view v-slot="{ Component }">
+          <transition name="page" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
+      </div>
     </div>
   </div>
 </template>
@@ -109,6 +109,135 @@ const expanded = ref(false)
 </script>
 
 <style scoped>
+.admin-layout {
+  display: flex;
+  height: 100vh;
+  background:
+    radial-gradient(900px 700px at 20% -10%, rgba(94,234,212,.18), transparent 60%),
+    radial-gradient(900px 700px at 90% 10%, rgba(255,204,0,.15), transparent 60%),
+    #0b0f16;
+}
+
+/* SIDEBAR */
+.sidebar {
+  width: 80px;
+  background: rgba(15,18,25,.95);
+  color: #cbd5e1;
+  transition: width .3s ease;
+  padding: 24px 12px;
+  overflow: hidden;
+  border-right: 1px solid rgba(255,255,255,.06);
+}
+
+.sidebar.expanded {
+  width: 240px;
+}
+
+.sidebar a {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  margin-bottom: 8px;
+  text-decoration: none;
+  color: #94a3b8;
+  transition: all .2s ease;
+  font-size: 14px;
+}
+
+.sidebar:not(.expanded) a {
+  justify-content: center;
+  padding: 14px 0;
+  width: 56px;
+  margin: 0 auto 12px auto; 
+}
+
+.sidebar a:hover {
+  background: rgba(255,255,255,.06);
+  color: white;
+}
+
+.sidebar a.router-link-active {
+  background: linear-gradient(135deg, #ffcc00, #5eead4);
+  color: #101114;
+  font-weight: 600;
+}
+
+/* CONTENT */
+.content {
+  flex: 1;
+  padding: 40px;
+  overflow-y: auto;
+}
+
+/* GLASS CARD */
+.content-card {
+  background: rgba(20,24,33,.95);
+  border-radius: 26px;
+  padding: 40px;
+  min-height: 100%;
+  box-shadow: 0 25px 80px rgba(0,0,0,.5);
+  color: #e5e7eb;
+}
+
+/* 🔥 ONLY FIX PAGE TITLES */
+.content-card > h1 {
+  color: #ffffff !important;
+  font-weight: 600;
+}
+
+/* Small text */
+.content-card small {
+  color: rgba(255,255,255,.6);
+}
+
+/* INPUTS */
+.content-card input,
+.content-card select {
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.15);
+  color: white;
+}
+
+.content-card input::placeholder {
+  color: rgba(255,255,255,.5);
+}
+
+/* TABLE FIX */
+.content-card table {
+  background: transparent;
+  color: #e5e7eb;
+}
+
+.content-card thead {
+  background: rgba(255,255,255,.08);
+}
+
+.content-card th {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.content-card tbody tr {
+  background: rgba(255,255,255,.04);
+  transition: background .2s ease;
+}
+
+.content-card tbody tr:hover {
+  background: rgba(255,255,255,.08);
+}
+
+.content-card td {
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+
+.content-card .btn,
+.content-card button {
+  color: white;
+}
+
+/* TRANSITION */
 .page-enter-from {
   opacity: 0;
   transform: translateY(12px);
@@ -124,113 +253,42 @@ const expanded = ref(false)
   transform: translateY(-6px);
 }
 
-.admin-layout {
-  display: flex;
-  height: 100vh;
-  background: linear-gradient(135deg, #eef2ff, #f8fafc);
-}
-
-/* ===== SIDEBAR ===== */
-.sidebar {
-  width: 80px;
-  background: linear-gradient(180deg, #0f172a, #111827);
-  color: #cbd5e1;
-  transition: width .3s ease;
-  padding: 24px 12px;
-  overflow: hidden;
-  box-shadow: 6px 0 30px rgba(0,0,0,.15);
-}
-
-.sidebar.expanded {
-  width: 240px;
-}
-
-.logo {
+/* LOGO */
+.admin-logo {
+  position: relative;
+  height: 90px;
+  margin-bottom: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 60px;
-  margin-bottom: 30px;
 }
 
 .logo-img {
-  width: 38px;
-  height: auto;
+  width: 52px;
+  transition: opacity .25s ease, transform .25s ease;
   filter: brightness(0) invert(1);
 }
 
+.logo-img.hidden {
+  opacity: 0;
+  transform: scale(.9);
+}
+
 .logo-text {
-  font-size: 18px;
+  position: absolute;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity .25s ease, transform .25s ease;
+  transform: translateY(4px);
+  font-size: 20px;
   font-weight: 600;
+  letter-spacing: .5px;
   color: white;
 }
 
-/* NAV LINKS */
-.sidebar a {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px;
-  border-radius: 12px;
-  margin-bottom: 8px;
-  text-decoration: none;
-  color: #94a3b8;
-  transition: all .2s ease;
-  font-size: 14px;
+.logo-text.show {
+  opacity: 1;
+  transform: translateY(0);
 }
 
-.sidebar:not(.expanded) a {
-  justify-content: center;
-}
-
-.sidebar.expanded a {
-  justify-content: flex-start;
-  padding-left: 18px;
-}
-
-.sidebar a:hover {
-  background: rgba(255,255,255,.06);
-  color: white;
-  transform: translateX(3px);
-}
-
-.sidebar a.router-link-active {
-  background: linear-gradient(90deg, #6366f1, #3b82f6);
-  color: white;
-  box-shadow: 0 6px 18px rgba(99,102,241,.35);
-}
-
-.icon {
-  width: 20px;
-  height: 20px;
-  min-width: 20px;
-}
-
-/* Divider */
-hr {
-  border: none;
-  border-top: 1px solid rgba(255,255,255,.08);
-  margin: 14px 0;
-}
-
-/* ===== CONTENT ===== */
-.content {
-  flex: 1;
-  padding: 40px;
-  overflow-y: auto;
-}
-
-.content-card {
-  background: white;
-  padding: 32px;
-  border-radius: 20px;
-  box-shadow: 0 15px 40px rgba(0,0,0,.06);
-  min-height: 100%;
-  animation: fadeIn .3s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
 </style>

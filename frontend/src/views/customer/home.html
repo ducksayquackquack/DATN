@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Customer • Home</title>
+
+  <!-- dùng chung asset của admin -->
+  <link rel="stylesheet" href="../admin/assets/admin.css">
+  <!-- css riêng -->
+  <link rel="stylesheet" href="./home.css">
+</head>
+<body>
+
+  <!-- top info -->
+  <div class="topbar">
+    <div class="row" style="max-width:var(--max);margin:0 auto;padding:10px 18px">
+      <small class="muted">Freeship theo mốc đơn • Đổi size dễ • Hỗ trợ nhanh</small>
+      <div style="display:flex;gap:12px;align-items:center">
+        <a class="muted" href="../employee/dashboard.html">Employee</a>
+        <a class="muted" href="../admin/hoa-don/list-hoa-don.html">Admin</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- header -->
+  <header class="shop-header">
+    <div class="shopbar">
+      <a class="brand" href="./home.html">
+        <div class="logo"></div>
+        <div>
+          <b>DENIM STORE</b>
+          <small>Menswear • Jeans • Essentials</small>
+        </div>
+      </a>
+
+      <nav class="shopnav">
+        <a href="#cats">Danh mục</a>
+        <a href="#best">Bán chạy</a>
+        <a href="#new">Hàng mới</a>
+        <a href="#outlet">Outlet</a>
+      </nav>
+
+      <div class="shop-actions">
+        <div class="search shop-search">
+          <span>🔎</span>
+          <input placeholder="Tìm áo, quần, jeans, phụ kiện..." />
+        </div>
+        <button class="btn" onclick="toast('Demo: tài khoản')">👤</button>
+        <button class="btn primary" onclick="toast('Demo: giỏ hàng')">🛒</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- hero -->
+  <section class="hero">
+    <div class="hero-grid">
+      <div class="hero-card">
+        <div class="hero-blob" aria-hidden="true"></div>
+        <div class="content">
+          <span class="pill">Voucher theo mốc • Freeship</span>
+          <h1>Thời trang nam tối giản<br/>tập trung form & chất liệu</h1>
+          <p>Trang chủ customer: dễ thay ảnh/logo/text. Sau này nối API sản phẩm + giỏ hàng là full webapp.</p>
+          <div class="hero-cta">
+            <a class="btn primary" href="#best">Mua bán chạy</a>
+            <a class="btn" href="#new">Xem hàng mới</a>
+            <a class="btn ghost" href="#outlet">Vào Outlet</a>
+          </div>
+          <div class="hero-pills">
+            <span class="pill">Đổi size dễ</span>
+            <span class="pill">COD</span>
+            <span class="pill">Hỗ trợ 7 ngày/tuần</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-side">
+        <div class="mini">
+          <span class="badge">NEW</span>
+          <h3>New Arrivals</h3>
+          <p>Polo, sơ mi, jeans nhẹ — cập nhật theo mùa.</p>
+          <div style="margin-top:12px"><a class="btn" href="#new">Xem ngay →</a></div>
+        </div>
+        <div class="mini">
+          <span class="badge">OUTLET</span>
+          <h3>Deal theo mốc giá</h3>
+          <p>199K / 299K / 399K — đẩy mua nhanh.</p>
+          <div class="mini-pills">
+            <span class="pill">199K</span><span class="pill">299K</span><span class="pill">399K</span>
+          </div>
+          <div style="margin-top:12px"><a class="btn" href="#outlet">Vào Outlet →</a></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- categories -->
+  <section class="section" id="cats">
+    <div class="section-head">
+      <div>
+        <h2>Danh mục nổi bật</h2>
+        <p class="muted" style="margin:6px 0 0">Đi thẳng vào nhóm sản phẩm chính.</p>
+      </div>
+      <button class="btn" onclick="toast('Demo: trang collection')">Xem tất cả →</button>
+    </div>
+
+    <div class="tiles">
+      <a class="tile" href="#best"><div><b>Jeans</b><div class="muted sub">Co giãn • dễ phối</div></div><div class="dot"></div></a>
+      <a class="tile" href="#best"><div><b>Áo thun</b><div class="muted sub">Basic • form chuẩn</div></div><div class="dot"></div></a>
+      <a class="tile" href="#best"><div><b>Polo</b><div class="muted sub">Gọn gàng • lịch sự</div></div><div class="dot"></div></a>
+      <a class="tile" href="#best"><div><b>Sơ mi</b><div class="muted sub">Đi làm • đi chơi</div></div><div class="dot"></div></a>
+      <a class="tile" href="#best"><div><b>Kaki/Chino</b><div class="muted sub">Dễ mặc • bền</div></div><div class="dot"></div></a>
+      <a class="tile" href="#best"><div><b>Phụ kiện</b><div class="muted sub">Nón • ví • thắt lưng</div></div><div class="dot"></div></a>
+    </div>
+  </section>
+
+  <!-- best -->
+  <section class="section" id="best">
+    <div class="section-head">
+      <div>
+        <h2>Bán chạy</h2>
+        <p class="muted" style="margin:6px 0 0">Sản phẩm best-seller.</p>
+      </div>
+      <button class="btn" onclick="toast('Demo: filter/sort')">Sắp xếp</button>
+    </div>
+    <div class="cards" id="bestGrid"></div>
+  </section>
+
+  <!-- promo -->
+  <section class="section">
+    <div class="promo">
+      <div>
+        <div class="pill">Voucher theo mốc đơn</div>
+        <p style="margin:8px 0 0" class="muted">Chèn block khuyến mãi giữa trang để tăng conversion.</p>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn primary" onclick="toast('Demo: nhận voucher')">Nhận voucher</button>
+        <a class="btn" href="#outlet">Xem Outlet</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- new -->
+  <section class="section" id="new">
+    <div class="section-head">
+      <div>
+        <h2>Hàng mới về</h2>
+        <p class="muted" style="margin:6px 0 0">New arrivals / collection theo mùa.</p>
+      </div>
+      <button class="btn" onclick="toast('Demo: xem thêm')">Xem thêm →</button>
+    </div>
+    <div class="cards" id="newGrid"></div>
+  </section>
+
+  <!-- outlet -->
+  <section class="section" id="outlet">
+    <div class="section-head">
+      <div>
+        <h2>Outlet</h2>
+        <p class="muted" style="margin:6px 0 0">Xả kho theo mốc giá.</p>
+      </div>
+      <div class="mini-pills">
+        <span class="pill">199K</span><span class="pill">299K</span><span class="pill">399K</span>
+      </div>
+    </div>
+    <div class="cards" id="outletGrid"></div>
+  </section>
+
+  <!-- footer -->
+  <footer class="shopfoot">
+    <div class="footgrid">
+      <div>
+        <b style="color:rgba(238,242,255,.9)">DENIM STORE</b>
+        <p style="margin:10px 0 0">Trang customer home — nối API sản phẩm + cart/checkout là full.</p>
+      </div>
+      <div>
+        <h4>Hỗ trợ</h4>
+        <a href="#" onclick="toast('Demo: giao hàng')">Giao hàng</a><br/>
+        <a href="#" onclick="toast('Demo: đổi trả')">Đổi trả</a><br/>
+        <a href="#" onclick="toast('Demo: thanh toán')">Thanh toán</a>
+      </div>
+      <div>
+        <h4>Liên hệ</h4>
+        <a href="#" onclick="toast('Demo: hotline')">Hotline</a><br/>
+        <a href="#" onclick="toast('Demo: zalo')">Zalo</a><br/>
+        <a href="#" onclick="toast('Demo: fanpage')">Fanpage</a>
+      </div>
+    </div>
+    <div style="margin-top:14px;font-size:13px">© <span id="y"></span> Denim Store</div>
+  </footer>
+
+  <!-- JS: admin.js (toast) + home.js -->
+  <script src="../admin/assets/admin.js"></script>
+  <script src="./home.js"></script>
+</body>
+</html>

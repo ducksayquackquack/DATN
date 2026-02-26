@@ -2,30 +2,30 @@ import { createRouter, createWebHistory } from "vue-router";
 
 import AdminLayout from "@/components/admin/AdminLayout.vue";
 import AdminDashboard from "@/views/admin/AdminDashboard.vue";
-import DanhMuc from "@/views/admin/DanhMuc.vue";
-import Loai from "@/views/admin/Loai.vue";
-import KichThuoc from "@/views/admin/KichThuoc.vue";
-import MauSac from "@/views/admin/MauSac.vue";
-import KhuyenMai from "@/views/admin/KhuyenMai.vue";
-import KhachHang from "@/views/admin/KhachHang.vue";
-import NhanVien from "@/views/admin/NhanVien.vue";
-import SanPham from "@/views/admin/SanPham.vue";
-import HoaDon from "@/views/admin/HoaDon.vue";
-import PhuongThucThanhToan from "@/views/admin/PhuongThucThanhToan.vue";
-import TaiKhoan from "@/views/admin/TaiKhoan.vue";
+import DanhMuc from "@/views/admin/danhmuc/DanhMuc.vue";
+import Loai from "@/views/admin/loai/Loai.vue";
+import KichThuoc from "@/views/admin/kichthuoc/KichThuoc.vue";
+import MauSac from "@/views/admin/mausac/MauSac.vue";
+import KhuyenMai from "@/views/admin/khuyenmai/KhuyenMai.vue";
+import KhachHang from "@/views/admin/khachhang/KhachHang.vue";
+import NhanVien from "@/views/admin/nhanvien/NhanVien.vue";
+import SanPham from "@/views/admin/sanpham/SanPham.vue";
+import HoaDon from "@/views/admin/hoadon/HoaDon.vue";
+import PhuongThucThanhToan from "@/views/admin/phuongthucthanhtoan/PhuongThucThanhToan.vue";
+import TaiKhoan from "@/views/admin/taikhoan/TaiKhoan.vue";
 
-import AdminLogin from "@/components/admin/AdminLogin.vue";
+import Login from "@/components/login/Login.vue";
 import Home from "@/views/Home.vue";
 
 const routes = [
   {
     path: "/",
-    component: AdminLogin, // 🔥 login page
+    component: Login,
   },
 
   {
     path: "/home",
-    component: Home, // 🔥 customer home
+    component: Home, 
   },
 
   {
