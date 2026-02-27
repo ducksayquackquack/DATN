@@ -1,215 +1,105 @@
 <template>
-  <div class="dashboard">
+  <div class="dashboard-page">
 
-    <div class="dashboard-header">
+    <div class="page-header">
       <h2>Thống kê</h2>
     </div>
 
     <div class="stats-grid">
-
       <div class="stat-card today">
-        <div class="card-top">
-          <Calendar class="card-icon"/>
-          <span>Hôm nay</span>
-        </div>
-
-        <div class="card-amount">
-          {{ formatCurrency(data.today.revenue) }}
-        </div>
-
-        <div class="card-stats">
-          <div>
-            <label>Sản phẩm</label>
-            <strong>{{ data.today.products }}</strong>
-          </div>
-          <div>
-            <label>Đơn thành công</label>
-            <strong>{{ data.today.success }}</strong>
-          </div>
-          <div>
-            <label>Đơn hủy</label>
-            <strong>{{ data.today.cancel }}</strong>
-          </div>
-          <div>
-            <label>Đơn trả</label>
-            <strong>{{ data.today.return }}</strong>
-          </div>
+        <div class="card-title">Hôm nay</div>
+        <div class="card-amount">0 đ</div>
+        <div class="card-meta">
+          <span>Sản phẩm: 0</span>
+          <span>Đơn thành công: 0</span>
+          <span>Đơn hủy: 0</span>
+          <span>Đơn trả: 0</span>
         </div>
       </div>
 
       <div class="stat-card week">
-        <div class="card-top">
-          <Copy class="card-icon"/>
-          <span>Tuần này</span>
-        </div>
-
-        <div class="card-amount">
-          {{ formatCurrency(data.week.revenue) }}
-        </div>
-
-        <div class="card-stats">
-          <div>
-            <label>Sản phẩm</label>
-            <strong>{{ data.week.products }}</strong>
-          </div>
-          <div>
-            <label>Đơn thành công</label>
-            <strong>{{ data.week.success }}</strong>
-          </div>
-          <div>
-            <label>Đơn hủy</label>
-            <strong>{{ data.week.cancel }}</strong>
-          </div>
-          <div>
-            <label>Đơn trả</label>
-            <strong>{{ data.week.return }}</strong>
-          </div>
+        <div class="card-title">Tuần này</div>
+        <div class="card-amount">2,794,651 đ</div>
+        <div class="card-meta">
+          <span>Sản phẩm: 16</span>
+          <span>Đơn thành công: 4</span>
+          <span>Đơn hủy: 1</span>
+          <span>Đơn trả: 1</span>
         </div>
       </div>
 
       <div class="stat-card month">
-        <div class="card-top">
-          <FileText class="card-icon"/>
-          <span>Tháng này</span>
-        </div>
-
-        <div class="card-amount">
-          {{ formatCurrency(data.month.revenue) }}
-        </div>
-
-        <div class="card-stats">
-          <div>
-            <label>Sản phẩm</label>
-            <strong>{{ data.month.products }}</strong>
-          </div>
-          <div>
-            <label>Đơn thành công</label>
-            <strong>{{ data.month.success }}</strong>
-          </div>
-          <div>
-            <label>Đơn hủy</label>
-            <strong>{{ data.month.cancel }}</strong>
-          </div>
-          <div>
-            <label>Đơn trả</label>
-            <strong>{{ data.month.return }}</strong>
-          </div>
+        <div class="card-title">Tháng này</div>
+        <div class="card-amount">2,794,651 đ</div>
+        <div class="card-meta">
+          <span>Sản phẩm: 16</span>
+          <span>Đơn thành công: 4</span>
+          <span>Đơn hủy: 1</span>
+          <span>Đơn trả: 1</span>
         </div>
       </div>
 
       <div class="stat-card year">
-        <div class="card-top">
-          <BarChart3 class="card-icon"/>
-          <span>Năm nay</span>
-        </div>
-
-        <div class="card-amount">
-          {{ formatCurrency(data.year.revenue) }}
-        </div>
-
-        <div class="card-stats">
-          <div>
-            <label>Sản phẩm</label>
-            <strong>{{ data.year.products }}</strong>
-          </div>
-          <div>
-            <label>Đơn thành công</label>
-            <strong>{{ data.year.success }}</strong>
-          </div>
-          <div>
-            <label>Đơn hủy</label>
-            <strong>{{ data.year.cancel }}</strong>
-          </div>
-          <div>
-            <label>Đơn trả</label>
-            <strong>{{ data.year.return }}</strong>
-          </div>
+        <div class="card-title">Năm nay</div>
+        <div class="card-amount">2,794,651 đ</div>
+        <div class="card-meta">
+          <span>Sản phẩm: 16</span>
+          <span>Đơn thành công: 4</span>
+          <span>Đơn hủy: 1</span>
+          <span>Đơn trả: 1</span>
         </div>
       </div>
-
     </div>
 
     <div class="filter-section">
-
       <div class="filter-left">
-        <button
-          v-for="item in filters"
-          :key="item"
-          :class="['filter-btn', activeFilter === item ? 'active' : '']"
-          @click="activeFilter = item"
-        >
-          {{ item }}
-        </button>
+        <button class="filter-btn active">NGÀY</button>
+        <button class="filter-btn">TUẦN</button>
+        <button class="filter-btn">THÁNG</button>
+        <button class="filter-btn">NĂM</button>
+        <button class="filter-btn">TÙY CHỈNH</button>
       </div>
 
-      <div class="filter-right">
-        <button class="export-btn">
-          EXPORT TO EXCEL
-        </button>
-      </div>
-
+      <button class="export-btn">
+        EXPORT TO EXCEL
+      </button>
     </div>
 
     <div class="content-grid">
-
       <div class="content-card">
-        <h3>Danh sách sản phẩm bán chạy theo ngày</h3>
-
+        <h3>Danh sách sản phẩm bán chạy</h3>
         <div class="mock-chart">
-          <div class="bar" v-for="n in 10" :key="n" :style="{ height: (20 + n*8) + 'px' }"></div>
+          <div v-for="n in 8" :key="n" class="bar"></div>
         </div>
       </div>
 
       <div class="content-card">
-        <h3>Biểu đồ trạng thái ngày</h3>
-
+        <h3>Biểu đồ trạng thái</h3>
         <div class="mock-chart-circle">
           <div class="circle"></div>
         </div>
       </div>
-
     </div>
 
   </div>
 </template>
 
 <script setup>
-import { ref } from "vue"
-import {
-  Calendar,
-  Copy,
-  FileText,
-  BarChart3
-} from "lucide-vue-next"
-
-const activeFilter = ref("NGÀY")
-
-const filters = ["NGÀY", "TUẦN", "THÁNG", "NĂM", "TÙY CHỈNH"]
-
-const data = {
-  today: { revenue: 0, products: 0, success: 0, cancel: 0, return: 0 },
-  week: { revenue: 2794651, products: 16, success: 4, cancel: 1, return: 1 },
-  month: { revenue: 2794651, products: 16, success: 4, cancel: 1, return: 1 },
-  year: { revenue: 2794651, products: 16, success: 4, cancel: 1, return: 1 }
-}
-
-const formatCurrency = (val) => {
-  return val.toLocaleString("vi-VN") + " đ"
-}
 </script>
 
 <style scoped>
 
-.dashboard {
-  padding: 10px 5px 30px 5px;
-  color: #ffffff;
+.dashboard-page {
+  padding: 30px;
+  color: #e5e7eb;
 }
 
-.dashboard-header {
+.page-header {
   margin-bottom: 25px;
 }
 
-.dashboard-header h2 {
+.page-header h2 {
+  font-size: 26px;
   font-weight: 600;
 }
 
@@ -221,26 +111,20 @@ const formatCurrency = (val) => {
 }
 
 .stat-card {
-  border-radius: 14px;
-  padding: 25px;
+  border-radius: 16px;
+  padding: 24px;
   color: white;
   transition: transform .25s ease, box-shadow .25s ease;
 }
 
 .stat-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 15px 30px rgba(0,0,0,.2);
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(0,0,0,.35);
 }
 
-.card-top {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.card-title {
+  font-size: 15px;
   opacity: .9;
-}
-
-.card-icon {
-  width: 18px;
 }
 
 .card-amount {
@@ -249,50 +133,42 @@ const formatCurrency = (val) => {
   margin: 10px 0 15px 0;
 }
 
-.card-stats {
+.card-meta {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
   font-size: 13px;
+  opacity: .9;
 }
 
-.card-stats label {
-  display: block;
-  opacity: .8;
-}
-
-.card-stats strong {
-  display: block;
-  margin-top: 3px;
-}
-
-.today { background: #0e7490; }
-.week { background: #fb923c; }
-.month { background: #3b82f6; }
-.year { background: #059669; }
+.today { background: linear-gradient(135deg,#0ea5e9,#06b6d4); }
+.week { background: linear-gradient(135deg,#fb923c,#f97316); }
+.month { background: linear-gradient(135deg,#3b82f6,#2563eb); }
+.year { background: linear-gradient(135deg,#10b981,#059669); }
 
 .filter-section {
+  background: #111827;
+  padding: 20px;
+  border-radius: 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #f3f4f6;
-  padding: 20px;
-  border-radius: 12px;
   margin-bottom: 30px;
 }
 
 .filter-btn {
-  border: 1px solid #d1d5db;
+  border: 1px solid #374151;
   padding: 8px 16px;
   border-radius: 8px;
-  background: white;
+  background: transparent;
+  color: #e5e7eb;
   margin-right: 10px;
   cursor: pointer;
-  font-weight: 500;
+  transition: .2s;
 }
 
 .filter-btn.active {
   background: #f97316;
-  color: white;
   border-color: #f97316;
 }
 
@@ -300,10 +176,15 @@ const formatCurrency = (val) => {
   border: 1px solid #10b981;
   padding: 8px 16px;
   border-radius: 8px;
-  background: white;
+  background: transparent;
   color: #10b981;
-  font-weight: 600;
   cursor: pointer;
+  transition: .2s;
+}
+
+.export-btn:hover {
+  background: #10b981;
+  color: white;
 }
 
 .content-grid {
@@ -313,8 +194,8 @@ const formatCurrency = (val) => {
 }
 
 .content-card {
-  background: white;
-  border-radius: 14px;
+  background: #111827;
+  border-radius: 16px;
   padding: 20px;
 }
 
@@ -326,27 +207,28 @@ const formatCurrency = (val) => {
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  height: 200px;
+  height: 180px;
 }
 
 .bar {
-  width: 20px;
+  width: 22px;
   background: #f97316;
   border-radius: 6px 6px 0 0;
+  height: 60%;
 }
 
 .mock-chart-circle {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 200px;
+  height: 180px;
 }
 
 .circle {
   width: 140px;
   height: 140px;
   border-radius: 50%;
-  background: conic-gradient(#3b82f6 60%, #e5e7eb 40%);
+  background: conic-gradient(#10b981 45%, #f97316 25%, #3b82f6 30%);
 }
 
 @media (max-width: 1000px) {
@@ -359,3 +241,4 @@ const formatCurrency = (val) => {
 }
 
 </style>
+

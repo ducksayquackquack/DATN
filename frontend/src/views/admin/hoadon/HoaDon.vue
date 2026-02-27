@@ -49,33 +49,69 @@
     <!-- MODAL -->
     <div v-if="showModal" class="modal-overlay">
       <div class="modal-box">
-        <h4 class="modal-title">
-          Chi tiết hóa đơn {{ selectedHoaDon?.maHoaDon }}
-        </h4>
 
-        <table class="detail-table">
-          <thead>
-            <tr>
-              <th>Sản phẩm</th>
-              <th>Số lượng</th>
-              <th>Thành tiền</th>
-            </tr>
-          </thead>
+        <!-- HEADER -->
+        <div class="modal-header">
+          <div>
+            <h3>Chi tiết hóa đơn</h3>
+            <p class="invoice-code">
+              {{ selectedHoaDon?.maHoaDon }}
+            </p>
+          </div>
 
-          <tbody>
-            <tr v-for="ct in chiTietList" :key="ct.id">
-              <td>{{ ct.sanPhamChiTiet?.ma }}</td>
-              <td>{{ ct.soLuong }}</td>
-              <td>{{ formatCurrency(ct.thanhTien) }}</td>
-            </tr>
-          </tbody>
-        </table>
+          <button class="btn-icon-close" @click="showModal = false">
+            ✕
+          </button>
+        </div>
 
-        <div class="modal-actions">
+        <!-- INFO SUMMARY -->
+        <div class="invoice-summary">
+          <div>
+            <span>Khách hàng</span>
+            <strong>{{ selectedHoaDon?.tenKhachHang }}</strong>
+          </div>
+          <div>
+            <span>Ngày tạo</span>
+            <strong>{{ selectedHoaDon?.ngayTao }}</strong>
+          </div>
+          <div>
+            <span>Tổng tiền</span>
+            <strong class="money">
+              {{ formatCurrency(selectedHoaDon?.thanhTien) }}
+            </strong>
+          </div>
+        </div>
+
+        <!-- DETAIL TABLE -->
+        <div class="detail-wrapper">
+          <table class="detail-table">
+            <thead>
+              <tr>
+                <th>Sản phẩm</th>
+                <th>Số lượng</th>
+                <th>Thành tiền</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              <tr v-for="ct in chiTietList" :key="ct.id">
+                <td>{{ ct.sanPhamChiTiet?.ma }}</td>
+                <td>{{ ct.soLuong }}</td>
+                <td class="money">
+                  {{ formatCurrency(ct.thanhTien) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="modal-footer">
           <button class="btn-close" @click="showModal = false">
             Đóng
           </button>
         </div>
+
       </div>
     </div>
   </div>
@@ -139,7 +175,6 @@ onMounted(fetchData);
 </script>
 
 <style scoped>
-
 .invoice-page {
   padding: 24px;
 }
@@ -147,13 +182,15 @@ onMounted(fetchData);
 .page-title {
   font-weight: 700;
   margin-bottom: 20px;
+  font-size: 22px;
+  color: #ffffff;
 }
 
 .card {
   background: #ffffff;
-  border-radius: 16px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.06);
-  padding: 20px;
+  border-radius: 20px;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.06);
+  padding: 24px;
 }
 
 .invoice-table {
@@ -166,12 +203,15 @@ onMounted(fetchData);
   padding: 14px;
   background: #f1f5f9;
   font-weight: 600;
-  color: #475569;
+  color: #334155; /* darker */
+  font-size: 14px;
 }
 
 .invoice-table td {
   padding: 14px;
   border-bottom: 1px solid #e2e8f0;
+  font-size: 14px;
+  color: #1e293b; /* darker body text */
 }
 
 .invoice-table tr:hover {
@@ -179,19 +219,29 @@ onMounted(fetchData);
 }
 
 .money {
-  font-weight: 600;
+  font-weight: 700;
   color: #0f172a;
 }
 
-/* STATUS BADGE */
+/* ===== STATUS (NEUTRAL STYLE) ===== */
 .status-badge {
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: 999px;
   font-size: 13px;
   font-weight: 600;
+  background: #f1f5f9; /* light gray */
+  color: #334155;       /* normal dark text */
 }
 
-
+/* Remove all colorful classes */
+.success,
+.info,
+.warning,
+.pending,
+.danger {
+  background: #f1f5f9;
+  color: #334155;
+}
 
 /* ACTION BUTTONS */
 .actions {
@@ -231,11 +281,12 @@ onMounted(fetchData);
   box-shadow: 0 8px 15px rgba(220, 38, 38, 0.3);
 }
 
-/* MODAL */
+/* ===== MODAL ===== */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(6px);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -243,16 +294,83 @@ onMounted(fetchData);
 }
 
 .modal-box {
-  background: white;
-  width: 600px;
-  padding: 28px;
-  border-radius: 18px;
-  animation: fadeIn 0.2s ease;
+  background: #ffffff;
+  width: 720px;
+  max-width: 90%;
+  border-radius: 26px;
+  padding: 32px;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.18);
+  animation: modalFade 0.25s ease;
 }
 
-.modal-title {
-  margin-bottom: 16px;
-  font-weight: 600;
+/* HEADER */
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  color: #ffffff; 
+}
+
+.modal-header h3 {
+  font-weight: 700;
+  font-size: 20px;
+  margin-bottom: 4px;
+  color: #0f172a; /* darker */
+}
+
+.invoice-code {
+  color: #334155; /* darker */
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* CLOSE ICON BUTTON */
+.btn-icon-close {
+  background: #f1f5f9;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: 0.2s;
+  color: #334155;
+}
+
+.btn-icon-close:hover {
+  background: #e2e8f0;
+}
+
+/* SUMMARY */
+.invoice-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  padding: 18px;
+  background: #f8fafc;
+  border-radius: 16px;
+  margin-bottom: 24px;
+}
+
+.invoice-summary span {
+  font-size: 12px;
+  color: #475569; /* darker */
+}
+
+.invoice-summary strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 15px;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+/* DETAIL TABLE */
+.detail-wrapper {
+  max-height: 250px;
+  overflow-y: auto;
+  margin-bottom: 20px;
 }
 
 .detail-table {
@@ -260,29 +378,59 @@ onMounted(fetchData);
   border-collapse: collapse;
 }
 
-.detail-table th,
-.detail-table td {
-  padding: 10px;
-  border-bottom: 1px solid #e2e8f0;
+.detail-table th {
+  text-align: left;
+  padding: 12px;
+  font-size: 13px;
+  color: #334155; /* darker */
+  background: #f1f5f9;
 }
 
-.modal-actions {
-  text-align: right;
-  margin-top: 20px;
+.detail-table td {
+  padding: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 14px;
+  color: #1e293b;
+}
+
+.detail-table tr:hover {
+  background: #f8fafc;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid #e2e8f0;
 }
 
 .btn-close {
-  background: #334155;
-  color: white;
+  background: #2563eb;
+  color: #ffffff;
   border: none;
-  padding: 8px 18px;
-  border-radius: 10px;
+  padding: 11px 22px; 
+  border-radius: 10px; 
+  font-weight: 600;
+  font-size: 15px;
   cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 100px;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+.btn-close:hover {
+  background: #1e40af;
 }
-
+/* Animation */
+@keyframes modalFade {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
 </style>

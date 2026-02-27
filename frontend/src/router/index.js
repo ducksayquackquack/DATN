@@ -13,10 +13,10 @@ import SanPham from "@/views/admin/sanpham/SanPham.vue";
 import HoaDon from "@/views/admin/hoadon/HoaDon.vue";
 import PhuongThucThanhToan from "@/views/admin/phuongthucthanhtoan/PhuongThucThanhToan.vue";
 import TaiKhoan from "@/views/admin/taikhoan/TaiKhoan.vue";
-
+import BanHang from "@/views/admin/banhang/BanHang.vue";
 import Login from "@/components/login/Login.vue";
 import Home from "@/views/Home.vue";
-
+import TraHang from "@/views/admin/trahang/TraHang.vue";
 const routes = [
   {
     path: "/",
@@ -32,6 +32,7 @@ const routes = [
     redirect: "/admin/dashboard",
     children: [
       { path: "dashboard", component: AdminDashboard },
+      { path: "tra-hang", component: TraHang },
       { path: "san-pham", component: SanPham },
       { path: "danh-muc", component: DanhMuc },
       { path: "loai", component: Loai },
@@ -43,7 +44,9 @@ const routes = [
       { path: "pttt", component: PhuongThucThanhToan },
       { path: "khach-hang", component: KhachHang },
       { path: "nhan-vien", component: NhanVien },
+      { path: "ban-hang", component: BanHang },
       { path: "tai-khoan", component: TaiKhoan }
+      
     ],
   },
 ];
