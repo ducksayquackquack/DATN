@@ -1,10 +1,11 @@
 <script setup>
-import { ref, computed, onMounted } from "vue"
-import { useRouter } from "vue-router"
+import { ref, computed, onMounted, watch } from "vue"
+import { useRouter, useRoute } from "vue-router"
 import { getAllHoaDon } from "../../../services/hoaDonService"
 import { Eye, Printer } from "lucide-vue-next"
 
 const router = useRouter()
+const route = useRoute()
 
 const hoaDons = ref([])
 const loading = ref(false)
@@ -16,26 +17,46 @@ const toDate = ref("")
 const sortOption = ref("Mới nhất")
 
 const currentPage = ref(1)
-const pageSize = 5
+const pageSize = 100
 
 const loadData = async () => {
   loading.value = true
-  const res = await getAllHoaDon()
+  try {
+    const res = await getAllHoaDon()
 
-  if (Array.isArray(res.data)) {
-    hoaDons.value = res.data
-  } else if (res.data.content) {
-    hoaDons.value = res.data.content
-  } else {
+    if (Array.isArray(res.data)) {
+      hoaDons.value = res.data
+    } else if (res.data.content) {
+      hoaDons.value = res.data.content
+    } else {
+      hoaDons.value = []
+    }
+  } catch (error) {
+    console.error("Error loading invoices:", error)
     hoaDons.value = []
   }
-
-  loading.value = false
-  console.log(res.data)
+  finally {
+    loading.value = false
+  }
 }
 
-onMounted(loadData)
+onMounted(() => {
+  loadData()
 
+  if (route.query.refresh) {
+    router.replace('/admin/hoa-don/list')
+  }
+
+  window.addEventListener('focus', loadData)
+})
+
+watch(
+  () => route.query.refresh,
+  () => {
+    currentPage.value = 1
+    loadData()
+  }
+)
 const formatCurrency = (value) => {
   if (!value) return "0₫"
   return new Intl.NumberFormat("vi-VN").format(value) + "₫"
@@ -66,13 +87,13 @@ const filteredData = computed(() => {
   }
 
   if (sortOption.value === "Tổng cao nhất")
-    data.sort((a, b) => b.thanhTien - a.thanhTien)
+    data.sort((a, b) => (b.thanhTien || 0) - (a.thanhTien || 0))
 
   if (sortOption.value === "Tổng thấp nhất")
-    data.sort((a, b) => a.thanhTien - b.thanhTien)
+    data.sort((a, b) => (a.thanhTien || 0) - (b.thanhTien || 0))
 
   if (sortOption.value === "Mới nhất")
-    data.sort((a, b) => new Date(b.ngayTao) - new Date(a.ngayTao))
+    data.sort((a, b) => new Date(b.ngayTao || 0) - new Date(a.ngayTao || 0))
 
   return data
 })
@@ -108,12 +129,12 @@ const printInvoice = () => {
           </small>
         </div>
 
-      <router-link
+      <!-- <router-link
         class="btn primary"
         to="/admin/hoa-don/detail"
       >
         + Tạo hoá đơn
-      </router-link>
+      </router-link> -->
       </div>
 
       <div class="body">
@@ -188,7 +209,7 @@ const printInvoice = () => {
                   :class="{
                     ok: hd.trangThai === 'Hoàn thành',
                     warn: ['Chờ xác nhận','Đang chuẩn bị','Đang giao'].includes(hd.trangThai),
-                    danger: hd.trangThai === 'Đã hủy'
+                    bad: hd.trangThai === 'Đã hủy'
                   }"
                 >
                   ● {{ hd.trangThai }}
@@ -223,8 +244,7 @@ const printInvoice = () => {
         <!-- PAGINATION EXACT SAME STRUCTURE -->
         <div class="pagination">
           <div>
-            Hiển thị 1–{{ paginatedData.length }} / {{ filteredData.length }}
-          </div>
+Hiển thị 1–{{ paginatedData.length }} / {{ filteredData.length }}          </div>
 
           <div class="pager">
             <button
@@ -265,5 +285,15 @@ const printInvoice = () => {
 
 .action-cell{
   text-align:center;
+}
+
+.small{
+  font-size: 12px;
+}
+
+.pill.bad{
+  border-color: rgba(255, 92, 122, 0.35);
+  background: rgba(255, 92, 122, 0.08);
+  color: #ffd1da;
 }
 </style>
