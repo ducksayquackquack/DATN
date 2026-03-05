@@ -13,6 +13,10 @@ import img8 from "../../assets/img/Áo khoác coach cách nhiệt vải Timberla
 import img9 from "../../assets/img/Áo khoac coach da ASOS DirtyWave.jpg?url"
 import img10 from "../../assets/img/Áo khoác coach giả da DirtyWave.jpg?url"
 import img11 from "../../assets/img/Áo khoác coach lông cừu DirtyWave.jpg?url"
+import momo from "../../assets/img/payments/momo.png"
+import visa from "../../assets/img/payments/visa.png"
+import mastercard from "../../assets/img/payments/mastercard.png"
+import vnpay from "../../assets/img/payments/vnpay.png"
 const router = useRouter()
 const profileOpen = ref(false)
 
@@ -830,10 +834,10 @@ DirtyWave là shop áo khoác dành cho những ai thích phong cách tối gi�
       <div>
         <h4>Phương Thức Thanh Toán</h4>
 <div class="img-row">
-<img src="https://upload.wikimedia.org/wikipedia/commons/f/fe/MoMo_Logo.png" height="28"/>
-<img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Visa_Logo.png" height="28"/>
-<img src="https://upload.wikimedia.org/wikipedia/commons/0/04/Mastercard-logo.png" height="28"/>
-<img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/VNPAY-QR.png" height="28"/>
+<img :src="momo" height="28"/>
+<img :src="visa" height="28"/>
+<img :src="mastercard" height="28"/>
+<img :src="vnpay" height="28"/>
 </div>
       </div>
 
@@ -1067,7 +1071,17 @@ Tiếp tục mua
 .dropdown-item.danger {
   color: #e53935;
 }
+.img-row{
+  display:flex;
+  gap:12px;
+  align-items:center;
+  margin-top:10px;
+}
 
+.img-row img{
+  height:28px;
+  object-fit:contain;
+}
 .cart-img{
   width:60px;
   height:60px;
