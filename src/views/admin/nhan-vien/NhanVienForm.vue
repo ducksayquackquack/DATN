@@ -83,7 +83,7 @@ async function save() {
 
   } catch (err) {
     console.error(err)
-    alert("Lưu thất bại!")
+    window.toast.error("Lưu thất bại!")
   }
 }
 </script>

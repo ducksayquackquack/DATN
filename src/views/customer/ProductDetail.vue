@@ -103,17 +103,17 @@ const increaseQty = () => {
 }
 
 const addToCart = () => {
-  alert(`Đã thêm ${quantity.value} sản phẩm vào giỏ hàng`)
+  window.toast.success(`Đã thêm ${quantity.value} sản phẩm vào giỏ hàng`)
   quantity.value = 1
 }
 
 const buyNow = () => {
-  alert(`Mua ngay ${quantity.value} sản phẩm`)
+  window.toast.info(`Mua ngay ${quantity.value} sản phẩm`)
 }
 
 const copyVoucher = (code) => {
   navigator.clipboard?.writeText(code)
-  alert(`Đã sao chép mã: ${code}`)
+  window.toast.success(`Đã sao chép mã: ${code}`)
 }
 
 const logout = () => {

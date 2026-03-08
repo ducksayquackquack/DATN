@@ -2,12 +2,18 @@
 import { ref, onMounted, computed } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import axios from "axios"
+import { useToast } from "../../../composables/useToast"
+import VoucherSelector from "../../../components/voucher/VoucherSelector.vue"
 
 const route = useRoute()
 const router = useRouter()
 
+const { success, error } = useToast()
+
 const id = route.params.id
-const isCreate = !id
+const isCreate = !id || id === 'create'
+
+console.log('HoaDonDetail mounted:', { id, isCreate, routeParams: route.params })
 
 const hoaDon = ref({
   maHoaDon: "",
@@ -18,7 +24,9 @@ const hoaDon = ref({
   trangThai: "Chờ xác nhận",
   phuongThucThanhToan: "COD",
   phiShip: 0,
-  ghiChu: ""
+  ghiChu: "",
+  nhanVien: { id: 1 },  // Default employee ID
+  khachHang: { id: 1 }  // Default customer ID
 })
 
 const chiTietList = ref([])
@@ -30,6 +38,10 @@ const ghiChu = ref("")
 const selectedProduct = ref("")
 const selectedQuantity = ref(1)
 
+// Voucher state
+const selectedVoucher = ref(null)
+const voucherDiscount = ref(0)
+
 const loading = ref(false)
 const showAddProduct = ref(false)
 
@@ -40,16 +52,23 @@ const PRODUCT_API = "http://localhost:8080/api/san-pham"
 
 const loadData = async () => {
   loading.value = true
+  console.log('loadData called:', { id, isCreate })
 
   try {
     // Always load products
+    console.log('Fetching products from:', PRODUCT_API)
     const productsRes = await axios.get(PRODUCT_API)
     sanPhamList.value = Array.isArray(productsRes.data) 
       ? productsRes.data 
       : (productsRes.data.content || [])
+    console.log('Products loaded:', sanPhamList.value.length)
 
-    if (!id) return
+    if (!id || id === 'create') {
+      console.log('Create mode - skipping invoice load')
+      return
+    }
 
+    console.log('Fetching invoice:', id)
     const hdRes = await axios.get(`${API}/${id}`)
     hoaDon.value = hdRes.data
 
@@ -77,31 +96,38 @@ const loadData = async () => {
       chiTietList.value = []
     }
   }
-  catch {
-    console.error("Không load được hóa đơn")
+  catch (error) {
+    console.error("Không load được hóa đơn", error)
   }
   finally {
     loading.value = false
+    console.log('loadData finished')
   }
 }
 
 const addProduct = async () => {
   if (!selectedProduct.value || !selectedQuantity.value) {
-    alert("Vui lòng chọn sản phẩm và số lượng")
+    error("Vui lòng chọn sản phẩm và số lượng")
     return
   }
 
   const product = sanPhamList.value.find(p => p.id == selectedProduct.value)
   if (!product) return
 
-  // Get price from variants first, then fallback to product price
+  // Get first variant
   const variants = product.sanPhamChiTiets || []
   const firstVariant = variants.length > 0 ? variants[0] : null
-  const giaBan = firstVariant?.giaBan ?? product.giaBan ?? 0
+  
+  if (!firstVariant || !firstVariant.id) {
+    error("Sản phẩm không có biến thể")
+    return
+  }
+
+  const giaBan = firstVariant.giaBan ?? 0
 
   const existingItem = chiTietList.value.find(
-    item => (item.sanPhamChiTietId == selectedProduct.value || 
-             item.sanPhamChiTiet?.id == selectedProduct.value)
+    item => (item.sanPhamChiTietId == firstVariant.id || 
+             item.sanPhamChiTiet?.id == firstVariant.id)
   )
 
   if (existingItem) {
@@ -109,13 +135,13 @@ const addProduct = async () => {
   } else {
     chiTietList.value.push({
       sanPhamChiTiet: {
-        id: product.id,
+        id: firstVariant.id,
         giaBan: giaBan,
         sanPham: {
           tenSanPham: product.tenSanPham
         }
       },
-      sanPhamChiTietId: product.id,
+      sanPhamChiTietId: firstVariant.id,
       soLuong: parseInt(selectedQuantity.value),
       donGia: giaBan
     })
@@ -169,54 +195,101 @@ const subtotal = computed(() => {
 
 })
 
+const totalAfterDiscount = computed(() => {
+  return subtotal.value - voucherDiscount.value + (hoaDon.value.phiShip || 0)
+})
+
+// Voucher handlers
+const handleVoucherUpdate = (voucher) => {
+  selectedVoucher.value = voucher
+}
+
+const handleDiscountChanged = (discount) => {
+  voucherDiscount.value = discount
+}
+
 
 
 const handleSave = async () => {
 
   if (loading.value) return
 
+  console.log('handleSave called:', { isCreate, chiTietCount: chiTietList.value.length })
+
   loading.value = true
 
   try {
 
-    const payload = {
-      ...hoaDon.value,
-      trangThai: selectedTrangThai.value,
-      phuongThucThanhToan: selectedPTTT.value,
-      ghiChu: ghiChu.value || hoaDon.value.ghiChu
-    }
-
+  const payload = {
+    tenKhachHang: hoaDon.value.tenKhachHang,
+    soDienThoaiNhanHang: hoaDon.value.soDienThoaiNhanHang,
+    diaChiNhanHang: hoaDon.value.diaChiNhanHang,
+    trangThai: selectedTrangThai.value,
+    phuongThucThanhToan: selectedPTTT.value,
+    ghiChu: ghiChu.value || hoaDon.value.ghiChu,
+    phiShip: hoaDon.value.phiShip || 0,
+    giamGia: voucherDiscount.value,
+    thanhTien: totalAfterDiscount.value,
+    nhanVien: { id: 1 },
+    khachHang: { id: 1 },
+    ...(selectedVoucher.value ? { phieuGiamGia: { id: selectedVoucher.value.id } } : {})
+  }
+  
+  console.log('Payload:', payload)
+  
 if (isCreate) {
 
+  console.log('Creating new invoice...')
   const res = await axios.post(API, payload)
   const newHoaDonId = res.data.id
+  console.log('Invoice created with ID:', newHoaDonId)
 
   // Add products to the new invoice
   if (chiTietList.value.length > 0) {
+    console.log('Adding', chiTietList.value.length, 'products...')
     for (const item of chiTietList.value) {
-      await axios.post(`${API}/${newHoaDonId}/chi-tiet`, {
+      const chiTietPayload = {
         sanPhamChiTietId: item.sanPhamChiTiet?.id || item.sanPhamChiTietId,
-        soLuong: item.soLuong,
-        donGia: item.donGia || item.sanPhamChiTiet?.giaBan
-      })
+        soLuong: item.soLuong
+      }
+      console.log('Adding product:', chiTietPayload)
+      await axios.post(`${API}/${newHoaDonId}/chi-tiet`, chiTietPayload)
     }
+    console.log('All products added')
   }
 
-  alert("Tạo hóa đơn thành công")
+  success("Tạo hóa đơn thành công")
 
-  router.push('/admin/hoa-don/list?refresh=' + Date.now())
+  setTimeout(() => {
+    router.push('/admin/hoa-don/list?refresh=' + Date.now())
+  }, 1000)
 
 }
     else {
       await axios.put(`${API}/${id}`, payload)
-      alert("Cập nhật thành công")
-      router.push('/admin/hoa-don/list?refresh=' + Date.now())
+      success("Cập nhật thành công")
+      
+      setTimeout(() => {
+        router.push('/admin/hoa-don/list?refresh=' + Date.now())
+      }, 1000)
     }
 
   }
   catch (error) {
-    console.error(error)
-    alert("Lưu hóa đơn thất bại: " + (error.response?.data?.message || error.message))
+    console.error("Save error:", error)
+    console.error("Error response:", error.response?.data)
+    console.error("Error status:", error.response?.status)
+    
+    let errorMsg = "Lưu hóa đơn thất bại: "
+    if (err.response?.data?.message) {
+      errorMsg += err.response.data.message
+    } else if (err.response?.data) {
+      errorMsg += JSON.stringify(err.response.data)
+    } else {
+      errorMsg += err.message
+    }
+    
+    error(errorMsg)
   }
   finally {
     loading.value = false
@@ -228,16 +301,33 @@ if (isCreate) {
 
 const handleDelete = async () => {
 
-  if (!hoaDon.value) return
+  if (!hoaDon.value || !id) return
+  
+  const confirmDelete = confirm(
+    `Bạn có chắc chắn muốn xóa hóa đơn ${hoaDon.value.maHoaDon}?\n\n` +
+    `Khách hàng: ${hoaDon.value.tenKhachHang}\n` +
+    `Tổng tiền: ${formatCurrency(hoaDon.value.thanhTien || 0)}\n\n` +
+    `Hành động này không thể hoàn tác!`
+  )
+  
+  if (!confirmDelete) return
 
   loading.value = true
 
   try {
 
     await axios.delete(`${API}/${id}`)
+    
+    success("Xóa hóa đơn thành công")
 
-    router.push("/admin/hoa-don/list")
+    setTimeout(() => {
+      router.push("/admin/hoa-don/list?refresh=" + Date.now())
+    }, 1000)
 
+  }
+  catch (err) {
+    console.error("Delete error:", err)
+    error("Xóa hóa đơn thất bại: " + (err.response?.data?.message || err.message))
   }
   finally {
 
@@ -287,6 +377,15 @@ const handlePrint = () => {
 
             <button class="btn" @click="router.push('/admin/hoa-don/list')">
               ← Quay lại
+            </button>
+
+            <button 
+              v-if="!isCreate"
+              class="btn danger" 
+              @click="handleDelete"
+              :disabled="loading"
+            >
+              🗑️ Xóa
             </button>
 
             <button class="btn" @click="handlePrint">
@@ -612,8 +711,27 @@ const handlePrint = () => {
 
                       <span>Phí ship</span>
 
-                      <span>
+                      <input
+                        v-if="isCreate"
+                        v-model.number="hoaDon.phiShip"
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                      />
+
+                      <span v-else>
                         {{ formatCurrency(hoaDon.phiShip) }}
+                      </span>
+                      
+                    </div>
+
+                    <!-- Voucher Discount -->
+                    <div v-if="voucherDiscount > 0" class="row-between muted" style="color: #dc2626;">
+
+                      <span>Giảm giá</span>
+
+                      <span>
+                        -{{ formatCurrency(voucherDiscount) }}
                       </span>
 
                     </div>
@@ -631,9 +749,7 @@ const handlePrint = () => {
                       <span>
 
                         {{
-                          formatCurrency(
-                            subtotal + (hoaDon.phiShip || 0)
-                          )
+                          formatCurrency(totalAfterDiscount)
                         }}
 
                       </span>
@@ -664,6 +780,17 @@ const handlePrint = () => {
 
                 </div>
 
+              </div>
+
+              <!-- Voucher Selector (only for create mode) -->
+              <div v-if="isCreate" style="margin-top: 16px;">
+                <VoucherSelector
+                  :subtotal="subtotal"
+                  :customerId="hoaDon.khachHang?.id"
+                  :autoSelect="true"
+                  @update:voucher="handleVoucherUpdate"
+                  @discount-changed="handleDiscountChanged"
+                />
               </div>
 
             </div>

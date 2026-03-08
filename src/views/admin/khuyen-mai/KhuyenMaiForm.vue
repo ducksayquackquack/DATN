@@ -64,92 +64,266 @@ async function save() {
 </script>
 
 <template>
-  <main class="wrap">
-    <div class="card">
-      <div class="head">
-        <h1>Form khuyến mãi</h1>
-
-        <div style="display:flex;gap:10px">
-          <button type="button" class="btn" @click="goBack">
-            ← Quay lại
-          </button>
-
-          <button type="button" class="btn primary" @click="save">
-            Lưu
-          </button>
-        </div>
+  <div class="form-page">
+    <div class="page-header">
+      <h1 class="page-title">{{ id ? 'Cập nhật' : 'Tạo mới' }} khuyến mãi</h1>
+      <div class="header-actions">
+        <button class="btn-secondary" @click="goBack">
+          <span class="material-icons-outlined">arrow_back</span>
+          Quay lại
+        </button>
+        <button class="btn-primary" @click="save">
+          <span class="material-icons-outlined">save</span>
+          Lưu
+        </button>
       </div>
+    </div>
 
-      <div class="body">
-        <div class="grid cols2">
-
-          <div class="field">
-            <label>Mã khuyến mãi</label>
-            <input class="input" v-model="form.maKhuyenMai" />
+    <div class="form-card">
+      <div class="form-section">
+        <h3 class="section-title">Thông tin khuyến mãi</h3>
+        
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">
+              Mã khuyến mãi <span class="required">*</span>
+            </label>
+            <input 
+              v-model="form.maKhuyenMai" 
+              class="form-input" 
+              placeholder="Nhập mã khuyến mãi..."
+            />
           </div>
 
-          <div class="field">
-            <label>Tên chương trình</label>
-            <input class="input" v-model="form.tenKhuyenMai" />
+          <div class="form-group">
+            <label class="form-label">
+              Tên chương trình <span class="required">*</span>
+            </label>
+            <input 
+              v-model="form.tenKhuyenMai" 
+              class="form-input" 
+              placeholder="Nhập tên chương trình..."
+            />
           </div>
 
-          <div class="field">
-            <label>Giá trị giảm</label>
-            <input class="input" v-model="form.giaTri" type="number" />
+          <div class="form-group">
+            <label class="form-label">
+              Giá trị giảm <span class="required">*</span>
+            </label>
+            <input 
+              v-model="form.giaTri" 
+              class="form-input" 
+              type="number" 
+              placeholder="Nhập giá trị..."
+            />
+            <p class="form-hint">Ví dụ: 20 (cho 20%), 50000 (cho 50,000đ)</p>
           </div>
 
-          <div class="field">
-            <label>Ngày bắt đầu</label>
-            <input class="input" v-model="form.ngayBatDau" type="date" />
-          </div>
-
-          <div class="field">
-            <label>Ngày kết thúc</label>
-            <input class="input" v-model="form.ngayKetThuc" type="date" />
-          </div>
-
-          <div class="field">
-            <label>Trạng thái</label>
-            <select
-              class="input"
-              :class="form.trangThai === 'Hoạt động' ? 'status-ok' : 'status-bad'"
-              v-model="form.trangThai"
+          <div class="form-group">
+            <label class="form-label">
+              Trạng thái <span class="required">*</span>
+            </label>
+            <select 
+              v-model="form.trangThai" 
+              class="form-select"
+              :class="form.trangThai === 'Hoạt động' ? 'status-active' : 'status-inactive'"
             >
-              <option>Hoạt động</option>
-              <option>Ngừng hoạt động</option>
+              <option value="Hoạt động">Hoạt động</option>
+              <option value="Ngừng hoạt động">Ngừng hoạt động</option>
             </select>
           </div>
 
+          <div class="form-group">
+            <label class="form-label">
+              Ngày bắt đầu <span class="required">*</span>
+            </label>
+            <input 
+              v-model="form.ngayBatDau" 
+              class="form-input" 
+              type="date"
+              @click="$event.target.showPicker()"
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">
+              Ngày kết thúc <span class="required">*</span>
+            </label>
+            <input 
+              v-model="form.ngayKetThuc" 
+              class="form-input" 
+              type="date"
+              @click="$event.target.showPicker()"
+            />
+          </div>
         </div>
       </div>
     </div>
-  </main>
+  </div>
 </template>
 
 <style scoped>
-.input {
-  width: 100%;
-  padding: 10px 12px;
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons+Outlined');
+
+.form-page {
+  padding: 24px;
+  background: #f8fafc;
+  min-height: 100vh;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-secondary,
+.btn-primary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border: none;
   border-radius: 10px;
-  border: 1px solid #d8dee9;
-  background: #fff;
   font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
 }
-.input:focus {
+
+.btn-secondary {
+  background: white;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.btn-secondary:hover {
+  background: #f3f4f6;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.btn-secondary .material-icons-outlined,
+.btn-primary .material-icons-outlined {
+  font-size: 20px;
+}
+
+.form-card {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 24px;
+}
+
+.form-section {
+  margin-bottom: 32px;
+}
+
+.form-section:last-child {
+  margin-bottom: 0;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #f3f4f6;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+@media (max-width: 768px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.required {
+  color: #dc2626;
+}
+
+.form-input,
+.form-select {
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 14px;
+  color: #111827;
   outline: none;
-  border-color: #4f46e5;
+  transition: all 0.2s;
+  background: white;
 }
-.status-ok {
+
+.form-input:focus,
+.form-select:focus {
+  border-color: #1f9c5b;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-input::placeholder {
+  color: #9ca3af;
+}
+
+.form-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.form-select {
+  cursor: pointer;
+}
+
+.status-active {
   background: #dcfce7;
   color: #166534;
   border-color: #86efac;
-  font-weight: 500;
+  font-weight: 600;
 }
 
-.status-bad {
+.status-inactive {
   background: #fee2e2;
   color: #991b1b;
   border-color: #fca5a5;
-  font-weight: 500;
+  font-weight: 600;
 }
 </style>

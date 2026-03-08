@@ -266,6 +266,6 @@ const year = new Date().getFullYear()
 const note = ref('')
 
 function toast(msg) {
-  alert(msg)
+  window.toast.info(msg)
 }
 </script>

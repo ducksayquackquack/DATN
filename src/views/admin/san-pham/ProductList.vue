@@ -23,14 +23,15 @@ function formatCurrency(value) {
 async function loadData() {
   const res = await getAllSanPham()
 
+  console.log(res.data)
+
   list.value = res.data.map(item => {
     const variants = item.sanPhamChiTiets || []
 
-    const totalTon = variants.reduce(
-      (sum, v) => sum + (v.soLuong || 0),
-      0
-    )
-
+const totalTon =
+  variants.length > 0
+    ? variants.reduce((sum, v) => sum + (v.soLuong || 0), 0)
+    : item.soLuong ?? 0
     const firstVariant = variants.length > 0 ? variants[0] : null
 
     const loaiName =
@@ -44,10 +45,15 @@ async function loadData() {
       name: item.tenSanPham,
       description: item.moTa,
 
-      gia:
-        firstVariant?.giaBan ??
-        item.giaBan ??
-        0,
+      // gia:
+      //   firstVariant?.giaBan ??
+      //   item.giaBan ??
+      //   item.gia ??
+      //   0,
+
+gia:
+  firstVariant?.giaBan ??
+  0,
 
       ton: totalTon ?? 0,
 
@@ -95,7 +101,7 @@ async function remove(id) {
     await loadData()
   } catch (err) {
     console.error("Delete failed:", err)
-    alert("Không thể xoá sản phẩm")
+    window.toast.error("Không thể xoá sản phẩm")
   }
 }
 </script>

@@ -23,6 +23,7 @@ import KhachHangForm from "../views/admin/khach-hang/KhachHangForm.vue"
 
 import KhuyenMaiList from "../views/admin/khuyen-mai/KhuyenMaiList.vue"
 import KhuyenMaiForm from "../views/admin/khuyen-mai/KhuyenMaiForm.vue"
+import VoucherForm from "../views/admin/khuyen-mai/VoucherForm.vue"
 
 import KichThuocList from "../views/admin/kich-thuoc/KichThuocList.vue"
 import KichThuocForm from "../views/admin/kich-thuoc/KichThuocForm.vue"
@@ -101,8 +102,9 @@ const routes = [
       /* HOA DON */
 
       { path: "hoa-don/list", component: HoaDonList },
-      { path: "hoa-don/detail", component: HoaDonDetail },
+      { path: "hoa-don/detail/create", component: HoaDonDetail },
       { path: "hoa-don/detail/:id", component: HoaDonDetail },
+      { path: "hoa-don/detail", component: HoaDonDetail },
 
       /* DANH MUC */
 
@@ -121,6 +123,8 @@ const routes = [
       { path: "khuyen-mai/list", component: KhuyenMaiList },
       { path: "khuyen-mai/form", component: KhuyenMaiForm },
       { path: "khuyen-mai/form/:id", component: KhuyenMaiForm },
+      { path: "khuyen-mai/voucher/new", component: VoucherForm },
+      { path: "khuyen-mai/voucher/:id", component: VoucherForm },
 
       /* SIZE */
 

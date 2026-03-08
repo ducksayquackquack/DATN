@@ -16,7 +16,7 @@ function goBack() {
 }
 
 function saveDraft() {
-  alert("Lưu nháp (demo)")
+  window.toast.info("Lưu nháp (demo)")
 }
 
 const form = reactive({
@@ -24,11 +24,16 @@ const form = reactive({
   name: "",
   description: "",
   status: "Đang bán",
+
   giaBan: "",
   giaGoc: "",
-  danhMuc: "",
+  ton: 0,
+
   loai: "",
-  tag: ""
+  loaiId: 1,
+
+  tag: "",
+  variantId: null
 })
 
 onMounted(async () => {
@@ -40,6 +45,9 @@ onMounted(async () => {
   const variants = data.sanPhamChiTiets || []
   const firstVariant = variants[0]
 
+  form.variantId = firstVariant?.id || null
+  form.ton = firstVariant?.soLuong ?? 0
+
   form.sku = data.maSanPham
   form.name = data.tenSanPham
   form.description = data.moTa
@@ -50,10 +58,10 @@ onMounted(async () => {
 
   form.giaGoc = data.giaGoc ?? ""
 
-  form.danhMuc =
-    firstVariant?.danhMuc?.tenDanhMuc ||
-    data.danhMuc ||
-    ""
+  // form.danhMuc =
+  //   firstVariant?.danhMuc?.tenDanhMuc ||
+  //   data.danhMuc ||
+  //   ""
 
   form.loai =
     firstVariant?.loai?.tenLoai ||
@@ -74,27 +82,47 @@ async function saveProduct() {
       maSanPham: form.sku,
       tenSanPham: form.name,
       moTa: form.description,
-      giaBan: Number(form.giaBan),
-      giaGoc: form.giaGoc ? Number(form.giaGoc) : null,
-      danhMuc: form.danhMuc,
-      loai: form.loai,
-      tag: form.tag,
       trangThai:
         form.status === "Đang bán"
           ? "Hoạt động"
-          : "Ngừng hoạt động"
+          : "Ngừng hoạt động",
+
+      sanPhamChiTiets: [
+        {
+          id: form.variantId,
+
+          ma: form.sku + "-01",
+          giaNhap: Number(form.giaGoc) || 0,
+          giaBan: Number(form.giaBan),
+          soLuong: Number(form.ton),
+
+          chatLieu: { id: 1 },
+          mauSac: { id: 1 },
+          kichThuoc: { id: 2 },
+          hang: { id: 1 },
+          xuatSu: { id: 1 },
+          danhMuc: { id: 1 },
+          loai: { id: form.loaiId },
+
+          trangThai: "Hoạt động"
+        }
+      ]
     }
 
     if (id) {
       await updateSanPham(id, payload)
+      window.toast.success("Cập nhật sản phẩm thành công")
     } else {
       await createSanPham(payload)
+      window.toast.success("Tạo sản phẩm thành công")
     }
 
-    router.push("/admin/san-pham/list")
+    setTimeout(() => {
+      router.push("/admin/san-pham/list")
+    }, 1000)
   } catch (err) {
     console.error("SAVE ERROR:", err)
-    alert("Lưu thất bại!")
+    window.toast.error("Lưu thất bại: " + (err.response?.data?.message || err.message))
   }
 }
 </script>
@@ -118,7 +146,7 @@ async function saveProduct() {
           Lưu nháp
         </button>
 
-        <button type="button" class="btn primary" @click="saveProduct">
+        <button class="btn primary" @click.prevent="saveProduct">
           Lưu
         </button>
       </div>
@@ -143,26 +171,26 @@ async function saveProduct() {
           <input
             v-model="form.sku"
             type="text"
-            placeholder="VD: SP001"
+            :readonly="!!id"
+            :placeholder="id ? '' : 'VD: SP001'"
           />
         </div>
 
-        <div class="field">
+        <!-- <div class="field">
           <label>Danh mục</label>
           <input
             v-model="form.danhMuc"
             type="text"
             placeholder="VD: Áo"
           />
-        </div>
+        </div> -->
 
         <div class="field">
           <label>Loại / Form</label>
-          <select v-model="form.loai">
-            <option value="">-- Chọn loại --</option>
-            <option value="Hoodie Jacket">Hoodie Jacket</option>
-            <option value="Bomber Jacket">Bomber Jacket</option>
-            <option value="Coach Jacket">Coach Jacket</option>
+          <select v-model.number="form.loaiId">
+            <option :value="1">Hoodie Jacket</option>
+            <option :value="2">Bomber Jacket</option>
+            <option :value="3">Coach Jacket</option>
           </select>
         </div>
 
@@ -173,6 +201,15 @@ async function saveProduct() {
             type="number"
             placeholder="329000"
           />
+        </div>
+
+        <div class="field">
+        <label>Tồn kho</label>
+        <input
+          v-model="form.ton"
+          type="number"
+          placeholder="0"
+        />
         </div>
 
         <div class="field">

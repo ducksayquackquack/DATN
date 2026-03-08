@@ -17,7 +17,7 @@ const toDate = ref("")
 const sortOption = ref("Mới nhất")
 
 const currentPage = ref(1)
-const pageSize = 100
+const pageSize = 10
 
 const loadData = async () => {
   loading.value = true
@@ -112,7 +112,7 @@ const viewDetail = (id) => {
 }
 
 const printInvoice = () => {
-  alert("In hoá đơn (demo)")
+  window.toast.info("In hoá đơn (demo)")
 }
 </script>
 
@@ -129,12 +129,12 @@ const printInvoice = () => {
           </small>
         </div>
 
-      <!-- <router-link
+      <router-link
         class="btn primary"
-        to="/admin/hoa-don/detail"
+        to="/admin/hoa-don/detail/create"
       >
         + Tạo hoá đơn
-      </router-link> -->
+      </router-link>
       </div>
 
       <div class="body">
