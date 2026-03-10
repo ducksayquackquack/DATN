@@ -176,9 +176,7 @@ const submitOrder = async () => {
 
 }
 
-/* =============================
-   QUAY LẠI
-============================= */
+
 
 const backHome = () => {
   router.push("/home")

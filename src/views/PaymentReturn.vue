@@ -17,14 +17,14 @@ onMounted(async () => {
 
     if (!order) return
 
-    // Tránh tạo hóa đơn nhiều lần khi refresh - dùng orderId làm key
+    
     const invoiceKey = `invoice_${order.id}`
     const created = localStorage.getItem(invoiceKey)
 
     if (created) return
 
     try {
-      // Lưu hóa đơn vào localStorage (giống như thanh toán tiền mặt)
+      
       const invoices = JSON.parse(localStorage.getItem("hoaDonList")) || []
       
       const invoice = {

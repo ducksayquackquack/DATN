@@ -161,7 +161,7 @@ async function handleUpdate() {
       return
     }
 
-    // Nếu không có trong localStorage, thử cập nhật backend
+    
     const payload = {
       ...hoaDon.value,
       trangThai: selectedTrangThai.value,

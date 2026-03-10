@@ -220,7 +220,7 @@ const printInvoice = () => {
           </div>
         </div>
 
-        <!-- TABLE -->
+       
         <table class="table">
           <thead>
             <tr>
