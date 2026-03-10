@@ -1,0 +1,222 @@
+<script setup>
+import { reactive, onMounted } from "vue"
+import { useRouter, useRoute } from "vue-router"
+import { ArrowLeft, Save, Pencil, Trash2 } from "lucide-vue-next"
+import {
+  createLoai,
+  updateLoai,
+  getLoaiById
+} from "../../../services/loaiService"
+
+const router = useRouter()
+const route = useRoute()
+const id = route.params.id
+
+const form = reactive({
+  code: '',
+  name: '',
+  applyFor: 'Tất cả',
+  status: 'Active',
+  description: ''
+})
+
+onMounted(async () => {
+  if (id) {
+    const res = await getLoaiById(id)
+    if (res.data) {
+      form.code = res.data.maLoai || ''
+      form.name = res.data.tenLoai || ''
+      form.status =
+        res.data.trangThai === 'Ngừng hoạt động'
+          ? 'Inactive'
+          : 'Active'
+      form.description = res.data.moTa || ''
+    }
+  }
+})
+
+async function save() {
+  const payload = {
+    maLoai: form.code,
+    tenLoai: form.name,
+    trangThai:
+      form.status === 'Inactive'
+        ? 'Ngừng hoạt động'
+        : 'Hoạt động',
+    moTa: form.description
+  }
+
+  if (id) {
+    await updateLoai(id, payload)
+  } else {
+    await createLoai(payload)
+  }
+
+  router.push('/admin/loai/list')
+}
+</script>
+
+<template>
+  <main class="wrap">
+    <div class="card">
+
+      <!-- HEADER -->
+      <div class="head">
+        <div>
+          <h1>Form loại</h1>
+          <small class="muted">
+            Tạo mới / cập nhật loại (form/fit/kiểu)
+          </small>
+        </div>
+
+        <div style="display:flex;gap:12px;align-items:center">
+          <button
+            class="btn"
+            @click="router.push('/admin/loai/list')"
+          >
+            <ArrowLeft size="16" style="margin-right:6px" />
+            Quay lại
+          </button>
+
+          <button
+            class="btn primary"
+            @click="save"
+          >
+            <Save size="16" style="margin-right:6px" />
+            Lưu
+          </button>
+        </div>
+      </div>
+
+      <div class="body">
+
+        <!-- FORM GRID -->
+        <div class="grid cols2">
+
+          <div class="field">
+            <label>Mã loại</label>
+            <input
+              v-model="form.code"
+              type="text"
+              placeholder="VD: L010"
+            />
+            <small class="muted">
+              Có thể để BE tự sinh
+            </small>
+          </div>
+
+          <div class="field">
+            <label>Tên loại</label>
+            <input
+              v-model="form.name"
+              type="text"
+              placeholder="VD: Slim Fit / Regular / Oversize"
+            />
+          </div>
+
+          <div class="field">
+            <label>Áp dụng cho</label>
+            <select v-model="form.applyFor">
+              <option>Tất cả</option>
+              <option>Áo</option>
+              <option>Quần</option>
+              <option>Phụ kiện</option>
+            </select>
+            <small class="muted">
+              Tuỳ model BE, không cần thì bỏ.
+            </small>
+          </div>
+
+          <div class="field">
+            <label>Trạng thái</label>
+            <select v-model="form.status">
+              <option>Active</option>
+              <option>Inactive</option>
+            </select>
+          </div>
+
+          <div class="field" style="grid-column: 1 / -1">
+            <label>Mô tả</label>
+            <textarea
+              v-model="form.description"
+              placeholder="Mô tả: đặc điểm form/fit, size gợi ý..."
+            ></textarea>
+          </div>
+
+        </div>
+
+        <hr class="sep"/>
+
+        <!-- SIZE MAP CARD -->
+        <div class="card" style="border-radius:14px">
+          <div class="head">
+            <h2>Quy đổi size (tuỳ chọn)</h2>
+            <small class="muted">
+              Nếu anh muốn map size theo chiều cao/cân nặng
+            </small>
+          </div>
+
+          <div class="body">
+
+            <table class="table">
+              <thead>
+                <tr>
+                  <th style="width:140px">SIZE</th>
+                  <th>GỢI Ý</th>
+                  <th style="width:160px" class="right">THAO TÁC</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                <tr>
+                  <td><b>M</b></td>
+                  <td class="muted">
+                    1m65–1m72 • 55–65kg
+                  </td>
+                  <td class="right">
+                    <div class="actions">
+                      <button class="iconbtn">
+                        <Pencil size="16" />
+                      </button>
+
+                      <button class="iconbtn">
+                        <Trash2 size="16" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <button class="btn">
+              + Thêm quy đổi
+            </button>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</template>
+
+<style scoped>
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+.iconbtn {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+</style>
