@@ -1,0 +1,65 @@
+/* Layout for employee (reuse admin look) */
+.app{
+  display:grid;
+  grid-template-columns: 280px 1fr;
+  min-height:100vh;
+}
+.sidebar{
+  border-right:1px solid rgba(255,255,255,.06);
+  background: rgba(0,0,0,.18);
+  backdrop-filter: blur(10px);
+  padding:14px;
+  position:sticky; top:0; height:100vh;
+}
+.brand{
+  display:flex; gap:10px; align-items:center;
+  padding:10px 10px 14px;
+  border-bottom:1px solid rgba(255,255,255,.06);
+  margin-bottom:12px;
+}
+.logo{
+  width:38px;height:38px;border-radius:14px;
+  background: linear-gradient(135deg, rgba(255,204,0,.95), rgba(94,234,212,.85));
+  box-shadow: var(--shadow);
+}
+.navgrp{margin-top:12px}
+.navgrp h4{
+  margin:14px 10px 8px;
+  font-size:12px;
+  letter-spacing:.4px;
+  text-transform:uppercase;
+  color:rgba(238,242,255,.75);
+}
+.nav a{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 10px;
+  border-radius:12px;
+  border:1px solid transparent;
+  color:rgba(238,242,255,.9);
+}
+.nav a span.left{display:flex; gap:10px; align-items:center}
+.nav a:hover{background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.06)}
+.nav a.active{
+  background: linear-gradient(135deg, rgba(255,204,0,.14), rgba(94,234,212,.08));
+  border-color: rgba(255,255,255,.08);
+}
+
+.content{display:flex; flex-direction:column; min-width:0}
+.wrap{max-width: var(--max); padding:18px}
+
+/* KPI grid */
+.kpi{
+  display:grid; grid-template-columns: repeat(12, 1fr); gap:14px;
+}
+.kpi .card{grid-column: span 3}
+.kpi .num{font-size:26px; font-weight:900; margin-top:8px}
+.kpi .sub{color:var(--muted); font-size:13px}
+
+@media (max-width: 980px){
+  .app{grid-template-columns: 1fr}
+  .sidebar{position:static;height:auto}
+  .kpi .card{grid-column: span 6}
+}
+@media (max-width: 640px){
+  .kpi .card{grid-column: span 12}
+}
