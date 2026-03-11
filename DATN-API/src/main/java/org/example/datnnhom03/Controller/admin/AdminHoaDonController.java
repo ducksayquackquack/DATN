@@ -58,9 +58,7 @@ public class AdminHoaDonController {
         return "redirect:/admin/hoa-don";
     }
 
-    /* =========================
-       OPEN FORM - UPDATE
-       ========================= */
+
     @GetMapping("/edit/{id}")
     public String edit(@PathVariable Integer id, Model model) {
 

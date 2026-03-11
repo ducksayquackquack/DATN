@@ -27,9 +27,7 @@ public class PaymentApiController {
     @Autowired
     private HoaDonRepository hoaDonRepository;
 
-    // ==========================
-    // 1️⃣ Tạo link thanh toán
-    // ==========================
+
     @GetMapping("/create")
     public ResponseEntity<?> createPayment(@RequestParam long amount) {
 

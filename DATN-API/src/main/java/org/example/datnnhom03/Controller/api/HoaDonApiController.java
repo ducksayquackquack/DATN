@@ -31,7 +31,7 @@ public class HoaDonApiController {
         return hoaDonService.findById(id);
     }
 
-    // ⭐ THÊM API CREATE
+
     @PostMapping
     public HoaDon create(@RequestBody HoaDon hoaDon) {
         return hoaDonService.save(hoaDon);
