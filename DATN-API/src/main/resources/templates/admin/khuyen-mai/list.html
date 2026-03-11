@@ -1,0 +1,272 @@
+<!-- File: templates/admin/khuyen-mai/list.html -->
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>Quản lý Khuyến Mãi - DirtyWaves Admin</title>
+
+    <style>
+        /* Button/link style for admin actions (no JS, no external CSS) */
+        .dw-btn {
+            display: inline-block;
+            padding: 8px 12px;
+            border: 1px solid #cfd8df;
+            background: #eef3f6;
+            color: #111827;
+            text-decoration: none;
+            box-sizing: border-box;
+        }
+        .dw-btn:hover {
+            background: #f6f2ea; /* pastel sáng */
+            color: #111827;      /* không làm chìm chữ */
+        }
+
+        .dw-btn-sm {
+            padding: 4px 8px;
+            background: #f4f7f9;
+        }
+
+        .dw-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #ffffff;
+        }
+        .dw-table thead {
+            background: #eef3f6;
+        }
+        .dw-table th, .dw-table td {
+            text-align: left;
+        }
+    </style>
+</head>
+
+<body style="margin:0;background:#f3f6f8;color:#111827;font-family:Arial, Helvetica, sans-serif;">
+<div style="min-height:100vh;display:flex;flex-direction:column;">
+
+    <!-- HEADER (full width) -->
+    <div th:replace="layout/header :: header"></div>
+
+    <!-- BODY: SIDEBAR | CONTENT (flex:1) -->
+    <div style="display:flex;align-items:stretch;flex:1;">
+
+        <!-- SIDEBAR (100vh) -->
+        <div th:replace="layout/sidebar :: sidebar"></div>
+
+        <!-- RIGHT AREA (Content only) -->
+        <div style="flex:1;box-sizing:border-box;padding:18px;">
+
+            <!-- CONTENT (boxed) -->
+            <div style="background:#ffffff;border:1px solid #cfd8df;padding:18px 20px;box-sizing:border-box;">
+
+                <!-- Title (left) + Add button (right, aligned with Action column width) -->
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                    <h1 style="margin:0;font-size:20px;font-weight:600;">Quản lý Khuyến Mãi</h1>
+
+                    <div style="width:140px;text-align:right;">
+                        <a th:href="@{/admin/khuyen-mai/create}" class="dw-btn">+ Thêm</a>
+                    </div>
+                </div>
+
+                <table border="1" cellpadding="8" cellspacing="0" class="dw-table">
+                    <thead>
+                    <tr>
+                        <th>Mã khuyến mãi</th>
+                        <th>Tên khuyến mãi</th>
+                        <th>Giá trị giảm</th>
+                        <th>Ngày bắt đầu</th>
+                        <th>Ngày kết thúc</th>
+                        <th>Trạng thái</th>
+                        <th style="width:140px;">Hành động</th>
+                    </tr>
+                    </thead>
+
+                    <tbody>
+                    <tr th:if="${khuyenMais == null || #lists.isEmpty(khuyenMais)}">
+                        <td colspan="7">Chưa có dữ liệu.</td>
+                    </tr>
+
+                    <tr th:each="km : ${khuyenMais}">
+                        <td th:text="${km.maKhuyenMai}">KM001</td>
+                        <td th:text="${km.tenKhuyenMai}">Tết 2026</td>
+                        <!-- BigDecimal -> tránh .00: hiển thị phần nguyên -->
+                        <td th:text="${#numbers.formatDecimal(km.giaTri, 0, 0) + '%'}">10%</td>
+                        <td th:text="${km.ngayBatDau}">2026-01-01T00:00</td>
+                        <td th:text="${km.ngayKetThuc}">2026-01-31T00:00</td>
+                        <td th:text="${km.trangThai}">Hoạt động</td>
+                        <td>
+                            <a th:href="@{/admin/khuyen-mai/update/{id}(id=${km.id})}" class="dw-btn dw-btn-sm">Sửa</a>
+                            <a th:href="@{/admin/khuyen-mai/delete/{id}(id=${km.id})}"
+                               class="dw-btn dw-btn-sm"
+                               style="margin-left:6px;">
+                                Xóa
+                            </a>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+
+                <!-- Reserved space for pagination (keep this space) -->
+                <div style="display:flex;gap:12px;margin-top:12px;">
+                    <div style="width:50%;"></div>
+                    <div style="flex:1;"></div>
+                </div>
+
+            </div>
+
+            <!-- MODAL (overlay) - chỉ hiển thị khi có dữ liệu form -->
+            <div th:if="${khuyenMai != null}"
+                 style="position:fixed;inset:0;background:rgba(17,24,39,0.35);display:flex;align-items:center;justify-content:center;z-index:9999;">
+
+                <!-- Modal box -->
+                <div style="width:420px;max-width:92vw;background:#ffffff;border:1px solid #cfd8df;box-shadow:0 10px 30px rgba(0,0,0,0.18);box-sizing:border-box;padding:16px 18px;">
+
+                    <h2 th:if="${khuyenMai.id == null}" style="margin:0 0 12px 0;font-size:18px;font-weight:600;">
+                        Thêm Khuyến Mãi
+                    </h2>
+                    <h2 th:if="${khuyenMai.id != null}" style="margin:0 0 12px 0;font-size:18px;font-weight:600;">
+                        Cập Nhật Khuyến Mãi
+                    </h2>
+
+                    <!-- Errors -->
+                    <div th:if="${errors != null && !#lists.isEmpty(errors)}"
+                         style="border:1px solid #cfd8df;background:#f4f7f9;padding:10px 12px;margin-bottom:12px;box-sizing:border-box;">
+                        <div style="font-weight:600;margin-bottom:6px;">Vui lòng kiểm tra lỗi:</div>
+                        <ul style="margin:0;padding-left:18px;">
+                            <li th:each="e : ${errors}" th:text="${e}">Lỗi</li>
+                        </ul>
+                    </div>
+
+                    <!-- FORM CREATE -->
+                    <form th:if="${khuyenMai.id == null}"
+                          th:object="${khuyenMai}"
+                          th:action="@{/admin/khuyen-mai/create}"
+                          method="post">
+
+                        <table cellpadding="6" cellspacing="0" style="width:100%;">
+                            <tr>
+                                <td style="width:140px;">Mã khuyến mãi</td>
+                                <td>
+                                    <input type="text" th:field="*{maKhuyenMai}"
+                                           style="width:100%;padding:8px 10px;border:1px solid #cfd8df;box-sizing:border-box;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Tên khuyến mãi</td>
+                                <td>
+                                    <input type="text" th:field="*{tenKhuyenMai}"
+                                           style="width:100%;padding:8px 10px;border:1px solid #cfd8df;box-sizing:border-box;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Giá trị giảm</td>
+                                <td>
+                                    <input type="number" th:field="*{giaTriGiam}"
+                                           style="width:100%;padding:8px 10px;border:1px solid #cfd8df;box-sizing:border-box;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Ngày bắt đầu</td>
+                                <td>
+                                    <input type="date" th:field="*{ngayBatDau}"
+                                           style="width:100%;padding:8px 10px;border:1px solid #cfd8df;box-sizing:border-box;background:#ffffff;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Ngày kết thúc</td>
+                                <td>
+                                    <input type="date" th:field="*{ngayKetThuc}"
+                                           style="width:100%;padding:8px 10px;border:1px solid #cfd8df;box-sizing:border-box;background:#ffffff;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Trạng thái</td>
+                                <td>
+                                    <select th:field="*{trangThai}"
+                                            style="width:100%;padding:8px 10px;border:1px solid #cfd8df;box-sizing:border-box;background:#ffffff;">
+                                        <option value="Hoạt động">Hoạt động</option>
+                                        <option value="Ngừng">Ngừng</option>
+                                    </select>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+                            <a th:href="@{/admin/khuyen-mai}" class="dw-btn" style="background:#f4f7f9;">Hủy</a>
+                            <button type="submit" class="dw-btn" style="cursor:pointer;">Lưu</button>
+                        </div>
+                    </form>
+
+                    <!-- FORM UPDATE -->
+                    <form th:if="${khuyenMai.id != null}"
+                          th:object="${khuyenMai}"
+                          th:action="@{/admin/khuyen-mai/update/{id}(id=${khuyenMai.id})}"
+                          method="post">
+
+                        <input type="hidden" th:field="*{id}" />
+
+                        <table cellpadding="6" cellspacing="0" style="width:100%;">
+                            <tr>
+                                <td style="width:140px;">Mã khuyến mãi</td>
+                                <td>
+                                    <input type="text" th:field="*{maKhuyenMai}" readonly
+                                           style="width:100%;padding:8px 10px;border:1px solid #cfd8df;box-sizing:border-box;background:#f4f7f9;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Tên khuyến mãi</td>
+                                <td>
+                                    <input type="text" th:field="*{tenKhuyenMai}"
+                                           style="width:100%;padding:8px 10px;border:1px solid #cfd8df;box-sizing:border-box;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Giá trị giảm</td>
+                                <td>
+                                    <input type="number" th:field="*{giaTriGiam}"
+                                           style="width:100%;padding:8px 10px;border:1px solid #cfd8df;box-sizing:border-box;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Ngày bắt đầu</td>
+                                <td>
+                                    <input type="date" th:field="*{ngayBatDau}"
+                                           style="width:100%;padding:8px 10px;border:1px solid #cfd8df;box-sizing:border-box;background:#ffffff;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Ngày kết thúc</td>
+                                <td>
+                                    <input type="date" th:field="*{ngayKetThuc}"
+                                           style="width:100%;padding:8px 10px;border:1px solid #cfd8df;box-sizing:border-box;background:#ffffff;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Trạng thái</td>
+                                <td>
+                                    <select th:field="*{trangThai}"
+                                            style="width:100%;padding:8px 10px;border:1px solid #cfd8df;box-sizing:border-box;background:#ffffff;">
+                                        <option value="Hoạt động">Hoạt động</option>
+                                        <option value="Ngừng">Ngừng</option>
+                                    </select>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+                            <a th:href="@{/admin/khuyen-mai}" class="dw-btn" style="background:#f4f7f9;">Hủy</a>
+                            <button type="submit" class="dw-btn" style="cursor:pointer;">Cập nhật</button>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- FOOTER: full width, bottom of page (not inside content) -->
+    <div th:replace="layout/footer :: footer"></div>
+
+</div>
+</body>
+</html>
