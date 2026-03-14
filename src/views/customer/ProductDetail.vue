@@ -103,6 +103,34 @@ const increaseQty = () => {
 }
 
 const addToCart = () => {
+  // Lấy giỏ hàng hiện tại từ localStorage
+  const cart = JSON.parse(localStorage.getItem("cart")) || {}
+  
+  // Thêm sản phẩm vào giỏ (hoặc tăng số lượng nếu đã có)
+  const productId = product.value.id
+  if (cart[productId]) {
+    cart[productId] += quantity.value
+  } else {
+    cart[productId] = quantity.value
+  }
+  
+  // Lưu lại vào localStorage
+  localStorage.setItem("cart", JSON.stringify(cart))
+  
+  // Lưu thông tin sản phẩm để Checkout có thể hiển thị
+  const products = JSON.parse(localStorage.getItem("products")) || []
+  const existingProduct = products.find(p => p.id == productId)
+  
+  if (!existingProduct) {
+    products.push({
+      id: productId,
+      name: product.value.name,
+      price: product.value.price,
+      img: product.value.images[0]
+    })
+    localStorage.setItem("products", JSON.stringify(products))
+  }
+  
   alert(`Đã thêm ${quantity.value} sản phẩm vào giỏ hàng`)
   quantity.value = 1
 }

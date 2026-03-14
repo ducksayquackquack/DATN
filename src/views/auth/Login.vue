@@ -36,6 +36,10 @@ const login = async () => {
 
     const role = response.data.role
 
+    // Xóa giỏ hàng cũ khi đăng nhập
+    localStorage.removeItem('cart')
+    localStorage.removeItem('products')
+
     if (role === 'ROLE_ADMIN') router.push('/admin')
     else if (role === 'ROLE_EMPLOYEE') router.push('/employee/dashboard')
     else if (role === 'ROLE_CUSTOMER') router.push('/home')

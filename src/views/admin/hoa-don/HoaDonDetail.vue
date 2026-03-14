@@ -139,6 +139,10 @@ async function taoQRThanhToan() {
 }
 
 async function handleUpdate() {
+  if (!confirm("Bạn có chắc muốn cập nhật hóa đơn này không?")) {
+    return
+  }
+
   try {
     // Kiểm tra xem hóa đơn có trong localStorage không
     const localData = JSON.parse(localStorage.getItem("hoaDonList")) || []
