@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from "vue"
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { Eye, ShoppingCart } from "lucide-vue-next"
 import { getAllSanPham } from '../../services/sanPhamService'
@@ -30,6 +30,9 @@ const CART_STORAGE_KEY = "cart"
 const CART_UPDATED_EVENT = "dirtywave:cart-updated"
 
 const activeFilter = ref(null)
+const selectedPriceTier = ref(null)
+const activeMood = ref("Minimal")
+const sectionPulse = ref("")
 const toastMessage = ref("")
 const toastVisible = ref(false)
 let toastTimer = null
@@ -74,11 +77,12 @@ const allProducts = [
 
 const products = ref(allProducts)
 
-watch(() => route.query.category, (cat) => {
+watch(() => route.query.category, async (cat) => {
   if (cat) {
     activeFilter.value = String(cat)
-    const el = document.getElementById("best")
-    if (el) el.scrollIntoView({ behavior: "smooth" })
+    await nextTick()
+    scrollToId("best")
+    pulseSection("best")
   }
 })
 
@@ -116,16 +120,73 @@ const handleNavAnchor = (anchor) => {
 
 const scrollToId = id => {
   const el = document.getElementById(id)
-  if(el) el.scrollIntoView({behavior:"smooth"})
+  if (!el) return
+  const headerOffset = 96
+  const top = el.getBoundingClientRect().top + window.scrollY - headerOffset
+  window.scrollTo({ top, behavior: "smooth" })
+}
+
+const pulseSection = (id) => {
+  sectionPulse.value = id
+  window.setTimeout(() => {
+    if (sectionPulse.value === id) sectionPulse.value = ""
+  }, 700)
 }
 
 const filterBy = cat => {
   activeFilter.value = cat
   scrollToId("best")
+  pulseSection("best")
 }
 
 const clearFilter = () =>
   activeFilter.value = null
+
+const openShop = () => {
+  router.push("/san-pham")
+}
+
+const PRICE_TIERS = [
+  { label: "199K", value: 199000 },
+  { label: "299K", value: 299000 },
+  { label: "399K", value: 399000 }
+]
+
+const STYLE_MOODS = {
+  Minimal: { category: "Bomber", priceCap: 399000, desc: "Gọn, đứng phom, dễ phối hàng ngày." },
+  Street: { category: "Hoodie", priceCap: 499000, desc: "Năng động, layer ổn, hợp dạo phố." },
+  Office: { category: "Coach", priceCap: 799000, desc: "Lịch sự vừa đủ, vẫn giữ chất riêng." }
+}
+
+const outletBaseProducts = computed(() => products.value.filter(x => [11, 12, 13, 14].includes(x.id)))
+
+const filteredOutletProducts = computed(() => {
+  if (!selectedPriceTier.value) return outletBaseProducts.value
+  return outletBaseProducts.value.filter(product => product.price <= selectedPriceTier.value)
+})
+
+const moodDescription = computed(() => STYLE_MOODS[activeMood.value]?.desc || "")
+
+const applyPriceTier = (priceCap) => {
+  selectedPriceTier.value = priceCap
+  scrollToId("outlet")
+  pulseSection("outlet")
+}
+
+const clearPriceTier = () => {
+  selectedPriceTier.value = null
+}
+
+const applyMood = (mood) => {
+  activeMood.value = mood
+  const config = STYLE_MOODS[mood]
+  if (!config) return
+  activeFilter.value = config.category
+  selectedPriceTier.value = config.priceCap
+  scrollToId("best")
+  pulseSection("best")
+  toast(`Đang gợi ý phong cách ${mood}`)
+}
 
 const filteredBest = computed(() => {
   if(!activeFilter.value) return products.value
@@ -266,9 +327,9 @@ onUnmounted(() => {
 <div class="hero-card">
 <div class="hero-visual"></div>
 <div class="content">
-<span class="pill">
+<button class="pill interactive-pill" @click="scrollToId('style-lab')">
 Ưu đãi theo mốc đơn • Freeship
-</span>
+</button>
 
 <h1>
 Tủ đồ tối giản cho nam giới<br/>
@@ -293,9 +354,9 @@ Vào Cửa Hàng
 </div>
 
 <div class="row" style="margin-top:12px">
-<span class="pill">Đổi size nhanh</span>
-<span class="pill">COD toàn quốc</span>
-<span class="pill">Hỗ trợ mỗi ngày</span>
+<button class="pill interactive-pill" @click="toast('Hỗ trợ đổi size trong 7 ngày')">Đổi size nhanh</button>
+<button class="pill interactive-pill" @click="toast('Hỗ trợ COD toàn quốc')">COD toàn quốc</button>
+<button class="pill interactive-pill" @click="scrollToId('stores')">Hỗ trợ mỗi ngày</button>
 </div>
 
 </div>
@@ -303,32 +364,32 @@ Vào Cửa Hàng
 
 <div class="hero-side">
 
-<div class="mini-card">
+<div class="mini-card reveal" @click="scrollToId('new')">
 <span class="badge">NEW</span>
 <div class="bg"></div>
 <h3>Hàng Mới Về</h3>
 <p>Drop mới theo mùa, giữ tinh thần gọn và dễ phối.</p>
 <div style="margin-top:12px">
 <button class="btn"
-@click="scrollToId('new')">
+@click.stop="scrollToId('new')">
 Xem ngay →
 </button>
 </div>
 </div>
 
-<div class="mini-card">
+<div class="mini-card reveal" @click="scrollToId('outlet')">
 <span class="badge">CỬA HÀNG</span>
 <div class="bg"></div>
 <h3>Giá tốt</h3>
 <p>Khung giá rõ ràng cho các món nên có trong tủ đồ hằng ngày.</p>
 <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap">
-<span class="pill">199K</span>
-<span class="pill">299K</span>
-<span class="pill">399K</span>
+<button class="pill interactive-pill" @click.stop="applyPriceTier(199000)">199K</button>
+<button class="pill interactive-pill" @click.stop="applyPriceTier(299000)">299K</button>
+<button class="pill interactive-pill" @click.stop="applyPriceTier(399000)">399K</button>
 </div>
 <div style="margin-top:12px">
 <button class="btn"
-@click="scrollToId('outlet')">
+@click.stop="scrollToId('outlet')">
 Vào Cửa Hàng →
 </button>
 </div>
@@ -348,9 +409,9 @@ Vào Cửa Hàng →
 <div>
 <h2>Danh mục nổi bật</h2>
 </div>
-<a class="btn" href="#all">
+<button class="btn" @click="openShop">
 Xem tất cả →
-</a>
+</button>
 </div>
 
 <div class="tiles featured-cats">
@@ -390,7 +451,7 @@ Xem tất cả →
 </section>
 
 <!-- Best sellers -->
-<section id="best">
+<section id="best" :class="{ 'section-pulse': sectionPulse === 'best' }">
 <div class="container">
 
 <div class="section-head">
@@ -466,38 +527,28 @@ Thêm giỏ
 </div>
 </section>
 
-<!-- Promo band -->
-<section class="promo-band">
-<div class="promo">
+<!-- Style Lab -->
+<section id="style-lab" class="style-lab">
+  <div class="container">
+    <div class="style-lab-wrap reveal">
+      <div>
+        <div class="pill">Style Lab</div>
+        <h3>Chọn mood, nhận gợi ý outfit trong 1 chạm</h3>
+        <p>{{ moodDescription }}</p>
+      </div>
 
-<div>
-<div class="pill">Ưu đãi hôm nay</div>
+      <div class="style-moods">
+        <button class="btn" :class="{ primary: activeMood === 'Minimal' }" @click="applyMood('Minimal')">Minimal</button>
+        <button class="btn" :class="{ primary: activeMood === 'Street' }" @click="applyMood('Street')">Street</button>
+        <button class="btn" :class="{ primary: activeMood === 'Office' }" @click="applyMood('Office')">Office</button>
+      </div>
 
-<p style="margin:8px 0 0">
-Nhập mã <b>DIRTY10</b> giảm <b>10%</b>
-(tối đa <b>50K</b>) •
-<b>Freeship</b> đơn từ <b>399K</b>
-</p>
-
-<small style="display:block;margin-top:6px;color:var(--muted)">
-Áp dụng đến 23:59 hôm nay •
-Không áp dụng sản phẩm giảm sâu / Cửa Hàng
-</small>
-</div>
-
-<div style="display:flex; gap:10px; flex-wrap:wrap">
-<button class="btn primary"
-@click="copyVoucher('DIRTY10')">
-Sao chép mã: DIRTY10
-</button>
-
-<button class="btn"
-@click="scrollToId('best')">
-Mua ngay
-</button>
-</div>
-
-</div>
+      <div class="style-lab-actions">
+        <button class="btn primary" @click="copyVoucher('STYLELAB15')">Sao chép mã: STYLELAB15</button>
+        <button class="btn" @click="openShop">Vào cửa hàng đầy đủ</button>
+      </div>
+    </div>
+  </div>
 </section>
 
 
@@ -508,7 +559,7 @@ Mua ngay
       <div>
         <h2>Hàng Mới Về</h2>
       </div>
-      <a class="btn" href="#all">Xem thêm →</a>
+      <button class="btn" @click="openShop">Xem thêm →</button>
     </div>
 
     <div class="cards">
@@ -553,22 +604,31 @@ Mua ngay
 </section>
 
 <!-- Outlet -->
-<section id="outlet">
+<section id="outlet" :class="{ 'section-pulse': sectionPulse === 'outlet' }">
   <div class="container">
     <div class="section-head">
       <div>
         <h2>Cửa Hàng</h2>
       </div>
-      <div style="display:flex; gap:10px; flex-wrap:wrap">
-        <span class="pill">199K</span>
-        <span class="pill">299K</span>
-        <span class="pill">399K</span>
+      <div class="tier-row">
+        <button
+          v-for="tier in PRICE_TIERS"
+          :key="tier.value"
+          class="pill interactive-pill"
+          :class="{ active: selectedPriceTier === tier.value }"
+          @click="applyPriceTier(tier.value)"
+        >
+          {{ tier.label }}
+        </button>
+        <button v-if="selectedPriceTier" class="pill interactive-pill" @click="clearPriceTier">
+          Bỏ lọc
+        </button>
       </div>
     </div>
 
     <div class="cards">
       <article
-        v-for="p in products.filter(x => [11,12,13,14].includes(x.id))"
+        v-for="p in filteredOutletProducts"
         :key="p.id"
         class="card"
       >
@@ -1035,5 +1095,88 @@ header .container {
   display:flex;
   align-items:center;
   gap:10px;
+}
+
+.interactive-pill {
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.interactive-pill:hover {
+  transform: translateY(-1px);
+}
+
+.interactive-pill.active {
+  background: #111827 !important;
+  color: #fff !important;
+  border-color: #111827 !important;
+}
+
+.style-lab {
+  padding: 22px 0;
+}
+
+.style-lab-wrap {
+  border-radius: 24px;
+  border: 1px solid #e7e7e7;
+  background: linear-gradient(135deg, #fff8f1 0%, #f2f8ff 60%, #fff 100%);
+  box-shadow: 0 18px 40px rgba(17, 24, 39, 0.08);
+  padding: 22px;
+  display: grid;
+  gap: 14px;
+}
+
+.style-lab-wrap h3 {
+  margin: 8px 0 6px;
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+.style-lab-wrap p {
+  margin: 0;
+  color: #475569;
+}
+
+.style-moods,
+.style-lab-actions,
+.tier-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.section-pulse {
+  animation: sectionPulse 0.65s ease;
+}
+
+@keyframes sectionPulse {
+  0% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-6px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  animation: revealIn 0.7s ease forwards;
+}
+
+@keyframes revealIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .style-lab-wrap h3 {
+    font-size: 24px;
+  }
 }
 </style>
