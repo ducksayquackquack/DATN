@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { Bell, Menu, Search, ShoppingCart } from "lucide-vue-next"
 import taiKhoanService from "../services/taiKhoanService"
+import { getAllSanPham } from "../services/sanPhamService"
 import { getKhachHangByTaiKhoanId } from "../services/KhachHangService"
 import { getVietnameseNameByEmail } from "../utils/vietnameseNames"
 import { useNotifications } from "../composables/useNotifications"
@@ -12,6 +13,17 @@ import {
   resolveAccountByRole
 } from "../utils/authContext"
 import logo from "../assets/img/logo/new logo.png?url"
+import img1 from "../assets/img/Jackets/Áo bomber da lộn DirtyWave.jpg?url"
+import img2 from "../assets/img/Jackets/Áo bomber dáng lửng.jpg?url"
+import img3 from "../assets/img/Jackets/Áo bomber giả da DirtyWave.jpg?url"
+import img4 from "../assets/img/Jackets/Áo bomber nhẹ vải cotton DirtyWave.jpg?url"
+import img5 from "../assets/img/Jackets/Áo hoodie kéo khoá dáng hộp DirtyWave.jpg?url"
+import img6 from "../assets/img/Jackets/Áo hoodie kéo khoá in hình DirtyWave.jpg?url"
+import img7 from "../assets/img/Jackets/Áo hoodie kéo khoá Jacket DirtyWave.jpg?url"
+import img8 from "../assets/img/Jackets/Áo khoác coach cách nhiệt vải Timberland.jpg?url"
+import img9 from "../assets/img/Jackets/Áo khoac coach da ASOS DirtyWave.jpg?url"
+import img10 from "../assets/img/Jackets/Áo khoác coach giả da DirtyWave.jpg?url"
+import img11 from "../assets/img/Jackets/Áo khoác coach lông cừu DirtyWave.jpg?url"
 
 const props = defineProps({
   cartCount: { type: Number, default: null }
@@ -25,11 +37,169 @@ const toast = useToast()
 const profileOpen = ref(false)
 const mobileOpen = ref(false)
 const searchQuery = ref("")
+const searchOpen = ref(false)
+const searchLoading = ref(false)
+const searchProducts = ref([])
 const userAvatar = ref("")
 const userDisplayName = ref("Tài khoản")
 const userRoleLabel = ref("Khách hàng")
 const internalCartCount = ref(0)
 const { notifications, unreadCount: notificationCount } = useNotifications("customer")
+
+const toNumber = (value) => {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : 0
+}
+
+const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11]
+
+const fallbackImageFor = (id, code = "") => {
+  const normalizedId = Number(id)
+  if (Number.isFinite(normalizedId) && normalizedId > 0) {
+    return fallbackImages[(normalizedId - 1) % fallbackImages.length]
+  }
+
+  const codeDigits = String(code || "").replace(/\D+/g, "")
+  const codeNumber = Number(codeDigits)
+  if (Number.isFinite(codeNumber) && codeNumber > 0) {
+    return fallbackImages[(codeNumber - 1) % fallbackImages.length]
+  }
+
+  return fallbackImages[0] || logo
+}
+
+const BACKEND_ORIGIN = (import.meta.env.VITE_API_ORIGIN || "http://localhost:8080").replace(/\/$/, "")
+
+const normalizeText = (value = "") => String(value).trim().toLowerCase()
+
+const normalizeKeyword = (value = "") => String(value)
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase()
+  .trim()
+
+const isAbsoluteUrl = (value = "") => /^https?:\/\//i.test(value) || /^data:image\//i.test(value)
+
+const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|bmp|svg)$/i
+
+const looksLikeImagePath = (value = "") => {
+  const raw = String(value || "").trim()
+  if (!raw) return false
+  if (IMAGE_EXT_RE.test(raw)) return true
+  return /uploads?|images?|anh|hinh/i.test(raw)
+}
+
+const toImageUrl = (value) => {
+  if (!value) return ""
+  const raw = String(value).trim()
+  if (!raw) return ""
+
+  if (isAbsoluteUrl(raw)) return raw
+
+  const normalizedSlash = raw.replace(/\\/g, "/")
+
+  const uploadsMatch = normalizedSlash.match(/(?:^|\/)(uploads\/.*)$/i)
+  if (uploadsMatch?.[1]) {
+    return `${BACKEND_ORIGIN}/${uploadsMatch[1]}`
+  }
+
+  if (normalizedSlash.startsWith("/uploads/")) {
+    return `${BACKEND_ORIGIN}${normalizedSlash}`
+  }
+
+  if (normalizedSlash.startsWith("uploads/")) {
+    return `${BACKEND_ORIGIN}/${normalizedSlash}`
+  }
+
+  if (normalizedSlash.startsWith("assets/") || normalizedSlash.startsWith("img/")) {
+    return `/${normalizedSlash}`
+  }
+
+  if (normalizedSlash.startsWith("/")) {
+    return normalizedSlash
+  }
+
+  if (looksLikeImagePath(normalizedSlash) && !normalizedSlash.includes("/")) {
+    return `${BACKEND_ORIGIN}/uploads/${normalizedSlash}`
+  }
+
+  return looksLikeImagePath(normalizedSlash) ? normalizedSlash : ""
+}
+
+const pickImageValue = (entry) => {
+  if (!entry) return ""
+  if (typeof entry === "string") {
+    return looksLikeImagePath(entry) ? toImageUrl(entry) : ""
+  }
+  if (Array.isArray(entry)) {
+    for (const child of entry) {
+      const found = pickImageValue(child)
+      if (found) return found
+    }
+    return ""
+  }
+  if (typeof entry === "object") {
+    const keys = [
+      "anh", "hinhAnh", "image", "imageUrl", "url", "duongDan", "duongDanAnh", "link", "path",
+      "tenFile", "fileName", "src", "thumbnail", "avatar", "anhSanPham", "anhPhu", "duLieuAnh"
+    ]
+    for (const key of keys) {
+      const found = pickImageValue(entry[key])
+      if (found) return found
+    }
+
+    for (const [key, value] of Object.entries(entry)) {
+      if (/anh|hinh|image|img|url|path|file/i.test(key)) {
+        const found = pickImageValue(value)
+        if (found) return found
+      }
+    }
+  }
+  return ""
+}
+
+const normalizeSearchProduct = (item) => {
+  const variants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
+  const variantPrices = variants.map((v) => toNumber(v?.giaBan)).filter((v) => v > 0)
+  const id = Number(item?.id)
+  const code = String(item?.maSanPham || "")
+  const extractedImage = pickImageValue([item?.anh, item?.hinhAnh, item?.images, item?.image, item?.listAnh, item?.anhChinh, variants])
+
+  return {
+    id,
+    name: String(item?.tenSanPham || item?.name || "Sản phẩm"),
+    code,
+    category: String(item?.danhMuc?.tenDanhMuc || item?.loai?.tenLoai || "Thời trang nam"),
+    price: variantPrices.length ? Math.min(...variantPrices) : toNumber(item?.giaBan || item?.gia || 0),
+    image: extractedImage || fallbackImageFor(id, code),
+  }
+}
+
+const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(toNumber(value)) + "đ"
+
+const searchMatches = computed(() => {
+  const keyword = normalizeKeyword(searchQuery.value)
+  if (!keyword) return []
+
+  const list = searchProducts.value
+    .map((item) => {
+      const name = normalizeKeyword(item.name)
+      const code = normalizeKeyword(item.code)
+      const category = normalizeKeyword(item.category)
+      const isMatch = name.includes(keyword) || code.includes(keyword) || category.includes(keyword)
+      if (!isMatch) return null
+
+      let score = 0
+      if (name.startsWith(keyword)) score += 3
+      if (code.startsWith(keyword)) score += 2
+      if (category.startsWith(keyword)) score += 1
+      return { ...item, score }
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "vi"))
+
+  return list.slice(0, 7)
+})
 
 const getNotificationToastKey = () => {
   const userId = String(localStorage.getItem("userId") || "guest").trim() || "guest"
@@ -133,10 +303,40 @@ const navigateTo = (path) => {
 
 const handleSearch = () => {
   if (!searchQuery.value.trim()) {
+    searchOpen.value = false
     router.push("/san-pham")
     return
   }
+  searchOpen.value = false
   router.push({ path: "/san-pham", query: { q: searchQuery.value.trim() } })
+}
+
+const openSearchResultsPage = () => {
+  if (!searchQuery.value.trim()) return
+  searchOpen.value = false
+  router.push({ path: "/san-pham", query: { q: searchQuery.value.trim() } })
+}
+
+const openProductFromSearch = (item) => {
+  if (!item?.id) {
+    openSearchResultsPage()
+    return
+  }
+  searchOpen.value = false
+  router.push(`/product/${item.id}`)
+}
+
+const loadSearchProducts = async () => {
+  searchLoading.value = true
+  try {
+    const response = await getAllSanPham()
+    const source = Array.isArray(response?.data) ? response.data : []
+    searchProducts.value = source.map(normalizeSearchProduct)
+  } catch {
+    searchProducts.value = []
+  } finally {
+    searchLoading.value = false
+  }
 }
 
 const handleCartClick = () => {
@@ -183,7 +383,20 @@ const handleDocumentClick = (event) => {
   if (!target.closest(".sn-profile-wrapper")) {
     profileOpen.value = false
   }
+  if (!target.closest(".sn-search-shell")) {
+    searchOpen.value = false
+  }
 }
+
+const onSearchFocus = () => {
+  if (searchQuery.value.trim()) {
+    searchOpen.value = true
+  }
+}
+
+watch(searchQuery, (value) => {
+  searchOpen.value = !!String(value || "").trim()
+})
 
 const maybeToastNotifications = (count) => {
   const numericCount = Number(count || 0)
@@ -216,7 +429,7 @@ watch([notificationCount, unreadSignature], ([count]) => {
 
 onMounted(async () => {
   refreshCartCount()
-  await loadCurrentUser()
+  await Promise.all([loadCurrentUser(), loadSearchProducts()])
   document.addEventListener("click", handleDocumentClick)
   window.addEventListener("storage", refreshCartCount)
   window.addEventListener(CART_UPDATED_EVENT, refreshCartCount)
@@ -262,10 +475,49 @@ onUnmounted(() => {
         </nav>
 
         <div class="sn-actions">
-          <form class="sn-search" @submit.prevent="handleSearch">
-            <Search :size="18" :stroke-width="2" />
-            <input v-model="searchQuery" type="text" placeholder="Tìm áo, quần, jeans, phụ kiện..." />
-          </form>
+          <div class="sn-search-shell">
+            <form class="sn-search" @submit.prevent="handleSearch">
+              <Search :size="18" :stroke-width="2" />
+              <input
+                v-model="searchQuery"
+                type="text"
+                placeholder="Tìm áo, quần, jeans, phụ kiện..."
+                @focus="onSearchFocus"
+              />
+            </form>
+
+            <div v-if="searchOpen" class="sn-search-dropdown">
+              <div class="sn-search-dropdown__meta">
+                <span v-if="searchLoading">Đang tải sản phẩm...</span>
+                <span v-else-if="searchMatches.length">Tìm thấy {{ searchMatches.length }} kết quả gần nhất</span>
+                <span v-else>Không có kết quả phù hợp</span>
+              </div>
+
+              <div v-if="searchMatches.length" class="sn-search-list">
+                <button
+                  v-for="item in searchMatches"
+                  :key="item.id || `${item.name}-${item.code}`"
+                  type="button"
+                  class="sn-search-item"
+                  @click="openProductFromSearch(item)"
+                >
+                  <div class="sn-search-item__info">
+                    <p class="sn-search-item__category">{{ item.category }}</p>
+                    <h4>{{ item.name }}</h4>
+                    <p class="sn-search-item__meta">{{ item.code || `SP-${item.id || 0}` }}</p>
+                    <strong>{{ formatVND(item.price) }}</strong>
+                  </div>
+                  <div class="sn-search-item__thumb">
+                    <img :src="item.image" :alt="item.name" />
+                  </div>
+                </button>
+              </div>
+
+              <button v-if="searchMatches.length" type="button" class="sn-search-view-all" @click="openSearchResultsPage">
+                Xem toàn bộ kết quả →
+              </button>
+            </div>
+          </div>
 
           <button class="sn-icon-button sn-hamburger" type="button" aria-label="Mở menu" @click="toggleMobileMenu">
             <Menu :size="18" />
@@ -598,6 +850,10 @@ onUnmounted(() => {
   gap: 10px;
 }
 
+.sn-search-shell {
+  position: relative;
+}
+
 .sn-search {
   display: flex;
   align-items: center;
@@ -632,6 +888,126 @@ onUnmounted(() => {
 
 .sn-search input::placeholder {
   color: #9b9094;
+}
+
+.sn-search-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  width: min(620px, 90vw);
+  max-height: 70vh;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid rgba(143, 17, 33, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.99);
+  box-shadow: 0 20px 44px rgba(21, 21, 21, 0.18);
+  z-index: 240;
+  animation: sn-search-drop-in 0.2s ease;
+}
+
+@keyframes sn-search-drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sn-search-dropdown__meta {
+  padding: 4px 6px 10px;
+  color: #6f6a6d;
+  font-size: 13px;
+}
+
+.sn-search-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sn-search-item {
+  width: 100%;
+  border: 1px solid #eddde0;
+  border-radius: 14px;
+  background: #fff;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 116px;
+  gap: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sn-search-item:hover {
+  border-color: rgba(197, 22, 45, 0.38);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(143, 17, 33, 0.1);
+}
+
+.sn-search-item__info {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+}
+
+.sn-search-item__category {
+  margin: 0;
+  font-size: 12px;
+  color: #8f1121;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sn-search-item__info h4 {
+  margin: 0;
+  color: #1b1719;
+  font-size: 15px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.sn-search-item__meta {
+  margin: 0;
+  color: #6f6a6d;
+  font-size: 12px;
+}
+
+.sn-search-item__info strong {
+  color: #c5162d;
+  font-size: 16px;
+}
+
+.sn-search-item__thumb {
+  width: 100%;
+  height: 88px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f8f1f3;
+}
+
+.sn-search-item__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sn-search-view-all {
+  margin-top: 8px;
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #e8d8db;
+  border-radius: 10px;
+  background: #fff;
+  color: #8f1121;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .sn-icon-button {
@@ -832,6 +1208,11 @@ onUnmounted(() => {
 
   .sn-search {
     min-width: 160px;
+  }
+
+  .sn-search-dropdown {
+    width: min(520px, 92vw);
+    left: 0;
   }
 }
 
