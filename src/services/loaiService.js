@@ -1,0 +1,18 @@
+import axios from "axios"
+
+const API = "http://localhost:8080/api/loai"
+
+export const getAllLoai = () =>
+  axios.get(API)
+
+export const getLoaiById = (id) =>
+  axios.get(`${API}/${id}`)
+
+export const createLoai = (data) =>
+  axios.post(API, data)
+
+export const updateLoai = (id, data) =>
+  axios.put(`${API}/${id}`, data)
+
+export const deleteLoai = (id) =>
+  axios.delete(`${API}/${id}`)
