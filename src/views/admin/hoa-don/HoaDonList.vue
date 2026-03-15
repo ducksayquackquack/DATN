@@ -5,9 +5,11 @@ import { getAllHoaDon, updateHoaDon, updateHoaDonBySystemEvent } from "../../../
 import { Eye, Plus, Search } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel, normalizeOrderStatusCode } from "../../../utils/adminStatus"
 import { hasPaymentFlowTag, PAYMENT_FLOW_TAGS } from "../../../utils/paymentWorkflow"
+import { useToast } from "../../../composables/useToast"
 
 const router = useRouter()
 const route = useRoute()
+const { showToast } = useToast()
 const panelBasePath = computed(() => (route.path.startsWith('/employee/') ? '/employee' : '/admin'))
 
 const hoaDons = ref([])
@@ -19,6 +21,7 @@ const currentPage = ref(1)
 const pageSize = ref(10)
 const cancelReasonById = ref({})
 const rowSavingById = ref({})
+const NOTIFICATION_STORAGE_KEY = "notifications:seen"
 
 const readPageFromQuery = (value) => {
   const page = Number(value)
@@ -93,6 +96,46 @@ const pendingPaymentConfirmations = computed(() => {
     return hasCustomerConfirm && !hasEmployeeConfirm
   })
 })
+
+const readSeenNotifications = () => {
+  try {
+    return JSON.parse(localStorage.getItem(NOTIFICATION_STORAGE_KEY) || "{}")
+  } catch {
+    return {}
+  }
+}
+
+const notificationScope = computed(() => (panelBasePath.value === "/admin" ? "admin" : "employee"))
+
+const isNotificationSeen = (id) => {
+  if (!id) return false
+  const seenMap = readSeenNotifications()
+  return Boolean(seenMap?.[notificationScope.value]?.[id])
+}
+
+const getOrderNotificationIds = (hoaDon) => {
+  if (!hoaDon?.id) return []
+
+  const ids = []
+  const note = String(hoaDon?.statusNote || "")
+  const hasCustomerConfirm = hasPaymentFlowTag(note, PAYMENT_FLOW_TAGS.VN_PAY_CUSTOMER_CONFIRMED)
+  const hasEmployeeConfirm = hasPaymentFlowTag(note, PAYMENT_FLOW_TAGS.VN_PAY_EMPLOYEE_CONFIRMED)
+
+  if (hasCustomerConfirm && !hasEmployeeConfirm) {
+    ids.push(`invoice-${hoaDon.id}`)
+  }
+
+  const code = normalizeOrderStatusCode(hoaDon?.orderStatusCode, hoaDon?.orderStatusName, hoaDon?.statusNote)
+  if (["CHO_XAC_NHAN", "CHO_LAY_HANG", "GIAO_THAT_BAI"].includes(code)) {
+    ids.push(`invoice-queue-${hoaDon.id}-${code}`)
+  }
+
+  return ids
+}
+
+const shouldHighlightRow = (hoaDon) => {
+  return getOrderNotificationIds(hoaDon).some((id) => !isNotificationSeen(id))
+}
 
 const filteredData = computed(() => {
   let data = Array.isArray(hoaDons.value) ? [...hoaDons.value] : []
@@ -203,7 +246,13 @@ const canCancelFromList = (hoaDon) => {
 
 const canCompleteFromList = (hoaDon) => {
   const code = normalizeOrderStatusCode(hoaDon?.orderStatusCode, hoaDon?.orderStatusName, hoaDon?.statusNote)
-  return code === "CHO_LAY_HANG"
+  const isPos = getOrderTypeLabel(hoaDon) === "Tại quầy"
+  if (isPos) return code === "CHO_LAY_HANG"
+  return code === "DANG_GIAO"
+}
+
+const getCompleteButtonLabel = (hoaDon) => {
+  return getOrderTypeLabel(hoaDon) === "Tại quầy" ? "Xác nhận hoàn thành" : "Xác nhận giao thành công"
 }
 
 const cancelFromList = async (hoaDon) => {
@@ -224,9 +273,11 @@ const cancelFromList = async (hoaDon) => {
 
     cancelReasonById.value[hoaDon.id] = ""
     await loadData()
+    showToast(`Đã hủy đơn ${hoaDon.maHoaDon || `#${hoaDon.id}`}`, "success")
   } catch (error) {
     console.error("Cancel from list failed:", error)
     apiWarning.value = error?.response?.data?.message || "Không thể hủy hóa đơn"
+    showToast(apiWarning.value, "error")
   } finally {
     rowSavingById.value[hoaDon.id] = false
   }
@@ -237,15 +288,20 @@ const completeFromList = async (hoaDon) => {
 
   rowSavingById.value[hoaDon.id] = true
   try {
+    const isPos = getOrderTypeLabel(hoaDon) === "Tại quầy"
     await updateHoaDonBySystemEvent(
       hoaDon.id,
-      "HOAN_TAT_POS",
-      "Nhân viên xác nhận hoàn tất đơn hàng"
+      isPos ? "HOAN_TAT_POS" : "GIAO_HANG_THANH_CONG",
+      isPos
+        ? "Nhân viên xác nhận hoàn tất bán hàng tại quầy"
+        : "Giao hàng thành công"
     )
     await loadData()
+    showToast(`Đã cập nhật đơn ${hoaDon.maHoaDon || `#${hoaDon.id}`}`, "success")
   } catch (error) {
     console.error("Complete from list failed:", error)
     apiWarning.value = error?.response?.data?.message || "Không thể chuyển trạng thái sang Hoàn thành"
+    showToast(apiWarning.value, "error")
   } finally {
     rowSavingById.value[hoaDon.id] = false
   }
@@ -340,9 +396,19 @@ const completeFromList = async (hoaDon) => {
                   <div style="color: #9ca3af;">Chưa có dữ liệu</div>
                 </td>
               </tr>
-              <tr v-for="hd in paginatedData" :key="hd.id" style="border-bottom: 1px solid var(--line);">
+              <tr
+                v-for="hd in paginatedData"
+                :key="hd.id"
+                :class="{ 'order-row-attention': shouldHighlightRow(hd) }"
+                style="border-bottom: 1px solid var(--line);"
+              >
                 <td style="font-weight: 600;">{{ hd.id }}</td>
-                <td style="font-weight: 600; color: var(--text);">{{ hd.maHoaDon }}</td>
+                <td style="font-weight: 600; color: var(--text);">
+                  <div class="invoice-code-cell">
+                    <span>{{ hd.maHoaDon }}</span>
+                    <span v-if="shouldHighlightRow(hd)" class="row-attention-badge">Mới</span>
+                  </div>
+                </td>
                 <td>{{ hd.tenNhanVien || "-" }}</td>
                 <td>
                   <div>
@@ -376,7 +442,7 @@ const completeFromList = async (hoaDon) => {
                       :disabled="rowSavingById[hd.id]"
                       @click="completeFromList(hd)"
                     >
-                      <span>{{ rowSavingById[hd.id] ? "Đang cập nhật" : "Đã hoàn thành" }}</span>
+                      <span>{{ rowSavingById[hd.id] ? "Đang cập nhật" : getCompleteButtonLabel(hd) }}</span>
                     </button>
 
                     <div v-if="canCancelFromList(hd)" class="cancel-inline">
@@ -471,6 +537,37 @@ const completeFromList = async (hoaDon) => {
 .table td {
   padding: 14px;
   color: var(--text);
+}
+
+.order-row-attention td {
+  background: linear-gradient(90deg, #fff3f3 0%, #fff8f8 100%);
+}
+
+.order-row-attention td:first-child {
+  box-shadow: inset 4px 0 0 #f87171;
+}
+
+.invoice-code-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.row-attention-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .status-badge {

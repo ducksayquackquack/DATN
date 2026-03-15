@@ -199,8 +199,43 @@ const canEmployeeConfirmPayment = computed(() =>
   paymentFlowState.value?.code === "WAIT_EMPLOYEE" && !hoaDon.value.finalOrder
 )
 
+const currentOrderCode = computed(() =>
+  normalizeOrderStatusCode(hoaDon.value.orderStatusCode, hoaDon.value.orderStatusName)
+)
+
+const canConfirmOnlineOrder = computed(() =>
+  !isCreate.value && !isPosOrder.value && currentOrderCode.value === "CHO_XAC_NHAN" && !hoaDon.value.finalOrder
+)
+
+const canStartShipping = computed(() =>
+  !isCreate.value && !isPosOrder.value && currentOrderCode.value === "CHO_LAY_HANG" && !hoaDon.value.finalOrder
+)
+
+const canMarkReturned = computed(() =>
+  !isCreate.value && currentOrderCode.value === "GIAO_THAT_BAI" && !hoaDon.value.finalOrder
+)
+
+const canQuickComplete = computed(() =>
+  !isCreate.value
+  && !hoaDon.value.finalOrder
+  && (
+    (isPosOrder.value && currentOrderCode.value === "CHO_LAY_HANG")
+    || (!isPosOrder.value && currentOrderCode.value === "DANG_GIAO")
+  )
+)
+
 function isHtmlPayload(payload) {
   return typeof payload === "string" && /<html|<!doctype/i.test(payload)
+}
+
+function extractApiErrorMessage(error, fallback = "Không thể cập nhật trạng thái") {
+  const payload = error?.response?.data
+  if (typeof payload === "string" && payload.trim()) return payload
+  if (typeof payload?.message === "string" && payload.message.trim()) return payload.message
+  if (typeof payload?.detail === "string" && payload.detail.trim()) return payload.detail
+  if (typeof payload?.title === "string" && payload.title.trim()) return payload.title
+  if (typeof error?.message === "string" && error.message.trim()) return error.message
+  return fallback
 }
 
 function formatCurrency(value) {
@@ -303,35 +338,65 @@ function applyDiscount(discount) {
   syncTotals()
 }
 
-async function completePosOrder() {
+async function dispatchSystemEvent(eventCode, note, successMessage) {
   isSaving.value = true
   try {
-    await updateHoaDonBySystemEvent(hoaDon.value.id, "HOAN_TAT_POS", "Đã hoàn tất bán hàng tại quầy")
-    await loadInvoice()
-    showToast("Đã hoàn tất đơn POS", "success")
+    const response = await updateHoaDonBySystemEvent(hoaDon.value.id, eventCode, note)
+    applyInvoiceDetail(response?.data)
+    showToast(successMessage || "Đã cập nhật trạng thái đơn hàng", "success")
   } catch (error) {
-    showToast(error?.response?.data?.message || "Không thể hoàn tất đơn POS", "error")
+    console.error("Dispatch system event failed:", error)
+    showToast(extractApiErrorMessage(error), "error")
   } finally {
     isSaving.value = false
   }
 }
 
+async function confirmOnlineOrder() {
+  if (!canConfirmOnlineOrder.value) return
+  await dispatchSystemEvent(
+    "XAC_NHAN_DON_HANG",
+    "Nhân viên xác nhận đơn hàng",
+    "Đã xác nhận đơn hàng"
+  )
+}
+
+async function startShipping() {
+  if (!canStartShipping.value) return
+  await dispatchSystemEvent(
+    "GIAO_HANG_BAT_DAU",
+    "Đơn hàng đang được giao",
+    "Đã chuyển đơn sang trạng thái đang giao"
+  )
+}
+
+async function markReturned() {
+  if (!canMarkReturned.value) return
+  await dispatchSystemEvent(
+    "GIAO_HANG_HOAN_VE",
+    "Đơn hàng hoàn về sau khi giao thất bại",
+    "Đã xác nhận đơn hoàn về"
+  )
+}
+
+async function quickCompleteOrder() {
+  if (!canQuickComplete.value) return
+  await dispatchSystemEvent(
+    isPosOrder.value ? "HOAN_TAT_POS" : "GIAO_HANG_THANH_CONG",
+    isPosOrder.value
+      ? "Đã hoàn tất bán hàng tại quầy"
+      : "Giao hàng thành công",
+    "Đã xác nhận hoàn thành đơn hàng"
+  )
+}
+
 async function confirmPaymentByEmployee() {
   if (!canEmployeeConfirmPayment.value) return
-  isSaving.value = true
-  try {
-    await updateHoaDonBySystemEvent(
-      hoaDon.value.id,
-      "THANH_TOAN_NHAN_VIEN_XAC_NHAN",
-      "Nhân viên đã xác nhận thanh toán VNPay"
-    )
-    await loadInvoice()
-    showToast("Đã xác nhận thanh toán VNPay", "success")
-  } catch (error) {
-    showToast(error?.response?.data?.message || "Không thể xác nhận thanh toán", "error")
-  } finally {
-    isSaving.value = false
-  }
+  await dispatchSystemEvent(
+    "THANH_TOAN_NHAN_VIEN_XAC_NHAN",
+    "Nhân viên đã xác nhận thanh toán VNPay",
+    "Đã xác nhận thanh toán VNPay"
+  )
 }
 
 function normalizeHistoryStatusLabel(value, fallback) {
@@ -428,23 +493,11 @@ function normalizeLoadedItems(loadedItems) {
   })
 }
 
-async function loadInvoice() {
-  if (isCreate.value) {
-    const today = new Date().toISOString().split("T")[0]
-    hoaDon.value.ngayNhanHangDuKien = today
-    hoaDon.value.ngayNhanHangMongMuon = today
-    return
-  }
+function applyInvoiceDetail(detail) {
+  const safeDetail = detail || {}
+  const row = safeDetail?.hoaDon || {}
 
-  const response = await getHoaDonById(route.params.id)
-  if (isHtmlPayload(response?.data)) {
-    throw new Error("API hoá đơn đang bị chuyển hướng tới /login. Hãy restart backend sau khi cập nhật SecurityConfig.")
-  }
-
-  const detail = response.data
-  const row = detail?.hoaDon || {}
-
-  const normalizedHistory = normalizeHistoryEntries(detail?.history, row)
+  const normalizedHistory = normalizeHistoryEntries(safeDetail?.history, row)
   const latestHistoryNote = [...normalizedHistory]
     .reverse()
     .find((entry) => entry?.note && entry.note !== "Không có ghi chú")?.note || ""
@@ -477,12 +530,11 @@ async function loadInvoice() {
     fulfillmentStatusName: row.fulfillmentStatusName || deriveFulfillmentStatus(row.orderStatusCode).label,
     businessClosureStatus: row.businessClosureStatus || deriveBusinessClosure(row.orderStatusCode),
     businessClosureStatusName: row.businessClosureStatusName || deriveBusinessClosureName(row.orderStatusCode),
-    finalOrder: Boolean(detail?.finalOrder)
+    finalOrder: Boolean(safeDetail?.finalOrder)
   }
 
   manualStatusNote.value = hoaDon.value.statusNote || ""
-
-  items.value = normalizeLoadedItems(detail?.items)
+  items.value = normalizeLoadedItems(safeDetail?.items)
   history.value = normalizedHistory
 
   if (!hoaDon.value.soDienThoaiNhanHang && selectedCustomer.value?.soDienThoai) {
@@ -490,6 +542,23 @@ async function loadInvoice() {
   }
 
   syncTotals()
+}
+
+async function loadInvoice() {
+  if (isCreate.value) {
+    const today = new Date().toISOString().split("T")[0]
+    hoaDon.value.ngayNhanHangDuKien = today
+    hoaDon.value.ngayNhanHangMongMuon = today
+    return
+  }
+
+  const response = await getHoaDonById(route.params.id)
+  if (isHtmlPayload(response?.data)) {
+    throw new Error("API hoá đơn đang bị chuyển hướng tới /login. Hãy restart backend sau khi cập nhật SecurityConfig.")
+  }
+
+  const detail = response.data
+  applyInvoiceDetail(detail)
 }
 
 async function loadData() {
@@ -927,14 +996,44 @@ watch(
               <p class="status-hint">Trạng thái đơn hàng chỉ được cập nhật qua sự kiện hệ thống giao hàng/thanh toán.</p>
               <p v-if="hoaDon.finalOrder" class="status-hint">Hóa đơn đã kết thúc nên không thể nhận thêm sự kiện.</p>
               <button
-                v-if="isPosOrder && hoaDon.orderStatusCode === 'CHO_LAY_HANG' && !hoaDon.finalOrder"
+                v-if="canConfirmOnlineOrder"
                 class="btn primary"
                 type="button"
                 :disabled="isSaving"
-                @click="completePosOrder"
+                @click="confirmOnlineOrder"
               >
                 <CheckCircle2 :size="16" />
-                <span>Hoàn tất bán hàng POS</span>
+                <span>Xác nhận đơn hàng</span>
+              </button>
+              <button
+                v-if="canStartShipping"
+                class="btn primary"
+                type="button"
+                :disabled="isSaving"
+                @click="startShipping"
+              >
+                <CheckCircle2 :size="16" />
+                <span>Bắt đầu giao hàng</span>
+              </button>
+              <button
+                v-if="canQuickComplete"
+                class="btn primary"
+                type="button"
+                :disabled="isSaving"
+                @click="quickCompleteOrder"
+              >
+                <CheckCircle2 :size="16" />
+                <span>Xác nhận hoàn thành</span>
+              </button>
+              <button
+                v-if="canMarkReturned"
+                class="btn primary"
+                type="button"
+                :disabled="isSaving"
+                @click="markReturned"
+              >
+                <CheckCircle2 :size="16" />
+                <span>Xác nhận hoàn về</span>
               </button>
             </div>
 
@@ -968,10 +1067,6 @@ watch(
               <div class="summary-row" v-if="!isPosOrder">
                 <span>Phí ship</span>
                 <strong>{{ formatCurrency(hoaDon.phiShip) }}</strong>
-              </div>
-              <div class="summary-row" v-else>
-                <span>Giao nhận</span>
-                <strong>Tại quầy</strong>
               </div>
               <div class="summary-row danger-text">
                 <span>Giảm giá</span>

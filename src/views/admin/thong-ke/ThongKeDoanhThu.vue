@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useToast } from '../../../composables/useToast'
 import { getAllHoaDon, getHoaDonChiTiet, getHoaDonPage } from '../../../services/hoaDonService'
 import { getAllSanPham, getSanPhamPage } from '../../../services/sanPhamService'
+import { normalizeOrderStatusCode } from '../../../utils/adminStatus'
 
 const toast = useToast()
 const loading = ref(false)
@@ -55,8 +56,8 @@ const applyFilters = () => {
   return true
 }
 
-const completedStatuses = ['Đã giao', 'Hoàn thành']
-const cancelledStatuses = ['Đã hủy']
+const COMPLETED_CODES = new Set(['HOAN_THANH', 'DA_GIAO'])
+const CANCELLED_CODES = new Set(['HUY'])
 
 const getInvoiceDetails = (invoice) => {
   if (!invoice || typeof invoice !== 'object') return []
@@ -120,8 +121,14 @@ const stats = computed(() => {
   const source = inRangeInvoices.value
   const totalRevenue = source.reduce((sum, i) => sum + (Number(i.thanhTien) || 0), 0)
   const totalOrders = source.length
-  const completedOrders = source.filter((i) => completedStatuses.includes(i.trangThai)).length
-  const cancelledOrders = source.filter((i) => cancelledStatuses.includes(i.trangThai)).length
+  const completedOrders = source.filter((i) => {
+    const code = normalizeOrderStatusCode(i.orderStatusCode, i.orderStatusName, i.trangThai)
+    return COMPLETED_CODES.has(code)
+  }).length
+  const cancelledOrders = source.filter((i) => {
+    const code = normalizeOrderStatusCode(i.orderStatusCode, i.orderStatusName, i.trangThai)
+    return CANCELLED_CODES.has(code)
+  }).length
   const pendingOrders = totalOrders - completedOrders - cancelledOrders
 
   return {
@@ -418,7 +425,16 @@ const fetchProducts = async () => {
       () => getAllSanPham()
     )
 
-    products.value = source
+    products.value = source.filter((p) => {
+      const raw = String(p?.trangThai || '')
+      const normalized = raw
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[đĐ]/g, (c) => (c === 'đ' ? 'd' : 'D'))
+        .toLowerCase()
+        .trim()
+      return !normalized.includes('ngung') && normalized !== 'an' && normalized !== 'inactive'
+    })
 
     const byVariant = new Map()
     const byProduct = new Map()
@@ -656,7 +672,7 @@ onMounted(() => {
             <tr v-for="(product, index) in topProducts" :key="index">
               <td class="text-center">{{ index + 1 }}</td>
               <td>{{ product.name }}</td>
-              <td class="text-center">{{ product.sold > 0 ? product.sold : product.stock }}</td>
+              <td class="text-center">{{ product.sold }}</td>
               <td class="text-center">{{ hideTopProductRevenue ? 'Đang cập nhật' : formatCurrency(product.revenue) }}</td>
             </tr>
           </tbody>
