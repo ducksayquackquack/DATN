@@ -19,7 +19,7 @@
       </div>
     </div>
 
-    <div v-if="!loading && !caHienTai && showStartForm" class="start-panel-wrap">
+    <div v-if="!loading && !caHienTai && showStartForm && lichHomNay" class="start-panel-wrap">
       <div class="start-shift-modal">
         <div class="ss-header">
           <div class="ss-header-title">
@@ -87,12 +87,19 @@
       </div>
     </div>
 
-    <div v-if="!loading && !caHienTai && !showStartForm" class="start-mini-card">
+    <div v-if="!loading && !caHienTai && !showStartForm && lichHomNay" class="start-mini-card">
       <div>
         <strong>Biểu mẫu mở ca đang được ẩn</strong>
         <p>Nhấn nút bên dưới để mở lại biểu mẫu vào ca khi cần thao tác.</p>
       </div>
       <button class="btn-reopen" @click="showStartForm = true">Mở lại biểu mẫu</button>
+    </div>
+
+    <div v-if="!loading && !caHienTai && !lichHomNay" class="start-mini-card no-schedule-card">
+      <div>
+        <strong>Hiện tại bạn chưa có ca hợp lệ để mở</strong>
+        <p>{{ errorMessage || "Bạn chỉ có thể mở ca khi đang trong khung giờ làm việc đã được phân công." }}</p>
+      </div>
     </div>
 
     <div v-if="!loading && caHienTai" class="ho-wrapper">
@@ -151,9 +158,6 @@
             <div class="ho-summary-title">TỔNG TIỀN MẶT LÝ THUYẾT</div>
             <div class="ho-summary-value">
               {{ formatNumber(tinhTongLyThuyet) }} ₫
-            </div>
-            <div class="ho-summary-note">
-              (Đầu ca + Doanh thu Tiền mặt - Chi phí)
             </div>
           </div>
         </div>
@@ -263,8 +267,6 @@ const router = useRouter();
 const emit = defineEmits(["ca-started"]);
 
 const ACTIVE_SHIFT_PREFIX = "giao-ca-active";
-const DEMO_FALLBACK_ENABLED = true;
-
 const currentUser = ref(null);
 const idNhanVien = ref(null);
 
@@ -309,28 +311,6 @@ const toMinutes = (timeValue) => {
   const normalized = normalizeTime(timeValue);
   const [hour, minute] = normalized.split(":");
   return Number(hour) * 60 + Number(minute);
-};
-
-const getDemoShiftWindow = () => {
-  const hour = now.value.getHours();
-  if (hour >= 7 && hour < 12) return { tenCa: "Ca sáng", gioBatDau: "07:00", gioKetThuc: "12:00" };
-  if (hour >= 12 && hour < 17) return { tenCa: "Ca chiều", gioBatDau: "12:00", gioKetThuc: "17:00" };
-  if (hour >= 17 && hour < 22) return { tenCa: "Ca tối", gioBatDau: "17:00", gioKetThuc: "22:00" };
-  return { tenCa: "Ca sáng", gioBatDau: "07:00", gioKetThuc: "12:00" };
-};
-
-const createDemoSchedule = () => {
-  const demoWindow = getDemoShiftWindow();
-  return {
-    id: `DEMO-LLV-${Date.now()}`,
-    idCaLam: -1,
-    idNhanVien: idNhanVien.value,
-    ngayLam: getTodayDateKey(),
-    tenCa: demoWindow.tenCa,
-    gioBatDau: demoWindow.gioBatDau,
-    gioKetThuc: demoWindow.gioKetThuc,
-    isDemo: true,
-  };
 };
 
 const normalizeNhanVien = (payload) => {
@@ -381,7 +361,7 @@ const findCurrentSchedule = (schedules) => {
     return nowMinutes >= start && nowMinutes < end;
   });
 
-  return inProgress || sorted[0];
+  return inProgress || null;
 };
 
 const buildCurrentCa = (activeShift, schedule) => ({
@@ -439,7 +419,15 @@ const resolveNhanVienDangNhap = async () => {
 
   const allRes = await getAllNhanVien();
   const allNhanVien = extractList(allRes?.data);
-  const fallback = allNhanVien.find((item) => item?.id) || null;
+  const taiKhoanIdNum = Number(localStorage.getItem("userId") || 0);
+
+  const fallback = allNhanVien.find((item) => {
+    if (!item?.id) return false;
+    if (stored?.id && Number(item.id) === Number(stored.id)) return true;
+    const mappedTaiKhoanId = Number(item?.idTaiKhoan || item?.taiKhoan?.id || 0);
+    return taiKhoanIdNum > 0 && mappedTaiKhoanId === taiKhoanIdNum;
+  }) || null;
+
   if (fallback?.id) {
     currentUser.value = fallback;
     return Number(fallback.id);
@@ -575,6 +563,11 @@ const evaluateHandoverReminder = () => {
   }
 };
 
+const resolveRevenueDateKeyForShift = () => {
+  const shiftDate = normalizeDateKey(caHienTai.value?.ngayLam || lichHomNay.value?.ngayLam);
+  return shiftDate || getTodayDateKey();
+};
+
 const loadData = async () => {
   loading.value = true;
   errorMessage.value = "";
@@ -610,21 +603,27 @@ const loadData = async () => {
         gioKetThuc: normalizeTime(item?.gioKetThuc, "00:00"),
       }));
 
-    lichHomNay.value = findCurrentSchedule(lichTrongNgay);
+    const activeShift = loadActiveShift(idNhanVien.value);
+    const activeShiftSchedule = activeShift
+      ? lichTrongNgay.find((item) => {
+          return (
+            Number(item?.id) === Number(activeShift?.idLichLamViec) &&
+            normalizeDateKey(item?.ngayLam) === normalizeDateKey(activeShift?.ngayLam)
+          );
+        })
+      : null;
+
+    lichHomNay.value = activeShiftSchedule || findCurrentSchedule(lichTrongNgay);
     lichSuCaHienTai.value = null;
     caHienTai.value = null;
     showStartForm.value = true;
     showHandoverReminder.value = false;
 
     if (!lichHomNay.value) {
-      if (DEMO_FALLBACK_ENABLED) {
-        lichHomNay.value = createDemoSchedule();
-        errorMessage.value = "Bạn chưa được phân công ca hôm nay. Liên hệ admin để bổ sung lịch làm việc.";
-      } else {
-        clearActiveShift(idNhanVien.value);
-        errorMessage.value = "Bạn không có ca làm việc nào được phân công hôm nay.";
-        return;
-      }
+      clearActiveShift(idNhanVien.value);
+      showStartForm.value = false;
+      errorMessage.value = "Bạn chưa được phân công ca đang diễn ra. Vui lòng liên hệ admin.";
+      return;
     }
 
     const lichSuDaDong = lichSuList.find((item) => {
@@ -635,14 +634,21 @@ const loadData = async () => {
     });
 
     if (lichSuDaDong) {
-      lichSuCaHienTai.value = lichSuDaDong;
-      lichHomNay.value = null;
-      clearActiveShift(idNhanVien.value);
-      errorMessage.value = "Ca hôm nay đã được giao. Bạn có thể xem lịch sử ở trang quản lý.";
-      return;
+      const nowMinutes = now.value.getHours() * 60 + now.value.getMinutes();
+      const shiftEndMinutes = toMinutes(lichHomNay.value?.gioKetThuc);
+      const stillWithinShift = nowMinutes < shiftEndMinutes;
+
+      if (!stillWithinShift) {
+        lichSuCaHienTai.value = lichSuDaDong;
+        lichHomNay.value = null;
+        clearActiveShift(idNhanVien.value);
+        errorMessage.value = "Ca hôm nay đã được đóng. Bạn có thể xem lịch sử ở trang quản lý.";
+        return;
+      }
+
+      errorMessage.value = "Ca này đã từng được đóng sớm. Bạn có thể mở lại ca trong thời gian còn lại của khung giờ.";
     }
 
-    const activeShift = loadActiveShift(idNhanVien.value);
     if (
       activeShift &&
       Number(activeShift?.idLichLamViec) === Number(lichHomNay.value?.id) &&
@@ -651,20 +657,15 @@ const loadData = async () => {
       caHienTai.value = buildCurrentCa(activeShift, lichHomNay.value);
       tienThucTeInput.value = Math.max(tienThucTeInput.value, caHienTai.value.tienDauCaNhap || 0);
       evaluateHandoverReminder();
-      // Sync actual order revenue for real (non-demo) active shifts
-      if (!activeShift.isDemo) {
-        const rev = await fetchShiftRevenue(idNhanVien.value, getTodayDateKey());
-        caHienTai.value.tongTienTrongCa = rev.cashRevenue;
-        caHienTai.value.soDonHangDaThanhToan = rev.orderCount;
-        tongTienNgoCash.value = rev.nonCashRevenue;
-        const stored = loadActiveShift(idNhanVien.value);
-        if (stored) {
-          stored.tongTienTrongCa = rev.cashRevenue;
-          stored.soDonHangDaThanhToan = rev.orderCount;
-          saveActiveShift(idNhanVien.value, stored);
-        }
-      } else {
-        tongTienNgoCash.value = 0;
+      const rev = await fetchShiftRevenue(idNhanVien.value, resolveRevenueDateKeyForShift());
+      caHienTai.value.tongTienTrongCa = rev.cashRevenue;
+      caHienTai.value.soDonHangDaThanhToan = rev.orderCount;
+      tongTienNgoCash.value = rev.nonCashRevenue;
+      const stored = loadActiveShift(idNhanVien.value);
+      if (stored) {
+        stored.tongTienTrongCa = rev.cashRevenue;
+        stored.soDonHangDaThanhToan = rev.orderCount;
+        saveActiveShift(idNhanVien.value, stored);
       }
     } else {
       clearActiveShift(idNhanVien.value);
@@ -681,7 +682,10 @@ const loadData = async () => {
 const handleBatDauCa = async () => {
   errorMessage.value = "";
   if (tienBanDauInput.value < 0) return alert("Tiền không hợp lệ");
-  if (!lichHomNay.value) return;
+  if (!lichHomNay.value?.id || !lichHomNay.value?.idCaLam) {
+    errorMessage.value = "Bạn không có ca hợp lệ để mở.";
+    return;
+  }
 
   isSubmitting.value = true;
   try {
@@ -696,23 +700,19 @@ const handleBatDauCa = async () => {
       soDonHangDaThanhToan: 0,
       ghiChuBanDau: String(ghiChuBanDau.value || "").trim(),
       startedAt: new Date().toISOString(),
-      isDemo: Boolean(lichHomNay.value?.isDemo),
     };
 
     saveActiveShift(idNhanVien.value, activePayload);
     caHienTai.value = buildCurrentCa(activePayload, lichHomNay.value);
     tienThucTeInput.value = caHienTai.value.tienDauCaNhap || 0;
     showHandoverReminder.value = false;
-    // For real shifts, immediately sync any existing orders from today
-    if (!activePayload.isDemo) {
-      const rev = await fetchShiftRevenue(idNhanVien.value, getTodayDateKey());
-      caHienTai.value.tongTienTrongCa = rev.cashRevenue;
-      caHienTai.value.soDonHangDaThanhToan = rev.orderCount;
-      tongTienNgoCash.value = rev.nonCashRevenue;
-      activePayload.tongTienTrongCa = rev.cashRevenue;
-      activePayload.soDonHangDaThanhToan = rev.orderCount;
-      saveActiveShift(idNhanVien.value, activePayload);
-    }
+    const rev = await fetchShiftRevenue(idNhanVien.value, resolveRevenueDateKeyForShift());
+    caHienTai.value.tongTienTrongCa = rev.cashRevenue;
+    caHienTai.value.soDonHangDaThanhToan = rev.orderCount;
+    tongTienNgoCash.value = rev.nonCashRevenue;
+    activePayload.tongTienTrongCa = rev.cashRevenue;
+    activePayload.soDonHangDaThanhToan = rev.orderCount;
+    saveActiveShift(idNhanVien.value, activePayload);
 
     triggerToast("Bắt đầu ca làm việc thành công!");
     emit("ca-started");
@@ -730,21 +730,20 @@ const handleBatDauCa = async () => {
 const submitKetThucCa = async () => {
   if (!caHienTai.value || !idNhanVien.value || !lichHomNay.value) return;
 
-  if (chenhLech.value !== 0 && !ghiChuInput.value.trim()) {
-    alert("Vui lòng nhập ghi chú lý do chênh lệch tiền!");
+  const nowMinutes = now.value.getHours() * 60 + now.value.getMinutes();
+  const shiftEndMinutes = toMinutes(lichHomNay.value.gioKetThuc);
+  const isEarlyClose = nowMinutes < shiftEndMinutes;
+
+  if (!ghiChuInput.value.trim()) {
+    const reasonMessage = isEarlyClose
+      ? "Bạn đang đóng ca trước giờ kết thúc. Vui lòng nhập lý do vào ghi chú."
+      : "Vui lòng nhập lý do đóng ca vào ghi chú.";
+    alert(reasonMessage);
     return;
   }
 
   isSubmitting.value = true;
   try {
-    if (lichHomNay.value?.isDemo || caHienTai.value?.idCaLam === -1) {
-      clearActiveShift(idNhanVien.value);
-      showHandoverReminder.value = false;
-      triggerToast("Đóng ca demo thành công!");
-      await loadData();
-      return;
-    }
-
     const lichSuRes = await getLichSuCaByNhanVien(idNhanVien.value);
     const lichSuList = extractList(lichSuRes?.data);
 
@@ -757,12 +756,16 @@ const submitKetThucCa = async () => {
 
     const tongLyThuyet = tinhTongLyThuyet.value;
     const chenh = chenhLech.value;
+    const earlyCloseFlag = isEarlyClose
+      ? `Đóng sớm lúc ${formattedTimeOnly.value} (kết ca ${normalizeTime(lichHomNay.value?.gioKetThuc)})`
+      : "";
     const ghiChuTongHop = [
       caHienTai.value?.ghiChuBanDau ? `Đầu ca: ${caHienTai.value.ghiChuBanDau}` : "",
       `Tiền đầu ca: ${formatNumber(caHienTai.value?.tienDauCaNhap || 0)}đ`,
       `Tiền lý thuyết: ${formatNumber(tongLyThuyet)}đ`,
       `Tiền thực tế: ${formatNumber(tienThucTeInput.value)}đ`,
       `Chênh lệch: ${chenh >= 0 ? "+" : ""}${formatNumber(chenh)}đ`,
+      earlyCloseFlag,
       ghiChuInput.value.trim(),
     ]
       .filter(Boolean)

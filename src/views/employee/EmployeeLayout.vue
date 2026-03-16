@@ -38,7 +38,7 @@
           <router-link to="/employee/giao-ca" class="navlink">
             <span class="left">
               <span class="material-icons-outlined" style="font-size: 18px;">schedule</span>
-              Bàn giao ca
+              Mở ca / Kết ca
             </span>
           </router-link>
 

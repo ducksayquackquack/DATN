@@ -177,6 +177,7 @@
               >
                 <span class="event-time">{{ entry.startTime }}-{{ entry.endTime }}</span>
                 <span class="event-name">{{ entry.shiftName }}</span>
+                <span v-if="entry.employeeName" class="event-employee">{{ entry.employeeName }}</span>
               </div>
               <button
                 v-if="getEntriesByDate(day.dateKey).length > 3"
@@ -1329,6 +1330,11 @@ onMounted(async () => {
 
 .event-time {
   font-weight: 700;
+}
+
+.event-employee {
+  font-weight: 600;
+  opacity: 0.95;
 }
 
 .more-btn {

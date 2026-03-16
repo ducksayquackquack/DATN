@@ -4,17 +4,20 @@ import { useRoute, useRouter } from "vue-router"
 import { createHoaDon, addHoaDonItem, updateHoaDon, updateHoaDonBySystemEvent } from "../../../services/hoaDonService"
 import { getAllSanPham } from "../../../services/sanPhamService"
 import { getAllKhachHang } from "../../../services/KhachHangService"
-import { getAllNhanVien } from "../../../services/nhanVienService"
+import { getAllNhanVien, getNhanVienByTaiKhoanId } from "../../../services/nhanVienService"
 import { ArrowLeft, Plus } from "lucide-vue-next"
 import { appendPaymentFlowTag, PAYMENT_FLOW_TAGS } from "../../../utils/paymentWorkflow"
 import VoucherSelector from "../../../components/voucher/VoucherSelector.vue"
+import { validateEmployeeActiveShift } from "../../../utils/shiftGuard"
 
 const router = useRouter()
 const route = useRoute()
 const panelBasePath = computed(() => (route.path.startsWith('/employee/') ? '/employee' : '/admin'))
+const isEmployeePanel = computed(() => route.path.startsWith('/employee/'))
 
 const loading = ref(false)
 const saving = ref(false)
+const currentEmployeeId = ref(null)
 
 const nhanVienList = ref([])
 const khachHangList = ref([])
@@ -41,6 +44,48 @@ const toList = (value) => {
   if (Array.isArray(value?.data)) return value.data
   if (Array.isArray(value?.data?.content)) return value.data.content
   return []
+}
+
+const resolveCurrentEmployeeContext = async () => {
+  const storedUserRaw = localStorage.getItem("user") || sessionStorage.getItem("user")
+  if (storedUserRaw) {
+    try {
+      const parsed = JSON.parse(storedUserRaw)
+      if (parsed?.idNhanVien) return Number(parsed.idNhanVien)
+      if (parsed?.id && parsed?.tenNhanVien) return Number(parsed.id)
+    } catch {
+      // Continue fallback checks.
+    }
+  }
+
+  const taiKhoanId = Number(localStorage.getItem("userId") || 0)
+  if (taiKhoanId > 0) {
+    try {
+      const byTaiKhoan = await getNhanVienByTaiKhoanId(taiKhoanId)
+      const fromApi = byTaiKhoan?.data
+      if (Array.isArray(fromApi) && fromApi[0]?.id) return Number(fromApi[0].id)
+      if (fromApi?.id) return Number(fromApi.id)
+    } catch {
+      // Continue fallback checks.
+    }
+
+    const mapped = nhanVienList.value.find((item) => {
+      const mappedTaiKhoanId = Number(item?.idTaiKhoan || item?.taiKhoan?.id || 0)
+      return mappedTaiKhoanId === taiKhoanId
+    })
+    if (mapped?.id) return Number(mapped.id)
+  }
+
+  return null
+}
+
+const canOperateForEmployeeShift = async (employeeId) => {
+  const check = await validateEmployeeActiveShift(employeeId)
+  if (!check.allowed) {
+    window.toast?.warning?.(check.reason || "Nhân viên chưa trong ca trực hợp lệ")
+    return false
+  }
+  return true
 }
 
 const formatCurrency = (value) => {
@@ -135,13 +180,24 @@ const removeLine = (index) => {
 }
 
 const submitPosOrder = async () => {
+  if (isEmployeePanel.value) {
+    if (!currentEmployeeId.value) {
+      window.toast?.error?.("Không xác định được nhân viên đăng nhập")
+      return
+    }
+    cashierId.value = Number(currentEmployeeId.value)
+  }
+
   if (!cashierId.value) {
     window.toast?.warning?.("Vui lòng chọn nhân viên bán hàng")
     return
   }
 
+  const canOperate = await canOperateForEmployeeShift(cashierId.value)
+  if (!canOperate) return
+
   if (!lines.value.length) {
-    window.toast?.warning?.("Đơn POS phải có ít nhất 1 sản phẩm")
+    window.toast?.warning?.("Đơn bán tại quầy phải có ít nhất 1 sản phẩm")
     return
   }
 
@@ -161,7 +217,7 @@ const submitPosOrder = async () => {
     })
 
     const orderId = createRes?.data?.hoaDon?.id || createRes?.data?.id
-    if (!orderId) throw new Error("Không lấy được mã hóa đơn POS")
+    if (!orderId) throw new Error("Không lấy được mã hóa đơn bán tại quầy")
 
     for (const line of lines.value) {
       await addHoaDonItem(orderId, {
@@ -194,17 +250,17 @@ const submitPosOrder = async () => {
     if (!isVnpay) {
       try {
         await updateHoaDonBySystemEvent(orderId, "HOAN_TAT_POS", "Đã hoàn tất bán hàng tại quầy")
-        window.toast?.success?.("Tạo đơn POS thành công")
+        window.toast?.success?.("Tạo đơn bán tại quầy thành công")
       } catch {
-        window.toast?.warning?.("Đơn đã tạo nhưng chưa hoàn tất — vào chi tiết bấm 'Hoàn tất bán hàng POS'")
+        window.toast?.warning?.("Đơn đã tạo nhưng chưa hoàn tất — vào chi tiết bấm 'Hoàn tất bán hàng tại quầy'")
       }
     } else {
-      window.toast?.success?.("Tạo đơn POS thành công")
+      window.toast?.success?.("Tạo đơn bán tại quầy thành công")
     }
     router.push(`${panelBasePath.value}/hoa-don/detail/${orderId}`)
   } catch (error) {
-    console.error("POS submit failed:", error)
-    window.toast?.error?.(error?.response?.data?.message || error.message || "Không thể tạo đơn POS")
+    console.error("Counter-sale submit failed:", error)
+    window.toast?.error?.(error?.response?.data?.message || error.message || "Không thể tạo đơn bán tại quầy")
   } finally {
     saving.value = false
   }
@@ -223,6 +279,14 @@ const loadData = async () => {
     khachHangList.value = toList(khRes?.data)
     variants.value = flattenVariants(toList(spRes?.data))
 
+    if (isEmployeePanel.value) {
+      currentEmployeeId.value = await resolveCurrentEmployeeContext()
+      if (!currentEmployeeId.value) {
+        throw new Error("Không xác định được nhân viên đăng nhập")
+      }
+      cashierId.value = Number(currentEmployeeId.value)
+    }
+
     if (!cashierId.value && nhanVienList.value.length) {
       cashierId.value = Number(nhanVienList.value[0].id)
     }
@@ -231,8 +295,8 @@ const loadData = async () => {
       selectedSpctId.value = variants.value[0].spctId
     }
   } catch (error) {
-    console.error("Load POS data failed:", error)
-    window.toast?.error?.("Không thể tải dữ liệu POS")
+    console.error("Load counter-sale data failed:", error)
+    window.toast?.error?.("Không thể tải dữ liệu bán hàng tại quầy")
   } finally {
     loading.value = false
   }
@@ -246,7 +310,7 @@ onMounted(loadData)
     <div class="card">
       <div class="head">
         <div>
-          <h1>POS tại quầy</h1>
+          <h1>Bán hàng tại quầy</h1>
           <small class="muted">Luồng thu ngân: chọn sản phẩm, chọn khách, nhận thanh toán, tạo hóa đơn ngay.</small>
         </div>
         <button class="btn" type="button" @click="router.push(`${panelBasePath}/hoa-don/list`)">
@@ -260,13 +324,13 @@ onMounted(loadData)
           <div class="pos-main-column">
             <article class="panel">
               <div class="panel-head">
-                <h2>Thông tin đơn POS</h2>
+                <h2>Thông tin đơn bán tại quầy</h2>
               </div>
               <div class="panel-body">
                 <div class="form-grid">
                   <div class="field">
                     <label>Nhân viên bán hàng</label>
-                    <select v-model.number="cashierId">
+                    <select v-model.number="cashierId" :disabled="isEmployeePanel">
                       <option :value="null">Chọn nhân viên</option>
                       <option v-for="nv in nhanVienList" :key="nv.id" :value="Number(nv.id)">
                         {{ nv.tenNhanVien || `NV #${nv.id}` }}
@@ -357,7 +421,7 @@ onMounted(loadData)
                     </thead>
                     <tbody>
                       <tr v-if="!lines.length">
-                        <td colspan="5" class="table-empty">Chưa có sản phẩm trong đơn POS</td>
+                        <td colspan="5" class="table-empty">Chưa có sản phẩm trong đơn bán tại quầy</td>
                       </tr>
                       <tr v-for="(line, idx) in lines" :key="line.spctId">
                         <td>
@@ -383,20 +447,20 @@ onMounted(loadData)
               <h2>Tổng kết đơn</h2>
             </div>
             <div class="panel-body summary-body">
-              <div class="summary-row"><span>Loại đơn</span><strong>Tại quầy (POS)</strong></div>
+              <div class="summary-row"><span>Loại đơn</span><strong>Bán hàng tại quầy</strong></div>
               <div class="summary-row"><span>Trạng thái sau tạo</span><strong>{{ defaultStatusCode }}</strong></div>
               <div class="summary-row"><span>Tạm tính</span><strong>{{ formatCurrency(subtotal) }}</strong></div>
               <div class="summary-row"><span>Giảm giá</span><strong>-{{ formatCurrency(discount) }}</strong></div>
               <div class="summary-row total"><span>Tổng thu</span><strong>{{ formatCurrency(grandTotal) }}</strong></div>
 
               <button class="btn primary checkout-btn" type="button" :disabled="saving || !lines.length" @click="submitPosOrder">
-                {{ saving ? 'Đang tạo đơn...' : 'Hoàn tất bán hàng POS' }}
+                {{ saving ? 'Đang tạo đơn...' : 'Hoàn tất bán hàng tại quầy' }}
               </button>
             </div>
           </aside>
         </section>
 
-        <section v-else class="loading-state">Đang tải dữ liệu POS...</section>
+        <section v-else class="loading-state">Đang tải dữ liệu bán hàng tại quầy...</section>
       </div>
     </div>
   </main>

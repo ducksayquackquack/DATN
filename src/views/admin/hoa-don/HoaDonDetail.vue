@@ -11,7 +11,7 @@ import {
   updateHoaDonItemQty
 } from "../../../services/hoaDonService"
 import { getAllKhachHang } from "../../../services/KhachHangService"
-import { getAllNhanVien } from "../../../services/nhanVienService"
+import { getAllNhanVien, getNhanVienByTaiKhoanId } from "../../../services/nhanVienService"
 import { getAllSanPham } from "../../../services/sanPhamService"
 import VoucherSelector from "../../../components/voucher/VoucherSelector.vue"
 import { useConfirm } from "../../../composables/useConfirm"
@@ -19,12 +19,14 @@ import { useToast } from "../../../composables/useToast"
 import { CheckCircle2, Loader2, Package2, Plus, Save, ShoppingBag, Ticket, Trash2, UserRound } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel, normalizeOrderStatusCode } from "../../../utils/adminStatus"
 import { describePaymentFlowState } from "../../../utils/paymentWorkflow"
+import { validateEmployeeActiveShift } from "../../../utils/shiftGuard"
 
 const router = useRouter()
 const route = useRoute()
 const { askConfirm } = useConfirm()
 const { showToast } = useToast()
 const panelBasePath = computed(() => (route.path.startsWith('/employee/') ? '/employee' : '/admin'))
+const isEmployeePanel = computed(() => route.path.startsWith('/employee/'))
 
 const isCreate = computed(() => {
   return route.path.endsWith("/hoa-don/detail/create") || route.params.id === "create" || !route.params.id
@@ -41,6 +43,8 @@ const pageTitle = computed(() => {
 const isLoading = ref(false)
 const isSaving = ref(false)
 const apiWarning = ref("")
+const currentEmployeeId = ref(null)
+const employeeOwnershipMismatch = ref(false)
 
 const nhanVienList = ref([])
 const khachHangList = ref([])
@@ -178,7 +182,7 @@ function backToList(refresh = false) {
   router.push({ path: `${panelBasePath.value}/hoa-don/list`, query })
 }
 
-const canEdit = computed(() => !hoaDon.value.finalOrder)
+const canEdit = computed(() => !hoaDon.value.finalOrder && !employeeOwnershipMismatch.value)
 
 const paymentFlowState = computed(() => {
   if (isCreate.value) return null
@@ -266,6 +270,53 @@ function extractList(response) {
   return []
 }
 
+const resolveCurrentEmployeeContext = async () => {
+  const storedUserRaw = localStorage.getItem("user") || sessionStorage.getItem("user")
+  if (storedUserRaw) {
+    try {
+      const parsed = JSON.parse(storedUserRaw)
+      if (parsed?.idNhanVien) return Number(parsed.idNhanVien)
+      if (parsed?.id && parsed?.tenNhanVien) return Number(parsed.id)
+    } catch {
+      // Continue with fallback checks.
+    }
+  }
+
+  const taiKhoanId = Number(localStorage.getItem("userId") || 0)
+  if (taiKhoanId > 0) {
+    try {
+      const byTaiKhoan = await getNhanVienByTaiKhoanId(taiKhoanId)
+      const rows = extractList(byTaiKhoan)
+      const first = rows[0] || byTaiKhoan?.data || null
+      if (first?.id) return Number(first.id)
+    } catch {
+      // Continue fallback checks.
+    }
+
+    const mapped = nhanVienList.value.find((item) => {
+      const mappedTaiKhoanId = Number(item?.idTaiKhoan || item?.taiKhoan?.id || 0)
+      return mappedTaiKhoanId === taiKhoanId
+    })
+    if (mapped?.id) return Number(mapped.id)
+  }
+
+  return null
+}
+
+const enforceEmployeeOwnership = () => {
+  if (!isEmployeePanel.value || !currentEmployeeId.value) return
+  hoaDon.value.nhanVienId = Number(currentEmployeeId.value)
+}
+
+const canOperateForEmployeeShift = async (employeeId) => {
+  const check = await validateEmployeeActiveShift(employeeId)
+  if (!check.allowed) {
+    showToast(check.reason || "Nhân viên chưa trong ca trực hợp lệ", "warning")
+    return false
+  }
+  return true
+}
+
 function buildVariantLabel(product, variant) {
   const parts = [product?.tenSanPham]
   if (variant?.kichThuoc?.tenKichThuoc) parts.push(`Size ${variant.kichThuoc.tenKichThuoc}`)
@@ -339,6 +390,16 @@ function applyDiscount(discount) {
 }
 
 async function dispatchSystemEvent(eventCode, note, successMessage) {
+  if (isEmployeePanel.value) {
+    if (!currentEmployeeId.value || Number(hoaDon.value.nhanVienId) !== Number(currentEmployeeId.value)) {
+      showToast("Bạn không có quyền thao tác hóa đơn của nhân viên khác", "error")
+      return
+    }
+
+    const canOperate = await canOperateForEmployeeShift(hoaDon.value.nhanVienId)
+    if (!canOperate) return
+  }
+
   isSaving.value = true
   try {
     const response = await updateHoaDonBySystemEvent(hoaDon.value.id, eventCode, note)
@@ -564,10 +625,29 @@ async function loadInvoice() {
 async function loadData() {
   isLoading.value = true
   apiWarning.value = ""
+  employeeOwnershipMismatch.value = false
 
   try {
     await loadReferenceData()
+    if (isEmployeePanel.value) {
+      currentEmployeeId.value = await resolveCurrentEmployeeContext()
+      if (!currentEmployeeId.value) {
+        throw new Error("Không xác định được nhân viên đăng nhập. Vui lòng đăng nhập lại.")
+      }
+    }
     await loadInvoice()
+
+    if (
+      isEmployeePanel.value
+      && !isCreate.value
+      && Number(hoaDon.value.nhanVienId || 0) > 0
+      && Number(hoaDon.value.nhanVienId) !== Number(currentEmployeeId.value)
+    ) {
+      employeeOwnershipMismatch.value = true
+      apiWarning.value = "Bạn không có quyền chỉnh sửa hóa đơn của nhân viên khác."
+    }
+
+    enforceEmployeeOwnership()
   } catch (error) {
     console.error("HoaDon load error:", error)
     apiWarning.value = error.message || "Không thể tải dữ liệu hoá đơn"
@@ -699,10 +779,26 @@ function buildUpdatePayload() {
 }
 
 async function saveInvoice() {
+  if (employeeOwnershipMismatch.value) {
+    showToast("Bạn không có quyền lưu hóa đơn của nhân viên khác", "error")
+    return
+  }
+
+  if (isEmployeePanel.value) {
+    if (!currentEmployeeId.value) {
+      showToast("Không xác định được nhân viên đăng nhập", "error")
+      return
+    }
+    hoaDon.value.nhanVienId = Number(currentEmployeeId.value)
+  }
+
   if (!hoaDon.value.nhanVienId) {
     showToast("Vui lòng chọn nhân viên", "warning")
     return
   }
+
+  const canOperate = await canOperateForEmployeeShift(hoaDon.value.nhanVienId)
+  if (!canOperate) return
 
   if (!isPosOrder.value && !hoaDon.value.khachHangId) {
     showToast("Vui lòng chọn khách hàng", "warning")
@@ -899,7 +995,7 @@ watch(
             <div class="form-grid">
               <label class="field">
                 <span>Nhân viên bán hàng</span>
-                <select class="strong-select" v-model.number="hoaDon.nhanVienId" :disabled="!canEdit">
+                <select class="strong-select" v-model.number="hoaDon.nhanVienId" :disabled="!canEdit || isEmployeePanel">
                   <option :value="null">Chọn nhân viên</option>
                   <option v-for="nhanVien in nhanVienList" :key="nhanVien.id" :value="Number(nhanVien.id)">
                     {{ nhanVien.tenNhanVien || nhanVien.hoTen || `NV #${nhanVien.id}` }}
@@ -951,7 +1047,7 @@ watch(
                 <span>Loại đơn</span>
                 <select class="strong-select" v-model="hoaDon.orderType" :disabled="!canEdit">
                   <option value="ONLINE">Online</option>
-                  <option value="POS">Tại quầy (POS)</option>
+                  <option value="POS">Bán hàng tại quầy</option>
                 </select>
               </label>
 

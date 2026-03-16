@@ -16,7 +16,7 @@ import PaymentReturn from "../views/PaymentReturn.vue"
 import NotificationsPage from "../views/shared/NotificationsPage.vue"
 
 import EmployeeLayout from "../views/employee/EmployeeLayout.vue"
-import EmployeeGiaoCa from "../views/employee/GiaoCa.vue"
+import EmployeeGiaoCa from "../views/employee/MoKetCaTest.vue"
 import EmployeeDangKyDoiCa from "../views/employee/DangKyDoiCa.vue"
 import EmployeeProfileView from "../views/employee/ProfileView.vue"
 

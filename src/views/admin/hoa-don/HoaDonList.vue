@@ -346,7 +346,7 @@ const completeFromList = async (hoaDon) => {
         </div>
         <div style="display:flex; gap:8px;">
           <router-link class="btn" :to="{ path: `${panelBasePath}/hoa-don/pos` }">
-            <span>POS tại quầy</span>
+            <span>Bán hàng tại quầy</span>
           </router-link>
           <router-link class="btn primary" :to="{ path: `${panelBasePath}/hoa-don/detail/create` }">
             <Plus :size="18" />

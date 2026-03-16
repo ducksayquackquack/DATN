@@ -3,6 +3,7 @@ import { normalizeOrderStatusCode } from './adminStatus'
 const CASH_METHOD_CODES = new Set(['CASH', 'COD', 'TIEN_MAT', 'TIENMAT', 'TM'])
 const TRANSFER_METHOD_CODES = new Set(['BANK', 'VNPAY', 'CHUYEN_KHOAN', 'CHUYENKHOAN', 'CK', 'TRANSFER'])
 const EXCLUDED_REVENUE_STATUS_CODES = new Set(['HUY', 'GIAO_THAT_BAI', 'HOAN_VE'])
+const INCLUDED_REVENUE_STATUS_CODES = new Set(['HOAN_THANH', 'DA_GIAO'])
 
 const normalizeDateKey = (dateValue) => {
   if (!dateValue) return ''
@@ -87,5 +88,6 @@ export const isRevenueCountableOrder = (invoice) => {
     invoice?.statusNote
   )
 
-  return !EXCLUDED_REVENUE_STATUS_CODES.has(statusCode)
+  if (EXCLUDED_REVENUE_STATUS_CODES.has(statusCode)) return false
+  return INCLUDED_REVENUE_STATUS_CODES.has(statusCode)
 }
