@@ -488,7 +488,7 @@ const fetchShiftRevenue = async (employeeId, dateKey) => {
       if (revenueBucket === "unknown") continue;
       if (resolveRevenueDateKey(o, revenueBucket) !== dateKey) continue;
 
-      const amount = Number(o?.thanhTien || 0);
+      const amount = Math.max(0, Number(o?.thanhTien || 0) - Number(o?.phiShip || 0));
       if (amount <= 0) continue;
 
       orderCount++;

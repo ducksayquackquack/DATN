@@ -335,7 +335,7 @@ const loadActivities = async () => {
       const employeeId = resolveInvoiceEmployeeId(invoice)
       const revenueBucket = getRevenueBucket(invoice)
       const dateKey = resolveRevenueDateKey(invoice, revenueBucket)
-      const amount = parseNumber(invoice?.thanhTien)
+      const amount = Math.max(0, parseNumber(invoice?.thanhTien) - parseNumber(invoice?.phiShip))
       if (!employeeId || !dateKey || !isRevenueCountableOrder(invoice)) return
 
       const key = `${employeeId}-${dateKey}`

@@ -14,11 +14,22 @@ export function getNhanVienById(id) {
 
 // GET BY TAI KHOAN ID
 export function getNhanVienByTaiKhoanId(taiKhoanId) {
-  // Support multiple backend route styles used across environments.
-  return axios
-    .get(`${API}/tai-khoan/${taiKhoanId}`)
-    .catch(() => axios.get(`${API}/by-tai-khoan/${taiKhoanId}`))
-    .catch(() => axios.get(`${API}/tai-khoan-id/${taiKhoanId}`))
+  // Prefer list+filter because many environments do not expose dedicated by-account routes.
+  return axios.get(API).then((res) => {
+    const list = Array.isArray(res.data) ? res.data : []
+    const matched = list.find((item) => Number(item?.idTaiKhoan) === Number(taiKhoanId))
+
+    if (matched) {
+      return {
+        ...res,
+        data: matched
+      }
+    }
+
+    const notFoundError = new Error("Không tìm thấy nhân viên theo tài khoản")
+    notFoundError.response = { status: 404 }
+    throw notFoundError
+  })
 }
 
 // CREATE
