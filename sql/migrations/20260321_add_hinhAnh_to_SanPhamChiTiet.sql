@@ -1,0 +1,1 @@
+ALTER TABLE SanPhamChiTiet ADD hinhAnh NVARCHAR(500) NULL;

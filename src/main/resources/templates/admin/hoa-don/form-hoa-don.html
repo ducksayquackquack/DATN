@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>Form Hóa Đơn</title>
+
+    <style>
+        .dw-btn{
+            display:inline-block;padding:8px 12px;border:1px solid #cfd8df;background:#eef3f6;
+            color:#111827;text-decoration:none;cursor:pointer;
+        }
+        .dw-btn:hover{ background:#f6f2ea; }
+        .dw-btn-sm{ padding:4px 8px; font-size:13px; }
+        .dw-input,.dw-select{
+            width:100%; padding:7px 10px; border:1px solid #cfd8df; outline:none; background:#fff;
+            box-sizing:border-box;
+        }
+        .dw-table{ width:100%; border-collapse:collapse; background:#fff; }
+        .dw-table th,.dw-table td{ border:1px solid #cfd8df; padding:8px; text-align:left; }
+        .dw-table thead{ background:#eef3f6; }
+        .dw-note{ color:#b00; font-weight:bold; margin:10px 0; }
+    </style>
+</head>
+
+<body style="margin:0;background:#f3f6f8;font-family:Arial">
+<div style="min-height:100vh;display:flex;flex-direction:column;">
+
+    <div th:replace="layout/header :: header"></div>
+
+    <div style="display:flex;flex:1;">
+        <div th:replace="layout/sidebar :: sidebar"></div>
+
+        <div style="flex:1;padding:18px;">
+            <div style="background:#fff;border:1px solid #cfd8df;padding:18px;max-width:1100px;">
+
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                    <h1 style="margin:0;"
+                        th:text="${hd.id == null ? 'Thêm Hóa Đơn' : 'Cập Nhật / Chi Tiết Hóa Đơn'}"></h1>
+                    <a th:href="@{/admin/hoa-don}" class="dw-btn">← Quay lại</a>
+                </div>
+
+                <!-- error message -->
+                <div th:if="${error}" class="dw-note" th:text="${error}"></div>
+
+                <!-- ====== TÓM TẮT (khi có id) ====== -->
+                <div th:if="${hd != null && hd.id != null}" style="margin:14px 0;padding:12px;border:1px dashed #cfd8df;background:#fbfdff;">
+                    <div><b>ID:</b> <span th:text="${hd.id}"></span></div>
+                    <div><b>Mã hóa đơn:</b> <span th:text="${hd.maHoaDon}"></span></div>
+                    <div>
+                        <b>Trạng thái:</b>
+                        <span th:text="${trangThaiName != null ? trangThaiName : hd.trangThai}"></span>
+                    </div>
+                    <div><b>Ngày tạo:</b> <span th:text="${hd.ngayTao != null ? #temporals.format(hd.ngayTao,'dd/MM/yyyy HH:mm') : ''}"></span></div>
+                </div>
+
+                <!-- ====== FORM THÔNG TIN (create + update info) ====== -->
+                <form th:object="${hd}"
+                      th:action="${hd.id == null}
+                                 ? @{/admin/hoa-don/store}
+                                 : @{/admin/hoa-don/update}"
+                      method="post"
+                      style="margin-top:12px;">
+
+                    <input type="hidden" th:field="*{id}">
+                    <input type="hidden" th:field="*{ngayTao}">
+
+                    <table cellpadding="6" style="width:100%;">
+                        <!-- Nếu create ở backend tự sinh mã -> anh có thể để trống -->
+                        <tr>
+                            <td style="width:220px;">Mã hóa đơn</td>
+                            <td>
+                                <input class="dw-input"
+                                       type="text"
+                                       th:field="*{maHoaDon}"
+                                       placeholder="(Có thể để trống nếu hệ thống tự sinh)">
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Nhân viên</td>
+                            <td>
+                                <select class="dw-select" th:field="*{nhanVien.id}" required>
+                                    <option value="">-- Chọn nhân viên --</option>
+                                    <option th:each="nv : ${listNV}"
+                                            th:value="${nv.id}"
+                                            th:text="${nv.tenNhanVien}">
+                                    </option>
+                                </select>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Khách hàng</td>
+                            <td>
+                                <select class="dw-select" th:field="*{khachHang.id}" required>
+                                    <option value="">-- Chọn khách hàng --</option>
+                                    <option th:each="kh : ${listKH}"
+                                            th:value="${kh.id}"
+                                            th:text="${kh.tenKhachHang}">
+                                    </option>
+                                </select>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>SĐT nhận hàng</td>
+                            <td><input class="dw-input" type="text" th:field="*{soDienThoaiNhanHang}"></td>
+                        </tr>
+
+                        <tr>
+                            <td>Địa chỉ nhận hàng</td>
+                            <td><input class="dw-input" type="text" th:field="*{diaChiNhanHang}"></td>
+                        </tr>
+
+                        <tr>
+                            <td>Phí ship</td>
+                            <td>
+                                <input class="dw-input"
+                                       type="text"
+                                       name="phiShipText"
+                                       th:value="${hd.phiShip != null ? hd.phiShip : 0}"
+                                       placeholder="VD: 50000 hoặc 50.000">
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Ngày nhận hàng dự kiến</td>
+                            <td><input class="dw-input" type="date" th:field="*{ngayNhanHangDuKien}"></td>
+                        </tr>
+
+                        <tr>
+                            <td>Ngày nhận hàng mong muốn</td>
+                            <td><input class="dw-input" type="date" th:field="*{ngayNhanHangMongMuon}"></td>
+                        </tr>
+
+                        <!-- Trạng thái: giữ đúng nghiệp vụ cũ (create = Chờ xác nhận, update info không đổi trạng thái) -->
+                        <tr>
+                            <td>Trạng thái</td>
+                            <td>
+                                <span th:if="${hd.id == null}"><b>Chờ xác nhận</b></span>
+                                <span th:if="${hd.id != null}" th:text="${trangThaiName != null ? trangThaiName : hd.trangThai}"></span>
+
+                                <!-- nếu entity có field trangThai và anh muốn binding giữ nguyên -->
+                                <input type="hidden" th:if="${hd.id != null}" th:field="*{trangThai}">
+                            </td>
+                        </tr>
+                    </table>
+
+                    <div style="margin-top:14px;text-align:right;">
+                        <a th:href="@{/admin/hoa-don}" class="dw-btn">Hủy</a>
+                        <button type="submit" class="dw-btn">
+                            <span th:text="${hd.id == null ? 'Lưu' : 'Cập nhật thông tin'}"></span>
+                        </button>
+                    </div>
+
+                </form>
+
+<!--                &lt;!&ndash; ====== HÀNH ĐỘNG ĐỔI TRẠNG THÁI (chỉ khi edit) ====== &ndash;&gt;-->
+<!--                <div th:if="${hd != null && hd.id != null}">-->
+<!--                    <hr style="margin:18px 0;">-->
+
+<!--                    <h3 style="margin:0 0 10px;">⚙️ Hành động trạng thái</h3>-->
+
+<!--                    &lt;!&ndash; Xác nhận: CHO_XAC_NHAN -> CHO_LAY_HANG &ndash;&gt;-->
+<!--                    <form th:if="${hd.trangThai.name() == 'CHO_XAC_NHAN'}"-->
+<!--                          th:action="@{'/hoa-don/' + ${hd.id} + '/confirm'}"-->
+<!--                          method="post" style="display:inline;">-->
+<!--                        <button type="submit" class="dw-btn dw-btn-sm">✅ Xác nhận đơn</button>-->
+<!--                    </form>-->
+
+<!--                    &lt;!&ndash; Giao hàng: CHO_LAY_HANG -> DANG_GIAO &ndash;&gt;-->
+<!--                    <form th:if="${hd.trangThai.name() == 'CHO_LAY_HANG'}"-->
+<!--                          th:action="@{'/hoa-don/' + ${hd.id} + '/ship'}"-->
+<!--                          method="post" style="display:inline;">-->
+<!--                        <button type="submit" class="dw-btn dw-btn-sm">🚚 Bắt đầu giao</button>-->
+<!--                    </form>-->
+
+<!--                    &lt;!&ndash; Hoàn thành: DANG_GIAO -> HOAN_THANH &ndash;&gt;-->
+<!--                    <form th:if="${hd.trangThai.name() == 'DANG_GIAO'}"-->
+<!--                          th:action="@{'/hoa-don/' + ${hd.id} + '/complete'}"-->
+<!--                          method="post" style="display:inline;">-->
+<!--                        <button type="submit" class="dw-btn dw-btn-sm">🏁 Hoàn thành</button>-->
+<!--                    </form>-->
+
+<!--                    &lt;!&ndash; Hủy: CHO_XAC_NHAN hoặc CHO_LAY_HANG &ndash;&gt;-->
+<!--                    <form th:if="${hd.trangThai.name() == 'CHO_XAC_NHAN' || hd.trangThai.name() == 'CHO_LAY_HANG'}"-->
+<!--                          th:action="@{'/hoa-don/' + ${hd.id} + '/cancel'}"-->
+<!--                          method="post"-->
+<!--                          style="display:inline;margin-left:8px;">-->
+<!--                        <input class="dw-input" style="width:260px;display:inline-block;"-->
+<!--                               type="text" name="reason" placeholder="Lý do hủy (tuỳ chọn)">-->
+<!--                        <button type="submit" class="dw-btn dw-btn-sm">🛑 Hủy đơn</button>-->
+<!--                    </form>-->
+
+<!--                    <form th:if="${hd.trangThai.name() == 'DANG_GIAO'}"-->
+<!--                          th:action="@{'/hoa-don/' + ${hd.id} + '/fail-delivery'}"-->
+<!--                          method="post"-->
+<!--                          style="display:inline;margin-left:8px;">-->
+<!--                        <input class="dw-input" style="width:260px;display:inline-block;"-->
+<!--                               name="note" placeholder="Lý do fail (tuỳ chọn)">-->
+<!--                        <button type="submit" class="dw-btn dw-btn-sm">❌ Giao thất bại</button>-->
+<!--                    </form>-->
+
+<!--                    <form th:if="${hd.trangThai.name() == 'GIAO_THAT_BAI'}"-->
+<!--                          th:action="@{'/hoa-don/' + ${hd.id} + '/returned'}"-->
+<!--                          method="post"-->
+<!--                          style="display:inline;margin-left:8px;">-->
+<!--                        <input class="dw-input" style="width:260px;display:inline-block;"-->
+<!--                               name="note" placeholder="Ghi chú hoàn về (tuỳ chọn)">-->
+<!--                        <button type="submit" class="dw-btn dw-btn-sm">📦 Đã hoàn về</button>-->
+<!--                    </form>-->
+<!--                </div>-->
+
+<!--                &lt;!&ndash; ====== CHI TIẾT (ITEMS + HISTORY) - gộp từ detail.html ====== &ndash;&gt;-->
+<!--                <div th:if="${hd != null && hd.id != null}">-->
+<!--                    <hr style="margin:18px 0;">-->
+
+<!--                    <th:block th:with="finalOrder=${hd.trangThai.name() == 'HOAN_THANH'-->
+<!--                                                   or hd.trangThai.name() == 'HUY'-->
+<!--                                                   or hd.trangThai.name() == 'HOAN_VE'}">-->
+
+<!--                        <div th:if="${finalOrder}" class="dw-note">-->
+<!--                            Hóa đơn đã kết thúc (final) nên không thể chỉnh sửa sản phẩm.-->
+<!--                        </div>-->
+
+<!--                        &lt;!&ndash; ADD ITEM &ndash;&gt;-->
+<!--                        <div th:if="${!finalOrder}">-->
+<!--                            <h3 style="margin:0 0 10px;">➕ Thêm sản phẩm vào hóa đơn</h3>-->
+
+<!--                            <div style="position:relative; width:360px; max-width:100%;">-->
+<!--                                <input class="dw-input" type="text" id="productSearch"-->
+<!--                                       placeholder="Nhập tên sản phẩm..." autocomplete="off">-->
+<!--                                <input type="hidden" id="productId">-->
+
+<!--                                <div id="suggestBox"-->
+<!--                                     style="position:absolute; top:100%; left:0; right:0; border:1px solid #cfd8df; background:#fff;-->
+<!--                                            display:none; max-height:200px; overflow:auto; z-index:999;">-->
+<!--                                </div>-->
+<!--                            </div>-->
+
+<!--                            <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">-->
+<!--                                <div style="min-width:200px;">-->
+<!--                                    <label>Size</label>-->
+<!--                                    <select class="dw-select" id="sizeSelect" disabled>-->
+<!--                                        <option value="">&#45;&#45; Chọn size &#45;&#45;</option>-->
+<!--                                    </select>-->
+<!--                                </div>-->
+
+<!--                                <div style="min-width:200px;">-->
+<!--                                    <label>Màu</label>-->
+<!--                                    <select class="dw-select" id="colorSelect" disabled>-->
+<!--                                        <option value="">&#45;&#45; Chọn màu &#45;&#45;</option>-->
+<!--                                    </select>-->
+<!--                                </div>-->
+<!--                            </div>-->
+
+<!--                            <form th:action="@{'/hoa-don/' + ${hd.id} + '/items/add-by-variant'}"-->
+<!--                                  method="post"-->
+<!--                                  style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">-->
+<!--                                <input type="hidden" name="productId" id="fProductId">-->
+<!--                                <input type="hidden" name="sizeId" id="fSizeId">-->
+<!--                                <input type="hidden" name="colorId" id="fColorId">-->
+
+<!--                                <label>Số lượng:</label>-->
+<!--                                <input class="dw-input" style="width:110px;"-->
+<!--                                       type="number" name="soLuong" min="1" value="1" required>-->
+
+<!--                                <button type="submit" class="dw-btn"-->
+<!--                                        onclick="-->
+<!--                                          if(!document.getElementById('fProductId').value-->
+<!--                                            || !document.getElementById('fSizeId').value-->
+<!--                                            || !document.getElementById('fColorId').value){-->
+<!--                                            alert('Chọn đủ Sản phẩm / Size / Màu trước khi thêm!');-->
+<!--                                            return false;-->
+<!--                                          }-->
+<!--                                        ">Thêm</button>-->
+<!--                            </form>-->
+
+<!--                            <script>-->
+<!--                                const input = document.getElementById("productSearch");-->
+<!--                                const suggestBox = document.getElementById("suggestBox");-->
+
+<!--                                const productIdEl = document.getElementById("productId");-->
+<!--                                const sizeSelect = document.getElementById("sizeSelect");-->
+<!--                                const colorSelect = document.getElementById("colorSelect");-->
+
+<!--                                const fProductId = document.getElementById("fProductId");-->
+<!--                                const fSizeId = document.getElementById("fSizeId");-->
+<!--                                const fColorId = document.getElementById("fColorId");-->
+
+<!--                                let debounceTimer = null;-->
+
+<!--                                function clearSelect(selectEl, placeholder) {-->
+<!--                                    selectEl.innerHTML = "";-->
+<!--                                    const opt = document.createElement("option");-->
+<!--                                    opt.value = "";-->
+<!--                                    opt.textContent = placeholder;-->
+<!--                                    selectEl.appendChild(opt);-->
+<!--                                }-->
+
+<!--                                function hideSuggest() {-->
+<!--                                    suggestBox.style.display = "none";-->
+<!--                                    suggestBox.innerHTML = "";-->
+<!--                                }-->
+
+<!--                                function showSuggest(items) {-->
+<!--                                    if (!items || items.length === 0) {-->
+<!--                                        hideSuggest();-->
+<!--                                        return;-->
+<!--                                    }-->
+<!--                                    suggestBox.innerHTML = "";-->
+<!--                                    items.forEach(it => {-->
+<!--                                        const div = document.createElement("div");-->
+<!--                                        div.textContent = it.name;-->
+<!--                                        div.style.padding = "6px 8px";-->
+<!--                                        div.style.cursor = "pointer";-->
+<!--                                        div.addEventListener("mouseenter", () => div.style.background = "#f2f2f2");-->
+<!--                                        div.addEventListener("mouseleave", () => div.style.background = "#fff");-->
+<!--                                        div.addEventListener("click", () => selectProduct(it));-->
+<!--                                        suggestBox.appendChild(div);-->
+<!--                                    });-->
+<!--                                    suggestBox.style.display = "block";-->
+<!--                                }-->
+
+<!--                                async function selectProduct(it) {-->
+<!--                                    input.value = it.name;-->
+<!--                                    productIdEl.value = it.id;-->
+<!--                                    fProductId.value = it.id;-->
+
+<!--                                    clearSelect(sizeSelect, "&#45;&#45; Chọn size &#45;&#45;");-->
+<!--                                    clearSelect(colorSelect, "&#45;&#45; Chọn màu &#45;&#45;");-->
+<!--                                    sizeSelect.disabled = true;-->
+<!--                                    colorSelect.disabled = true;-->
+<!--                                    fSizeId.value = "";-->
+<!--                                    fColorId.value = "";-->
+<!--                                    hideSuggest();-->
+
+<!--                                    const res = await fetch(`/api/products/${it.id}/sizes`);-->
+<!--                                    const sizes = await res.json();-->
+
+<!--                                    sizes.forEach(s => {-->
+<!--                                        const opt = document.createElement("option");-->
+<!--                                        opt.value = s.id;-->
+<!--                                        opt.textContent = s.name;-->
+<!--                                        sizeSelect.appendChild(opt);-->
+<!--                                    });-->
+
+<!--                                    sizeSelect.disabled = sizes.length === 0;-->
+<!--                                }-->
+
+<!--                                sizeSelect.addEventListener("change", async () => {-->
+<!--                                    const pid = productIdEl.value;-->
+<!--                                    const sid = sizeSelect.value;-->
+
+<!--                                    fSizeId.value = sid;-->
+
+<!--                                    clearSelect(colorSelect, "&#45;&#45; Chọn màu &#45;&#45;");-->
+<!--                                    colorSelect.disabled = true;-->
+<!--                                    fColorId.value = "";-->
+
+<!--                                    if (!pid || !sid) return;-->
+
+<!--                                    const res = await fetch(`/api/products/${pid}/sizes/${sid}/colors`);-->
+<!--                                    const colors = await res.json();-->
+
+<!--                                    colors.forEach(c => {-->
+<!--                                        const opt = document.createElement("option");-->
+<!--                                        opt.value = c.id;-->
+<!--                                        opt.textContent = c.name;-->
+<!--                                        colorSelect.appendChild(opt);-->
+<!--                                    });-->
+
+<!--                                    colorSelect.disabled = colors.length === 0;-->
+<!--                                });-->
+
+<!--                                colorSelect.addEventListener("change", () => {-->
+<!--                                    fColorId.value = colorSelect.value;-->
+<!--                                });-->
+
+<!--                                input.addEventListener("input", () => {-->
+<!--                                    const q = input.value.trim();-->
+
+<!--                                    productIdEl.value = "";-->
+<!--                                    fProductId.value = "";-->
+<!--                                    fSizeId.value = "";-->
+<!--                                    fColorId.value = "";-->
+
+<!--                                    clearSelect(sizeSelect, "&#45;&#45; Chọn size &#45;&#45;");-->
+<!--                                    clearSelect(colorSelect, "&#45;&#45; Chọn màu &#45;&#45;");-->
+<!--                                    sizeSelect.disabled = true;-->
+<!--                                    colorSelect.disabled = true;-->
+
+<!--                                    if (debounceTimer) clearTimeout(debounceTimer);-->
+<!--                                    debounceTimer = setTimeout(async () => {-->
+<!--                                        if (q.length < 1) { hideSuggest(); return; }-->
+
+<!--                                        const res = await fetch("/api/products/search?q=" + encodeURIComponent(q));-->
+<!--                                        const data = await res.json();-->
+<!--                                        showSuggest(data);-->
+<!--                                    }, 200);-->
+<!--                                });-->
+
+<!--                                document.addEventListener("click", (e) => {-->
+<!--                                    if (!suggestBox.contains(e.target) && e.target !== input) hideSuggest();-->
+<!--                                });-->
+<!--                            </script>-->
+<!--                        </div>-->
+
+                        <!-- ITEMS LIST -->
+                        <h3 style="margin:16px 0 10px;">📦 Sản phẩm trong hóa đơn</h3>
+
+                        <table class="dw-table">
+                            <thead>
+                            <tr>
+                                <th>ID SPCT</th>
+                                <th>Số lượng</th>
+                                <th>Thành tiền</th>
+                                <th>Trạng thái</th>
+                                <th style="width:160px;">Hành động</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:if="${#lists.isEmpty(items)}">
+                                <td colspan="5">Chưa có sản phẩm trong hóa đơn</td>
+                            </tr>
+
+                            <tr th:each="it : ${items}">
+                                <td th:text="${it.sanPhamChiTiet != null ? it.sanPhamChiTiet.id : 'N/A'}"></td>
+
+                                <td>
+                                    <span th:if="${finalOrder}" th:text="${it.soLuong}"></span>
+
+                                    <form th:if="${!finalOrder}"
+                                          th:action="@{'/hoa-don/' + ${hd.id} + '/items/' + ${it.id} + '/qty'}"
+                                          method="post" style="display:inline;">
+                                        <input class="dw-input" style="width:110px;display:inline-block;"
+                                               type="number" name="soLuong" min="1" th:value="${it.soLuong}">
+                                        <button type="submit" class="dw-btn dw-btn-sm">Cập nhật</button>
+                                    </form>
+                                </td>
+
+                                <td th:text="${it.thanhTien}"></td>
+                                <td th:text="${it.trangThai}"></td>
+
+                                <td>
+                                    <span th:if="${finalOrder}">-</span>
+
+                                    <form th:if="${!finalOrder}"
+                                          th:action="@{'/hoa-don/' + ${hd.id} + '/items/' + ${it.id} + '/delete'}"
+                                          method="post"
+                                          style="display:inline;"
+                                          onsubmit="return confirm('Xóa sản phẩm này khỏi hóa đơn?');">
+                                        <button type="submit" class="dw-btn dw-btn-sm">🗑 Xóa</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+
+                    </th:block>
+
+                    <!-- HISTORY -->
+                    <hr style="margin:18px 0;">
+                    <h3 style="margin:0 0 10px;">🕒 Lịch sử trạng thái</h3>
+
+                    <table class="dw-table">
+                        <thead>
+                        <tr>
+                            <th>Thời gian</th>
+                            <th>Từ</th>
+                            <th>Đến</th>
+                            <th>Ghi chú</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:if="${#lists.isEmpty(history)}">
+                            <td colspan="4">Chưa có lịch sử trạng thái</td>
+                        </tr>
+
+                        <tr th:each="h : ${history}">
+                            <td th:text="${h.changedAt}"></td>
+                            <td th:text="${h.fromStatus}"></td>
+                            <td th:text="${h.toStatus}"></td>
+                            <td th:text="${h.note}"></td>
+                        </tr>
+                        </tbody>
+                    </table>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div th:replace="layout/footer :: footer"></div>
+</div>
+</body>
+</html>
