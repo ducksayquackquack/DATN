@@ -24,7 +24,7 @@ public class SanPhamChiTietApiController {
         SanPhamChiTiet spct = repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy biến thể"));
 
-        // Soft delete
+
         spct.setTrangThai("Ngừng hoạt động");
         spct.setNgaySua(LocalDateTime.now());
         repository.save(spct);

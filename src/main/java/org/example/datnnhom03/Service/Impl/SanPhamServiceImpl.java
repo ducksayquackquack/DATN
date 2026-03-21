@@ -260,9 +260,7 @@ public class SanPhamServiceImpl implements SanPhamService {
         return null;
     }
 
-    /**
-     * Resolve KichThuoc: ưu tiên theo id, fallback tìm theo tên, nếu không có thì tạo mới
-     */
+
     private KichThuoc resolveKichThuoc(KichThuoc source) {
         if (source == null) return null;
         if (source.getId() != null && source.getId() > 0) {

@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class SanPhamChiTiet {
 
+    //
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
