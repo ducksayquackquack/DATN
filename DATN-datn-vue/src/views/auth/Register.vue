@@ -1,0 +1,760 @@
+<script setup>
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useToast } from '../../composables/useToast'
+import taiKhoanService from '../../services/taiKhoanService'
+import { createKhachHang, getKhachHangByTaiKhoanId } from '../../services/KhachHangService'
+import { createDiaChi } from '../../services/diaChiService'
+import logo from '../../assets/img/logo/new logo.png?url'
+
+const router = useRouter()
+const { success: toastSuccess, error: toastError, warning: toastWarning } = useToast()
+
+const form = ref({
+  fullName: '',
+  email: '',
+  phone: '',
+  gender: '',
+  birthDate: '',
+  tinhThanh: '',
+  quanHuyen: '',
+  phuongXa: '',
+  diaChiCuThe: '',
+  password: '',
+  confirmPassword: ''
+})
+
+const loading = ref(false)
+const error = ref('')
+const success = ref('')
+
+const LOCAL_AUTH_USERS_KEY = 'localAuthUsers'
+const LOCAL_REGISTERED_PROFILES_KEY = 'localRegisteredProfiles'
+const PHONE_REGEX = /^(0|\+84)\d{9,10}$/
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const persistLocalRegisteredUser = (email, rawPassword) => {
+  try {
+    const existing = JSON.parse(localStorage.getItem(LOCAL_AUTH_USERS_KEY) || '{}')
+    const safeObject = existing && typeof existing === 'object' ? existing : {}
+    safeObject[String(email || '').trim().toLowerCase()] = String(rawPassword || '')
+    localStorage.setItem(LOCAL_AUTH_USERS_KEY, JSON.stringify(safeObject))
+  } catch {
+    // Ignore local storage issues; registration result should still be shown.
+  }
+}
+
+const persistLocalRegisteredProfile = (email) => {
+  try {
+    const existing = JSON.parse(localStorage.getItem(LOCAL_REGISTERED_PROFILES_KEY) || '{}')
+    const safeObject = existing && typeof existing === 'object' ? existing : {}
+    const normalizedEmail = String(email || '').trim().toLowerCase()
+    const profile = {
+      fullName: String(form.value.fullName || '').trim(),
+      phone: String(form.value.phone || '').trim(),
+      gender: normalizeGender(form.value.gender),
+      birthDate: String(form.value.birthDate || '').trim(),
+      diaChiCuThe: String(form.value.diaChiCuThe || '').trim(),
+      tinhThanh: String(form.value.tinhThanh || '').trim(),
+      quanHuyen: String(form.value.quanHuyen || '').trim(),
+      phuongXa: String(form.value.phuongXa || '').trim()
+    }
+
+    safeObject[normalizedEmail] = profile
+    localStorage.setItem(LOCAL_REGISTERED_PROFILES_KEY, JSON.stringify(safeObject))
+    localStorage.setItem('userName', profile.fullName)
+    localStorage.setItem('userPhone', profile.phone)
+    localStorage.setItem('userDiaChiCuThe', profile.diaChiCuThe)
+    localStorage.setItem('userTinhThanh', profile.tinhThanh)
+    localStorage.setItem('userQuanHuyen', profile.quanHuyen)
+    localStorage.setItem('userPhuongXa', profile.phuongXa)
+    localStorage.setItem('userGender', profile.gender)
+    localStorage.setItem('userBirthDate', profile.birthDate)
+    localStorage.setItem('userAddress', [profile.diaChiCuThe, profile.phuongXa, profile.quanHuyen, profile.tinhThanh].filter(Boolean).join(', '))
+  } catch {
+    // Ignore storage issues; backend persistence remains primary.
+  }
+}
+
+const normalizeGender = (value) => {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'nam' || normalized === 'male') return 'Nam'
+  if (normalized === 'nữ' || normalized === 'nu' || normalized === 'female') return 'Nữ'
+  return 'Khác'
+}
+
+const fetchAccountByEmail = async (email) => {
+  const normalized = String(email || '').trim().toLowerCase()
+  if (!normalized) return null
+
+  const pageSize = 50
+  let page = 0
+  let totalPages = 1
+
+  while (page < totalPages) {
+    const response = await taiKhoanService.getAll({ page, size: pageSize })
+    const payload = response?.data
+    const accounts = Array.isArray(payload)
+      ? payload
+      : (Array.isArray(payload?.content) ? payload.content : [])
+
+    const matched = accounts.find((item) => String(item?.email || '').trim().toLowerCase() === normalized) || null
+    if (matched) return matched
+
+    const detectedTotalPages = Number(payload?.totalPages)
+    if (Number.isFinite(detectedTotalPages) && detectedTotalPages > 0) {
+      totalPages = detectedTotalPages
+    } else if (accounts.length < pageSize) {
+      break
+    } else {
+      totalPages = page + 2
+    }
+
+    page += 1
+  }
+
+  return null
+}
+
+const extractApiErrorMessage = (err) => {
+  const data = err?.response?.data
+  if (typeof data === 'string' && data.trim()) return data.trim()
+  if (typeof data?.message === 'string' && data.message.trim()) return data.message.trim()
+  if (typeof data?.error === 'string' && data.error.trim()) return data.error.trim()
+  return ''
+}
+
+const isDuplicateEmailError = (message = '') => {
+  const normalized = String(message || '').trim().toLowerCase()
+  return normalized.includes('email') && (
+    normalized.includes('tồn tại') ||
+    normalized.includes('ton tai') ||
+    normalized.includes('đã có') ||
+    normalized.includes('da co') ||
+    normalized.includes('already') ||
+    normalized.includes('duplicate')
+  )
+}
+
+const isFutureDate = (dateString) => {
+  if (!dateString) return false
+  const selectedDate = new Date(dateString)
+  if (Number.isNaN(selectedDate.getTime())) return false
+
+  const today = new Date()
+  selectedDate.setHours(0, 0, 0, 0)
+  today.setHours(0, 0, 0, 0)
+  return selectedDate > today
+}
+
+const createCustomerProfile = async (accountId) => {
+  const payloadCandidates = [
+    {
+      tenKhachHang: form.value.fullName.trim(),
+      soDienThoai: form.value.phone.trim(),
+      gioiTinh: normalizeGender(form.value.gender),
+      ngaySinh: form.value.birthDate,
+      idTaiKhoan: Number(accountId),
+      trangThai: 'Hoạt động'
+    },
+    {
+      tenKhachHang: form.value.fullName.trim(),
+      soDienThoai: form.value.phone.trim(),
+      gioiTinh: normalizeGender(form.value.gender),
+      ngaySinh: form.value.birthDate,
+      taiKhoan: { id: Number(accountId) },
+      trangThai: 'Hoạt động'
+    },
+    {
+      tenKhachHang: form.value.fullName.trim(),
+      soDienThoai: form.value.phone.trim(),
+      gioiTinh: normalizeGender(form.value.gender),
+      ngaySinh: form.value.birthDate,
+      taiKhoanId: Number(accountId),
+      trangThai: 'Hoạt động'
+    }
+  ]
+
+  let lastError = null
+  for (const payload of payloadCandidates) {
+    try {
+      await createKhachHang(payload)
+      const customerResponse = await getKhachHangByTaiKhoanId(accountId)
+      if (customerResponse?.data?.id) return customerResponse.data
+    } catch (err) {
+      lastError = err
+    }
+  }
+
+  throw lastError || new Error('Create customer failed')
+}
+
+const createCustomerAddress = async (customerId) => {
+  const payloadCandidates = [
+    {
+      idKhachHang: Number(customerId),
+      tinhThanh: form.value.tinhThanh.trim(),
+      quanHuyen: form.value.quanHuyen.trim(),
+      phuongXa: form.value.phuongXa.trim(),
+      diaChiCuThe: form.value.diaChiCuThe.trim(),
+      trangThai: 'Hoạt động'
+    },
+    {
+      khachHang: { id: Number(customerId) },
+      tinhThanh: form.value.tinhThanh.trim(),
+      quanHuyen: form.value.quanHuyen.trim(),
+      phuongXa: form.value.phuongXa.trim(),
+      diaChiCuThe: form.value.diaChiCuThe.trim(),
+      trangThai: 'Hoạt động'
+    },
+    {
+      khachHangId: Number(customerId),
+      tinhThanh: form.value.tinhThanh.trim(),
+      quanHuyen: form.value.quanHuyen.trim(),
+      phuongXa: form.value.phuongXa.trim(),
+      diaChiCuThe: form.value.diaChiCuThe.trim(),
+      trangThai: 'Hoạt động'
+    }
+  ]
+
+  let lastError = null
+  for (const payload of payloadCandidates) {
+    try {
+      await createDiaChi(payload)
+      return
+    } catch (err) {
+      lastError = err
+    }
+  }
+
+  throw lastError || new Error('Create address failed')
+}
+
+const validate = () => {
+  error.value = ''
+  success.value = ''
+
+  const fail = (message) => {
+    error.value = message
+    toastWarning(message)
+    return false
+  }
+
+  if (!form.value.fullName.trim()) {
+    return fail('Vui lòng nhập họ tên.')
+  }
+
+  if (!EMAIL_REGEX.test(String(form.value.email || '').trim())) {
+    return fail('Email không hợp lệ.')
+  }
+
+  if (!PHONE_REGEX.test(String(form.value.phone || '').replace(/\s+/g, ''))) {
+    return fail('Số điện thoại không hợp lệ.')
+  }
+
+  if (!form.value.gender) {
+    return fail('Vui lòng chọn giới tính.')
+  }
+
+  if (!form.value.birthDate) {
+    return fail('Vui lòng chọn ngày sinh.')
+  }
+
+  if (isFutureDate(form.value.birthDate)) {
+    return fail('Ngày sinh không được ở tương lai.')
+  }
+
+  if (!form.value.tinhThanh.trim() || !form.value.quanHuyen.trim() || !form.value.phuongXa.trim()) {
+    return fail('Địa chỉ cần có đủ Tỉnh/Thành, Quận/Huyện và Phường/Xã.')
+  }
+
+  if (!form.value.diaChiCuThe.trim()) {
+    return fail('Vui lòng nhập địa chỉ cụ thể.')
+  }
+
+  if (form.value.password.length < 6) {
+    return fail('Mật khẩu cần ít nhất 6 ký tự.')
+  }
+
+  if (form.value.password !== form.value.confirmPassword) {
+    return fail('Mật khẩu xác nhận không khớp.')
+  }
+
+  return true
+}
+
+const submit = async () => {
+  if (!validate()) return
+
+  loading.value = true
+  error.value = ''
+  success.value = ''
+
+  const normalizedEmail = form.value.email.trim().toLowerCase()
+  const basePayload = {
+    email: normalizedEmail,
+    tenKhachHang: form.value.fullName.trim(),
+    soDienThoai: form.value.phone.trim(),
+    gioiTinh: normalizeGender(form.value.gender),
+    ngaySinh: form.value.birthDate,
+    diaChiCuThe: form.value.diaChiCuThe.trim(),
+    tinhThanh: form.value.tinhThanh.trim(),
+    quanHuyen: form.value.quanHuyen.trim(),
+    phuongXa: form.value.phuongXa.trim(),
+    trangThaiTaiKhoan: 'Kích hoạt',
+    trangThaiHoatDong: 'Hoạt động'
+  }
+
+  try {
+    const existingAccount = await fetchAccountByEmail(normalizedEmail)
+    let accountId = Number(existingAccount?.id) || null
+    const reusedExistingAccount = Boolean(accountId)
+
+    // Try strict username/password contract first because /api/auth/login accepts this shape.
+    const payloadCandidates = [
+      { ...basePayload, vaiTro: 'CUSTOMER', username: normalizedEmail, matKhau: form.value.password },
+      { ...basePayload, vaiTro: 'ROLE_CUSTOMER', tenDangNhap: normalizedEmail, matKhau: form.value.password },
+      { ...basePayload, vaiTro: 'CUSTOMER', username: normalizedEmail, password: form.value.password },
+      { ...basePayload, vaiTro: 'ROLE_CUSTOMER', username: normalizedEmail, password: form.value.password },
+      { ...basePayload, vaiTro: 'KHACH_HANG', username: normalizedEmail, password: form.value.password },
+      { ...basePayload, vaiTro: 'CUSTOMER', tenDangNhap: normalizedEmail, password: form.value.password }
+    ]
+
+    if (!accountId) {
+      let created = false
+      let createdAccountId = null
+      let lastError = null
+      for (const payload of payloadCandidates) {
+        try {
+          const response = await taiKhoanService.create(payload)
+          const responseAccountId = Number(response?.data?.id || response?.data?.data?.id)
+          if (Number.isFinite(responseAccountId) && responseAccountId > 0) {
+            createdAccountId = responseAccountId
+          }
+          created = true
+          break
+        } catch (err) {
+          lastError = err
+        }
+      }
+
+      if (!created) {
+        throw lastError || new Error('Create account failed')
+      }
+
+      const resolvedAccount = createdAccountId
+        ? { id: createdAccountId }
+        : await fetchAccountByEmail(normalizedEmail)
+
+      accountId = Number(resolvedAccount?.id) || null
+    }
+
+    if (!accountId) {
+      throw new Error('Account lookup failed')
+    }
+
+    let customer = null
+    let profileWarning = ''
+
+    try {
+      const existingCustomerResponse = await getKhachHangByTaiKhoanId(accountId)
+      customer = existingCustomerResponse?.data || null
+    } catch {
+      customer = null
+    }
+
+    if (!customer?.id) {
+      try {
+        customer = await createCustomerProfile(accountId)
+      } catch {
+        profileWarning = 'Tài khoản đã được tạo nhưng chưa thể tạo hồ sơ khách hàng. Bạn vẫn có thể đăng nhập.'
+      }
+    }
+
+    if (customer?.id) {
+      try {
+        await createCustomerAddress(customer.id)
+      } catch {
+        profileWarning = profileWarning || 'Tài khoản đã được tạo, nhưng địa chỉ mặc định chưa lưu được. Bạn có thể cập nhật sau.'
+      }
+    }
+
+    persistLocalRegisteredUser(normalizedEmail, form.value.password)
+    persistLocalRegisteredProfile(normalizedEmail)
+
+    success.value = reusedExistingAccount
+      ? 'Email đã có tài khoản trước đó. Đang chuyển sang đăng nhập...'
+      : 'Tạo tài khoản thành công. Đang chuyển sang đăng nhập...'
+
+    if (profileWarning) {
+      toastWarning(profileWarning)
+    }
+
+    toastSuccess(success.value)
+    setTimeout(() => {
+      router.push('/login')
+    }, 900)
+  } catch (e) {
+    const apiMessage = extractApiErrorMessage(e)
+
+    if (isDuplicateEmailError(apiMessage)) {
+      error.value = 'Email đã tồn tại. Vui lòng dùng email khác.'
+    } else if (apiMessage) {
+      error.value = apiMessage
+    } else {
+      error.value = 'Không thể tạo tài khoản. Vui lòng kiểm tra lại thông tin.'
+    }
+
+    toastError(error.value)
+  } finally {
+    loading.value = false
+  }
+}
+</script>
+
+<template>
+  <div class="auth register-page">
+    <div class="auth-ambient" aria-hidden="true">
+      <span class="orb orb-a"></span>
+      <span class="orb orb-b"></span>
+    </div>
+
+    <router-link to="/home" class="auth-brand">
+      <div class="brand">
+        <span class="brand-wordmark">
+          <img :src="logo" alt="D" class="brand-d-icon" />
+          <span class="brand-rest">irtyWave</span>
+        </span>
+      </div>
+    </router-link>
+
+    <div class="card auth-card register-card">
+      <div class="head">
+        <div>
+          <h1>Tạo tài khoản</h1>
+          <small class="muted">Tạo tài khoản khách hàng để mua sắm</small>
+        </div>
+      </div>
+
+      <div class="body">
+        <form class="grid" @submit.prevent="submit">
+          <div class="field col-2">
+            <label>Họ và tên</label>
+            <input v-model="form.fullName" type="text" placeholder="Nguyễn Văn A" required />
+          </div>
+
+          <div class="field">
+            <label>Email</label>
+            <input v-model="form.email" type="email" placeholder="you@example.com" required />
+          </div>
+
+          <div class="field">
+            <label>Số điện thoại</label>
+            <input v-model="form.phone" type="tel" placeholder="09xxxxxxxx" required />
+          </div>
+
+          <div class="field">
+            <label>Giới tính</label>
+            <select v-model="form.gender" :class="{ 'is-empty': !form.gender }" required>
+              <option value="" disabled>Chọn giới tính</option>
+              <option value="Nam">Nam</option>
+              <option value="Nữ">Nữ</option>
+              <option value="Khác">Khác</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Ngày sinh</label>
+            <input v-model="form.birthDate" type="date" :max="new Date().toISOString().slice(0, 10)" required />
+          </div>
+
+          <div class="field">
+            <label>Tỉnh/Thành</label>
+            <input v-model="form.tinhThanh" type="text" placeholder="VD: TP. Hà Nội" required />
+          </div>
+
+          <div class="field">
+            <label>Quận/Huyện</label>
+            <input v-model="form.quanHuyen" type="text" placeholder="VD: Cầu Giấy" required />
+          </div>
+
+          <div class="field">
+            <label>Phường/Xã</label>
+            <input v-model="form.phuongXa" type="text" placeholder="VD: Dịch Vọng" required />
+          </div>
+
+          <div class="field col-2">
+            <label>Địa chỉ cụ thể</label>
+            <input v-model="form.diaChiCuThe" type="text" placeholder="Số nhà, tên đường..." required />
+          </div>
+
+          <div class="field">
+            <label>Mật khẩu</label>
+            <input v-model="form.password" type="password" placeholder="Tối thiểu 6 ký tự" required />
+          </div>
+
+          <div class="field">
+            <label>Xác nhận mật khẩu</label>
+            <input v-model="form.confirmPassword" type="password" placeholder="Nhập lại mật khẩu" required />
+          </div>
+
+          <button class="btn primary" type="submit" :disabled="loading">
+            {{ loading ? 'Đang tạo...' : 'Tạo tài khoản' }}
+          </button>
+
+          <div v-if="error" class="error">{{ error }}</div>
+          <div v-if="success" class="success">{{ success }}</div>
+
+          <div class="footnote">
+            <small class="muted">Đã có tài khoản?</small>
+            <router-link to="/login" class="link register-link">Đăng nhập</router-link>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+@import './login.css';
+
+.auth {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 8% 12%, rgba(239, 68, 68, 0.18), transparent 45%),
+    radial-gradient(circle at 88% 84%, rgba(14, 116, 144, 0.16), transparent 42%),
+    linear-gradient(140deg, #f8fafc 0%, #f1f5f9 46%, #fef2f2 100%);
+}
+
+.auth-ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(28px);
+  opacity: 0.34;
+  animation: orbFloat 7s ease-in-out infinite;
+}
+
+.orb-a {
+  width: 240px;
+  height: 240px;
+  background: #ef4444;
+  top: -80px;
+  right: -40px;
+}
+
+.orb-b {
+  width: 220px;
+  height: 220px;
+  background: #0ea5e9;
+  bottom: -90px;
+  left: -60px;
+  animation-delay: 1.2s;
+}
+
+.register-card {
+  width: min(720px, 96vw);
+  padding: 24px 18px 30px;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 24px 65px rgba(15, 23, 42, 0.14);
+  animation: authCardIn 0.55s ease;
+}
+
+.brand-wordmark {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  user-select: none;
+  font-size: 52px;
+}
+
+.brand-d-icon {
+  width: 1.06em;
+  height: 1.06em;
+  object-fit: contain;
+  margin-right: -0.04em;
+  filter:
+    sepia(1)
+    saturate(14)
+    hue-rotate(326deg)
+    brightness(0.98)
+    contrast(1.16)
+    drop-shadow(0 3px 8px rgba(197, 22, 45, 0.22));
+  transition: transform 0.25s ease, filter 0.25s ease;
+}
+
+.brand:hover .brand-d-icon {
+  transform: scale(1.08) rotate(-3deg);
+  filter:
+    sepia(1)
+    saturate(15)
+    hue-rotate(326deg)
+    brightness(1.03)
+    contrast(1.18)
+    drop-shadow(0 4px 12px rgba(197, 22, 45, 0.3));
+}
+
+.brand-rest {
+  font-size: 1em;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  color: #111827;
+  transition: color 0.25s ease;
+}
+
+.brand:hover .brand-rest {
+  color: #c5162d;
+}
+
+.grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.col-2 {
+  grid-column: 1 / -1;
+}
+
+.field input,
+.field select {
+  font-size: 16px;
+  padding: 14px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: rgba(248, 250, 252, 0.92);
+  color: #111;
+  width: 100%;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.field select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  min-height: 52px;
+  line-height: 1.35;
+  padding-top: 0;
+  padding-bottom: 0;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #6b7280 50%),
+    linear-gradient(135deg, #6b7280 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 2px),
+    calc(100% - 12px) calc(50% - 2px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 42px;
+}
+
+.field select option {
+  color: #111827;
+}
+
+.field select.is-empty {
+  color: #9ca3af;
+}
+
+.field select:not(.is-empty) {
+  color: #111827;
+}
+
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
+  transform: translateY(-1px);
+}
+
+.btn.primary {
+  grid-column: 1 / -1;
+}
+
+.footnote {
+  grid-column: 1 / -1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  margin-top: 6px;
+}
+
+.error {
+  margin-top: 12px;
+  color: #dc2626;
+  text-align: center;
+  font-size: 15px;
+}
+
+.success {
+  margin-top: 12px;
+  color: #0f766e;
+  text-align: center;
+  font-size: 15px;
+}
+
+.footnote .muted {
+  color: #475569;
+  font-size: 15px;
+}
+
+.register-link {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.register-link:hover {
+  color: #dc2626;
+}
+
+@keyframes authCardIn {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes orbFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+
+@media (max-width: 760px) {
+  .brand-wordmark {
+    font-size: 40px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .col-2 {
+    grid-column: auto;
+  }
+}
+</style>

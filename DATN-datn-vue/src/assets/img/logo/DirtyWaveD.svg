@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 150" fill="none">
+  <defs>
+    <linearGradient id="dGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e82028"/>
+      <stop offset="45%" stop-color="#c5162d"/>
+      <stop offset="100%" stop-color="#7a0a12"/>
+    </linearGradient>
+    <linearGradient id="waveGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d41420"/>
+      <stop offset="100%" stop-color="#8a0c16"/>
+    </linearGradient>
+    <linearGradient id="waveGrad2" x1="0%" y1="20%" x2="100%" y2="80%">
+      <stop offset="0%" stop-color="#cc1222"/>
+      <stop offset="100%" stop-color="#780a10"/>
+    </linearGradient>
+    <filter id="shadow" x="-15%" y="-10%" width="140%" height="130%">
+      <feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="#400008" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!--
+    Structure based on the reference logo:
+    - Bold D shape with vertical left stroke
+    - Top curves to the right normally
+    - From inside the D, 2-3 large wave curves sweep down and to the left,
+      extending below and beyond the D's left vertical stroke
+    - The waves create a flowing ocean-wave effect breaking out of the D
+  -->
+
+  <!-- D main body: vertical left stroke + top arc + right side that merges into waves -->
+  <path d="
+    M 32 6
+    L 62 6
+    C 96 6, 118 22, 122 52
+    C 126 78, 116 100, 96 112
+    C 82 120, 68 118, 56 110
+    C 48 104, 38 92, 28 82
+    L 28 130
+    L 10 130
+    L 10 6
+    Z
+  " fill="url(#dGrad)" filter="url(#shadow)"/>
+
+  <!-- Wave 1 (outermost) - large swoop from right side of D, curving down and sweeping left -->
+  <path d="
+    M 96 48
+    C 100 58, 100 72, 92 84
+    C 82 98, 62 108, 42 112
+    C 26 116, 10 114, 2 108
+  " stroke="url(#waveGrad1)" stroke-width="10" fill="none" stroke-linecap="round"/>
+
+  <!-- Wave 2 (middle) - follows similar path, slightly inside -->
+  <path d="
+    M 88 46
+    C 92 56, 90 68, 82 78
+    C 72 90, 54 98, 36 102
+    C 22 106, 10 104, 4 98
+  " stroke="url(#waveGrad2)" stroke-width="8" fill="none" stroke-linecap="round"/>
+
+  <!-- Wave 3 (innermost) - tighter curl -->
+  <path d="
+    M 78 46
+    C 82 54, 78 64, 70 72
+    C 60 82, 44 88, 30 90
+    C 18 92, 10 90, 8 86
+  " stroke="url(#dGrad)" stroke-width="6" fill="none" stroke-linecap="round"/>
+
+  <!-- D counter space (white cutout above the waves) - the opening inside the D -->
+  <path d="
+    M 32 26
+    L 58 26
+    C 78 26, 94 34, 96 48
+    L 78 46
+    C 76 38, 66 32, 54 32
+    L 32 32
+    Z
+  " fill="white"/>
+
+  <!-- Subtle highlight on D vertical stroke for 3D depth -->
+  <path d="
+    M 16 14
+    L 16 124
+  " stroke="#ff4040" stroke-width="2" fill="none" opacity="0.18" stroke-linecap="round"/>
+</svg>

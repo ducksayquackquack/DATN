@@ -1,0 +1,64 @@
+import { ref } from 'vue'
+
+const toasts = ref([])
+let toastId = 0
+const DEFAULT_TOAST_DURATION = 5000
+const DUPLICATE_TOAST_WINDOW_MS = 800
+const recentToasts = new Map()
+
+export function useToast() {
+  const showToast = (message, type = 'success', durationOrOptions = DEFAULT_TOAST_DURATION, maybeOptions = {}) => {
+    const duration = typeof durationOrOptions === 'number'
+      ? durationOrOptions
+      : DEFAULT_TOAST_DURATION
+    const options = typeof durationOrOptions === 'object' && durationOrOptions !== null
+      ? durationOrOptions
+      : maybeOptions
+    const onceKey = String(options?.onceKey || '').trim()
+    const duplicateKey = `${type}:${String(message || '').trim()}`
+    const now = Date.now()
+
+    if (onceKey) {
+      try {
+        if (sessionStorage.getItem(onceKey)) return null
+        sessionStorage.setItem(onceKey, String(now))
+      } catch {
+        // Ignore storage errors and continue showing toast.
+      }
+    }
+
+    const lastShownAt = recentToasts.get(duplicateKey) || 0
+    if (now - lastShownAt < DUPLICATE_TOAST_WINDOW_MS) {
+      return null
+    }
+    recentToasts.set(duplicateKey, now)
+
+    const id = toastId++
+
+    toasts.value.push({
+      id,
+      message,
+      type,
+      duration,
+      visible: true
+    })
+
+    setTimeout(() => {
+      const index = toasts.value.findIndex(t => t.id === id)
+      if (index > -1) {
+        toasts.value.splice(index, 1)
+      }
+    }, duration)
+
+    return id
+  }
+
+  return {
+    toasts,
+    showToast,
+    success: (msg) => showToast(msg, 'success'),
+    error: (msg) => showToast(msg, 'error'),
+    warning: (msg) => showToast(msg, 'warning'),
+    info: (msg) => showToast(msg, 'info')
+  }
+}
