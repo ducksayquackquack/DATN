@@ -6,25 +6,51 @@ import {
   createHoaDon,
   deleteHoaDonItem,
   getHoaDonById,
+  sendOrderLookupMail,
   updateHoaDon,
   updateHoaDonBySystemEvent,
   updateHoaDonItemQty
 } from "../../../services/hoaDonService"
-import { getAllKhachHang } from "../../../services/KhachHangService"
+import { createKhachHang, getAllKhachHang } from "../../../services/KhachHangService"
 import { getAllNhanVien, getNhanVienByTaiKhoanId } from "../../../services/nhanVienService"
 import { getAllSanPham } from "../../../services/sanPhamService"
 import VoucherSelector from "../../../components/voucher/VoucherSelector.vue"
 import { useConfirm } from "../../../composables/useConfirm"
 import { useToast } from "../../../composables/useToast"
-import { CheckCircle2, Loader2, Package2, Plus, Save, ShoppingBag, Ticket, Trash2, UserRound } from "lucide-vue-next"
+import { CheckCircle2, ClipboardList, Loader2, Minus, Package2, PackageCheck, PackageSearch, Plus, RotateCcw, Save, Search, ShoppingBag, Ticket, Trash2, Truck, UserRound, X, OctagonX } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel, normalizeOrderStatusCode } from "../../../utils/adminStatus"
 import { describePaymentFlowState } from "../../../utils/paymentWorkflow"
+import { buildOrderLookupTrackingUrl } from "../../../utils/publicTrackingUrl"
 import { validateEmployeeActiveShift } from "../../../utils/shiftGuard"
+import { resolveApiOrigin } from "../../../utils/apiOrigin"
+import { getProductImageOverride } from "../../../utils/productImageOverrides"
+import logoFallback from "../../../assets/img/logo/new logo.png?url"
+import img1 from "../../../assets/img/Jackets/Áo bomber da lộn DirtyWave.jpg?url"
+import img2 from "../../../assets/img/Jackets/Áo bomber dáng lửng.jpg?url"
+import img3 from "../../../assets/img/Jackets/Áo bomber giả da DirtyWave.jpg?url"
+import img4 from "../../../assets/img/Jackets/Áo bomber nhẹ vải cotton DirtyWave.jpg?url"
+import img5 from "../../../assets/img/Jackets/Áo hoodie kéo khoá dáng hộp DirtyWave.jpg?url"
+import img6 from "../../../assets/img/Jackets/Áo hoodie kéo khoá in hình DirtyWave.jpg?url"
+import img7 from "../../../assets/img/Jackets/Áo hoodie kéo khoá Jacket DirtyWave.jpg?url"
+import img8 from "../../../assets/img/Jackets/Áo khoác coach cách nhiệt vải Timberland.jpg?url"
+import img9 from "../../../assets/img/Jackets/Áo khoac coach da ASOS DirtyWave.jpg?url"
+import img10 from "../../../assets/img/Jackets/Áo khoác coach giả da DirtyWave.jpg?url"
+import img11 from "../../../assets/img/Jackets/Áo khoác coach lông cừu DirtyWave.jpg?url"
+
+const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11]
+function fallbackImageFor(id, code = "") {
+  const n = Number(id)
+  if (Number.isFinite(n) && n > 0) return fallbackImages[(n - 1) % fallbackImages.length]
+  const d = Number(String(code || "").replace(/\D+/g, ""))
+  if (Number.isFinite(d) && d > 0) return fallbackImages[(d - 1) % fallbackImages.length]
+  return fallbackImages[0] || logoFallback
+}
 
 const router = useRouter()
 const route = useRoute()
 const { askConfirm } = useConfirm()
 const { showToast } = useToast()
+const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, "")
 const panelBasePath = computed(() => (route.path.startsWith('/employee/') ? '/employee' : '/admin'))
 const isEmployeePanel = computed(() => route.path.startsWith('/employee/'))
 
@@ -42,6 +68,7 @@ const pageTitle = computed(() => {
 
 const isLoading = ref(false)
 const isSaving = ref(false)
+const isSendingLookupMail = ref(false)
 const apiWarning = ref("")
 const currentEmployeeId = ref(null)
 const employeeOwnershipMismatch = ref(false)
@@ -52,8 +79,16 @@ const sanPhamVariants = ref([])
 const items = ref([])
 const history = ref([])
 const selectedVoucher = ref(null)
+const persistedVoucherCode = ref("")
+const persistedVoucherName = ref("")
 const manualStatusNote = ref("")
-
+const showQuickCustomerForm = ref(false)
+const creatingCustomer = ref(false)
+const quickCustomer = ref({
+  tenKhachHang: "",
+  soDienThoai: "",
+  email: ""
+})
 
 const hoaDon = ref({
   id: null,
@@ -92,6 +127,59 @@ const statusNameMap = {
   HOAN_VE: "Hoàn về",
   HOAN_THANH: "Hoàn thành",
   HUY: "Đã hủy"
+}
+
+const ONLINE_TIMELINE_STEPS = [
+  { code: "CHO_XAC_NHAN", label: "Chờ xác nhận", icon: "ClipboardList" },
+  { code: "CHO_LAY_HANG", label: "Chờ lấy hàng", icon: "Package2" },
+  { code: "DANG_GIAO", label: "Đang giao", icon: "Truck" },
+  { code: "HOAN_THANH", label: "Hoàn thành", icon: "CheckCircle2" }
+]
+
+const POS_TIMELINE_STEPS = [
+  { code: "CHO_LAY_HANG", label: "Chờ xử lý", icon: "ClipboardList" },
+  { code: "HOAN_THANH", label: "Hoàn thành", icon: "CheckCircle2" }
+]
+
+const ONLINE_TIMELINE_CODE_ORDER = { CHO_XAC_NHAN: 0, CHO_LAY_HANG: 1, DANG_GIAO: 2, HOAN_THANH: 3 }
+const POS_TIMELINE_CODE_ORDER = { CHO_XAC_NHAN: 0, CHO_LAY_HANG: 0, HOAN_THANH: 1 }
+const TERMINAL_CODES = ["GIAO_THAT_BAI", "HOAN_VE", "HUY"]
+
+const timelineSteps = computed(() => (isPosOrder.value ? POS_TIMELINE_STEPS : ONLINE_TIMELINE_STEPS))
+const timelineCodeOrder = computed(() => (isPosOrder.value ? POS_TIMELINE_CODE_ORDER : ONLINE_TIMELINE_CODE_ORDER))
+
+const timelineCurrentIndex = computed(() => {
+  const code = currentOrderCode.value
+  if (TERMINAL_CODES.includes(code)) return -1
+  return timelineCodeOrder.value[code] ?? 0
+})
+
+const timelineProgressPercent = computed(() => {
+  const idx = timelineCurrentIndex.value
+  if (idx < 0) return 0
+  const maxIndex = Math.max(1, timelineSteps.value.length - 1)
+  return (idx / maxIndex) * 100
+})
+
+const isTerminalStatus = computed(() => TERMINAL_CODES.includes(currentOrderCode.value))
+
+const showAddProductModal = ref(false)
+const productSearchKeyword = ref("")
+const filteredProductVariants = computed(() => {
+  const kw = productSearchKeyword.value.trim().toLowerCase()
+  if (!kw) return sanPhamVariants.value.slice(0, 50)
+  return sanPhamVariants.value.filter((v) =>
+    [v.maSanPham, v.maSanPhamChiTiet, v.tenSanPhamChiTiet, v.kichThuoc, v.mauSac]
+      .join(" ").toLowerCase().includes(kw)
+  ).slice(0, 50)
+})
+
+function addProductFromModal(variant) {
+  newItem.value.spctId = variant.spctId
+  newItem.value.soLuong = 1
+  addProduct()
+  showAddProductModal.value = false
+  productSearchKeyword.value = ""
 }
 
 const variantMap = computed(() => {
@@ -153,6 +241,25 @@ const selectedEmployee = computed(() => {
   return nhanVienList.value.find((item) => Number(item?.id) === Number(hoaDon.value.nhanVienId)) || null
 })
 
+const firstNonEmptyValue = (...values) => {
+  for (const value of values) {
+    const normalized = String(value || "").trim()
+    if (normalized) return normalized
+  }
+  return ""
+}
+
+const selectedCustomerEmail = computed(() => {
+  return firstNonEmptyValue(
+    hoaDon.value.customerEmail,
+    selectedCustomer.value?.email,
+    selectedCustomer.value?.taiKhoan?.email,
+    selectedCustomer.value?.taiKhoanEmail,
+    selectedCustomer.value?.tenDangNhap,
+    selectedCustomer.value?.taiKhoan?.tenDangNhap
+  )
+})
+
 const selectedCustomerLabel = computed(() => {
   if (selectedCustomer.value?.tenKhachHang) return selectedCustomer.value.tenKhachHang
   if (hoaDon.value.khachHangId != null) return `KH #${hoaDon.value.khachHangId}`
@@ -162,6 +269,7 @@ const selectedCustomerLabel = computed(() => {
 const orderTypeLabel = computed(() => {
   const explicit = String(hoaDon.value.orderType || "").toUpperCase()
   if (explicit === "POS") return "Tại quầy"
+  if (explicit === "DELIVERY") return "Trực tuyến"
   if (explicit === "ONLINE") return "Trực tuyến"
 
   const note = String(hoaDon.value.statusNote || "").toUpperCase()
@@ -182,7 +290,8 @@ function backToList(refresh = false) {
   router.push({ path: `${panelBasePath.value}/hoa-don/list`, query })
 }
 
-const canEdit = computed(() => !hoaDon.value.finalOrder && !employeeOwnershipMismatch.value)
+const canEdit = computed(() => !hoaDon.value.finalOrder)
+const selectedVariantPreview = computed(() => getVariant(newItem.value.spctId))
 
 const paymentFlowState = computed(() => {
   if (isCreate.value) return null
@@ -228,6 +337,28 @@ const canQuickComplete = computed(() =>
   )
 )
 
+// GHN checkpoint availability (chỉ áp dụng cho đơn online, không phải POS)
+const canGhnLayHang = computed(() =>
+  !isCreate.value && !isPosOrder.value && !hoaDon.value.finalOrder
+  && ["CHO_LAY_HANG", "DANG_GIAO"].includes(currentOrderCode.value)
+)
+const canGhnTrungChuyen = computed(() =>
+  !isCreate.value && !isPosOrder.value && !hoaDon.value.finalOrder
+  && ["CHO_LAY_HANG", "DANG_GIAO"].includes(currentOrderCode.value)
+)
+const canGhnGiaoThatBai = computed(() =>
+  !isCreate.value && !isPosOrder.value && !hoaDon.value.finalOrder
+  && ["DANG_GIAO", "GIAO_THAT_BAI"].includes(currentOrderCode.value)
+)
+const canGhnDangHoanVe = computed(() =>
+  !isCreate.value && !isPosOrder.value && !hoaDon.value.finalOrder
+  && ["GIAO_THAT_BAI", "HOAN_VE"].includes(currentOrderCode.value)
+)
+const hasAnyGhnCheckpoint = computed(() =>
+  canGhnLayHang.value || canGhnTrungChuyen.value
+  || canGhnGiaoThatBai.value || canGhnDangHoanVe.value
+)
+
 function isHtmlPayload(payload) {
   return typeof payload === "string" && /<html|<!doctype/i.test(payload)
 }
@@ -258,6 +389,115 @@ function formatDateTime(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "-"
   return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
+}
+
+function normalizePhone(value) {
+  return String(value || "").replace(/\s+/g, "")
+}
+
+function isValidVietnamPhone(value) {
+  return /^(0|\+84)\d{9,10}$/.test(normalizePhone(value))
+}
+
+function resolveCustomerIdFromResponse(response) {
+  const candidates = [
+    response?.data?.id,
+    response?.data?.data?.id,
+    response?.data?.khachHang?.id,
+    response?.data?.content?.id
+  ]
+  const found = candidates.find((id) => Number(id) > 0)
+  return found ? Number(found) : null
+}
+
+function resetQuickCustomerForm() {
+  quickCustomer.value = { tenKhachHang: "", soDienThoai: "", email: "" }
+}
+
+function extractVoucherSnapshotFromNote(note = "") {
+  const text = String(note || "")
+  const voucherMatch = text.match(/áp dụng voucher\s*([^|\n\r]+)/i)
+  const phrase = voucherMatch?.[1] ? voucherMatch[1].trim() : ""
+
+  if (!phrase) {
+    return { code: "", name: "" }
+  }
+
+  const cleanPhrase = phrase.replace(/[\s:;,.-]+$/, "").trim()
+  const codeMatch = cleanPhrase.match(/\b[A-Z0-9_-]{4,}\b/i)
+
+  if (codeMatch?.[0]) {
+    const code = String(codeMatch[0]).toUpperCase()
+    const name = cleanPhrase.toUpperCase() === code ? "" : cleanPhrase
+    return { code, name }
+  }
+
+  return { code: "", name: cleanPhrase }
+}
+
+async function quickCreateCustomer() {
+  if (!canEdit.value) return
+
+  const name = String(quickCustomer.value.tenKhachHang || "").trim()
+  const phone = normalizePhone(quickCustomer.value.soDienThoai)
+  const email = String(quickCustomer.value.email || "").trim()
+
+  if (!name) {
+    showToast("Vui lòng nhập tên khách hàng", "warning")
+    return
+  }
+  if (!isValidVietnamPhone(phone)) {
+    showToast("Số điện thoại khách hàng không hợp lệ", "warning")
+    return
+  }
+
+  creatingCustomer.value = true
+  try {
+    const payloadCandidates = [
+      { tenKhachHang: name, soDienThoai: phone, email, trangThai: "Hoạt động" },
+      { tenKhachHang: name, soDienThoai: phone, taiKhoanEmail: email, trangThai: "Hoạt động" },
+      { tenKhachHang: name, soDienThoai: phone, trangThai: "Hoạt động" }
+    ]
+
+    let createdId = null
+    let lastError = null
+    for (const payload of payloadCandidates) {
+      try {
+        const createRes = await createKhachHang(payload)
+        createdId = resolveCustomerIdFromResponse(createRes)
+        if (createdId) break
+      } catch (error) {
+        lastError = error
+      }
+    }
+
+    const khachHangRes = await getAllKhachHang(0, 100)
+    khachHangList.value = extractList(khachHangRes)
+
+    if (!createdId) {
+      const found = khachHangList.value.find((kh) =>
+        normalizePhone(kh?.soDienThoai) === phone && String(kh?.tenKhachHang || "").trim() === name
+      )
+      createdId = found?.id ? Number(found.id) : null
+    }
+
+    if (!createdId) {
+      throw lastError || new Error("Không lấy được khách hàng vừa tạo")
+    }
+
+    hoaDon.value.khachHangId = createdId
+    if (isPosOrder.value) {
+      hoaDon.value.soDienThoaiNhanHang = phone
+    }
+
+    showQuickCustomerForm.value = false
+    resetQuickCustomerForm()
+    showToast("Đã tạo và chọn khách hàng mới", "success")
+  } catch (error) {
+    showToast(extractApiErrorMessage(error, "Không thể tạo nhanh khách hàng"), "error")
+  } finally {
+    creatingCustomer.value = false
+  }
 }
 
 function extractList(response) {
@@ -309,11 +549,12 @@ const enforceEmployeeOwnership = () => {
 }
 
 const canOperateForEmployeeShift = async (employeeId) => {
-  const check = await validateEmployeeActiveShift(employeeId)
-  if (!check.allowed) {
-    showToast(check.reason || "Nhân viên chưa trong ca trực hợp lệ", "warning")
-    return false
-  }
+  // TEMP DEMO MODE: turn off shift validation so all employees can operate.
+  // const check = await validateEmployeeActiveShift(employeeId)
+  // if (!check.allowed) {
+  //   showToast(check.reason || "Nhân viên chưa trong ca trực hợp lệ", "warning")
+  //   return false
+  // }
   return true
 }
 
@@ -325,6 +566,58 @@ function buildVariantLabel(product, variant) {
   return parts.filter(Boolean).join(" • ")
 }
 
+function isImageString(value = "") {
+  const raw = String(value || "").trim()
+  if (!raw) return false
+  if (/^data:image\//i.test(raw)) return true
+
+  const normalized = raw.replace(/\\/g, "/").split(/[?#]/)[0]
+  if (/\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(normalized)) return true
+  if (normalized.startsWith("/uploads/") || normalized.startsWith("uploads/")) return true
+  return /^https?:\/\//i.test(raw)
+}
+
+function toImageUrl(value = "") {
+  const raw = String(value || "").trim()
+  if (!raw) return ""
+  if (/^data:image\//i.test(raw)) return raw
+
+  const normalized = raw.replace(/\\/g, "/")
+  const uploadsMatch = normalized.match(/^.*?\/?(uploads\/.*)$/i)
+
+  if (uploadsMatch?.[1]) return `${BACKEND_ORIGIN}/${uploadsMatch[1]}`
+  if (/^https?:\/\//i.test(normalized)) return normalized
+  if (normalized.startsWith("/")) return normalized
+  if (normalized.startsWith("uploads/")) return `${BACKEND_ORIGIN}/${normalized}`
+  return normalized.includes("/") ? `/${normalized.replace(/^\/+/, "")}` : normalized
+}
+
+function pickImageValue(entry) {
+  if (!entry) return ""
+
+  if (typeof entry === "string") {
+    return isImageString(entry) ? toImageUrl(entry) : ""
+  }
+
+  if (Array.isArray(entry)) {
+    for (const child of entry) {
+      const found = pickImageValue(child)
+      if (found) return found
+    }
+    return ""
+  }
+
+  if (typeof entry === "object") {
+    const keys = ["anh", "hinhAnh", "image", "imageUrl", "images", "listAnh", "anhChinh", "duongDanAnh", "src", "thumbnail"]
+    for (const key of keys) {
+      const found = pickImageValue(entry[key])
+      if (found) return found
+    }
+  }
+
+  return ""
+}
+
 function flattenVariants(products) {
   return products.flatMap((product) => {
     const variants = Array.isArray(product?.sanPhamChiTiets) ? product.sanPhamChiTiets : []
@@ -332,6 +625,8 @@ function flattenVariants(products) {
     if (!variants.length) {
       return []
     }
+
+    const overrideImage = getProductImageOverride({ id: product?.id, maSanPham: product?.maSanPham })[0] || ""
 
     return variants.map((variant) => ({
       spctId: variant.id,
@@ -342,7 +637,8 @@ function flattenVariants(products) {
       giaBan: Number(variant.giaBan || 0),
       soLuongTon: Number(variant.soLuong || 0),
       kichThuoc: variant?.kichThuoc?.tenKichThuoc || "",
-      mauSac: variant?.mauSac?.tenMauSac || ""
+      mauSac: variant?.mauSac?.tenMauSac || "",
+      image: overrideImage || pickImageValue([variant, product, variants]) || fallbackImageFor(product?.id, product?.maSanPham)
     }))
   })
 }
@@ -384,27 +680,66 @@ function getItemCodeMeta(item) {
   }
 }
 
+function getItemImage(item) {
+  const raw = String(item?.image || getVariant(item?.spctId)?.image || "").trim()
+  if (raw) {
+    const resolved = toImageUrl(raw)
+    if (resolved) return resolved
+  }
+  return fallbackImageFor(item?.spctId, item?.maSanPhamChiTiet || item?.maSanPham)
+}
+
+const onImgError = (e) => { e.target.src = logoFallback }
+
+function incrementItemQty(index) {
+  const item = items.value[index]
+  if (!item || !canEdit.value) return
+  changeItemQuantity(index, Number(item.soLuong || 0) + 1)
+}
+
+function decrementItemQty(index) {
+  const item = items.value[index]
+  if (!item || !canEdit.value) return
+  const next = Number(item.soLuong || 0) - 1
+  if (next >= 1) changeItemQuantity(index, next)
+}
+
 function applyDiscount(discount) {
   hoaDon.value.giaSauGiamGia = Number(discount || 0)
   syncTotals()
 }
 
 async function dispatchSystemEvent(eventCode, note, successMessage) {
-  if (isEmployeePanel.value) {
-    if (!currentEmployeeId.value || Number(hoaDon.value.nhanVienId) !== Number(currentEmployeeId.value)) {
-      showToast("Bạn không có quyền thao tác hóa đơn của nhân viên khác", "error")
-      return
-    }
-
-    const canOperate = await canOperateForEmployeeShift(hoaDon.value.nhanVienId)
-    if (!canOperate) return
-  }
+  // TEMP DEMO MODE: disable employee ownership + shift constraints.
+  // if (isEmployeePanel.value) {
+  //   if (!currentEmployeeId.value || Number(hoaDon.value.nhanVienId) !== Number(currentEmployeeId.value)) {
+  //     showToast("Bạn không có quyền thao tác hóa đơn của nhân viên khác", "error")
+  //     return
+  //   }
+  //
+  //   const canOperate = await canOperateForEmployeeShift(hoaDon.value.nhanVienId)
+  //   if (!canOperate) return
+  // }
 
   isSaving.value = true
   try {
-    const response = await updateHoaDonBySystemEvent(hoaDon.value.id, eventCode, note)
+    const maHoaDon = String(hoaDon.value.maHoaDon || "").trim()
+    const trackingUrl = maHoaDon ? buildOrderLookupTrackingUrl({ maHoaDon }) : ""
+
+    const response = await updateHoaDonBySystemEvent(hoaDon.value.id, eventCode, note, trackingUrl)
     applyInvoiceDetail(response?.data)
     showToast(successMessage || "Đã cập nhật trạng thái đơn hàng", "success")
+
+    // Auto-send tracking mail so backend has the current public URL
+    const email = String(selectedCustomerEmail.value || "").trim()
+    if (maHoaDon && email) {
+      sendOrderLookupMail({
+        maHoaDon,
+        soDienThoai: String(hoaDon.value.soDienThoaiNhanHang || "").trim(),
+        email,
+        trackingUrl
+      }).catch(() => { /* silent */ })
+    }
   } catch (error) {
     console.error("Dispatch system event failed:", error)
     showToast(extractApiErrorMessage(error), "error")
@@ -458,6 +793,52 @@ async function confirmPaymentByEmployee() {
     "Nhân viên đã xác nhận thanh toán VNPay",
     "Đã xác nhận thanh toán VNPay"
   )
+}
+
+async function dispatchGhnCheckpoint(eventCode, label) {
+  const confirmed = await askConfirm(`Ghi checkpoint GHN: "${label}"?`)
+  if (!confirmed) return
+  await dispatchSystemEvent(eventCode, label, `Đã ghi checkpoint: ${label}`)
+}
+
+async function sendLookupMailNow() {
+  if (isCreate.value || !hoaDon.value.id) {
+    showToast("Chỉ gửi mail tra cứu sau khi hóa đơn đã được tạo", "warning")
+    return
+  }
+
+  const maHoaDon = String(hoaDon.value.maHoaDon || "").trim()
+  const soDienThoai = String(hoaDon.value.soDienThoaiNhanHang || "").trim()
+  const email = String(selectedCustomerEmail.value || "").trim()
+
+  if (!maHoaDon || !soDienThoai) {
+    showToast("Thiếu mã đơn hoặc số điện thoại nhận hàng", "warning")
+    return
+  }
+
+  if (!email) {
+    showToast("Không tìm thấy email khách hàng để gửi link tra cứu", "warning")
+    return
+  }
+
+  const trackingUrl = buildOrderLookupTrackingUrl({ maHoaDon })
+
+  isSendingLookupMail.value = true
+  try {
+    const payload = {
+      maHoaDon,
+      soDienThoai,
+      email
+    }
+    if (trackingUrl) payload.trackingUrl = trackingUrl
+
+    const response = await sendOrderLookupMail(payload)
+    showToast(response?.data?.message || "Đã gửi mail tra cứu cho khách hàng", "success")
+  } catch (error) {
+    showToast(extractApiErrorMessage(error, "Không thể gửi mail tra cứu"), "error")
+  } finally {
+    isSendingLookupMail.value = false
+  }
 }
 
 function normalizeHistoryStatusLabel(value, fallback) {
@@ -549,19 +930,74 @@ function normalizeLoadedItems(loadedItems) {
       giaBan: Number(item.giaBan || variant?.giaBan || 0),
       thanhTien: Number(item.thanhTien || 0),
       trangThai: item.trangThai || "ACTIVE",
-      tenSanPhamChiTiet: variant?.tenSanPhamChiTiet || item.tenSanPhamChiTiet || ""
+      tenSanPhamChiTiet: variant?.tenSanPhamChiTiet || item.tenSanPhamChiTiet || "",
+      image: item.image || variant?.image || ""
     }
   })
+}
+
+function resolvePersistedDiscount(row, normalizedItems, orderTypeCode) {
+  const explicitDiscount = Number(row?.giaSauGiamGia || 0)
+  if (explicitDiscount > 0) return explicitDiscount
+
+  const subtotalFromItems = normalizedItems.reduce((sum, item) => sum + Number(item?.thanhTien || 0), 0)
+  const shipFee = String(orderTypeCode || "").toUpperCase() === "POS"
+    ? 0
+    : Number(row?.phiShip || 0)
+  const savedGrandTotal = Number(row?.thanhTien || 0)
+  const inferredDiscount = subtotalFromItems + shipFee - savedGrandTotal
+
+  return inferredDiscount > 0 ? inferredDiscount : 0
+}
+
+function resolvePersistedShipping(row, safeDetail, normalizedItems, orderTypeCode) {
+  if (String(orderTypeCode || "").toUpperCase() === "POS") return 0
+
+  const explicitCandidates = [
+    row?.phiShip,
+    row?.shippingFee,
+    row?.phiVanChuyen,
+    safeDetail?.totals?.shippingFee,
+    safeDetail?.totals?.shipFee,
+    safeDetail?.totals?.phiShip
+  ]
+
+  for (const candidate of explicitCandidates) {
+    const value = Number(candidate)
+    if (Number.isFinite(value) && value > 0) return value
+  }
+
+  const subtotalFromItems = normalizedItems.reduce((sum, item) => sum + Number(item?.thanhTien || 0), 0)
+  const discount = Math.max(Number(row?.giaSauGiamGia ?? safeDetail?.totals?.discount ?? 0), 0)
+  const grandTotal = Number(row?.thanhTien ?? safeDetail?.totals?.grandTotal ?? 0)
+  const inferredShipping = grandTotal - subtotalFromItems + discount
+
+  return inferredShipping > 0 ? inferredShipping : 0
 }
 
 function applyInvoiceDetail(detail) {
   const safeDetail = detail || {}
   const row = safeDetail?.hoaDon || {}
+  const customerRow = safeDetail?.customer || row?.khachHang || {}
 
   const normalizedHistory = normalizeHistoryEntries(safeDetail?.history, row)
   const latestHistoryNote = [...normalizedHistory]
     .reverse()
     .find((entry) => entry?.note && entry.note !== "Không có ghi chú")?.note || ""
+
+  const normalizedOrderType = String(
+    row.orderType
+    || (String(row.statusNote || "").toUpperCase().includes("[POS]")
+      || String(row.diaChiNhanHang || "").toLowerCase().includes("mua tại quầy")
+      || String(row.diaChiNhanHang || "").toLowerCase().includes("mua tai quay")
+      ? "POS"
+      : "ONLINE")
+  ).toUpperCase()
+
+  const normalizedItems = normalizeLoadedItems(safeDetail?.items)
+  const persistedShipping = resolvePersistedShipping(row, safeDetail, normalizedItems, normalizedOrderType)
+  const persistedDiscount = resolvePersistedDiscount(row, normalizedItems, normalizedOrderType)
+  const voucherSnapshot = extractVoucherSnapshotFromNote(row.statusNote || latestHistoryNote)
 
   hoaDon.value = {
     id: row.id,
@@ -572,21 +1008,21 @@ function applyInvoiceDetail(detail) {
     diaChiNhanHang: row.diaChiNhanHang || "",
     ngayNhanHangDuKien: formatDateInput(row.ngayNhanHangDuKien),
     ngayNhanHangMongMuon: formatDateInput(row.ngayNhanHangMongMuon),
-    phiShip: Number(row.phiShip || 0),
-    giaSauGiamGia: Number(row.giaSauGiamGia || 0),
+    phiShip: persistedShipping,
+    giaSauGiamGia: persistedDiscount,
     thanhTien: Number(row.thanhTien || 0),
     orderStatusCode: normalizeOrderStatusCode(row.orderStatusCode, row.orderStatusName, row.statusNote),
     orderStatusName: row.orderStatusName || "Chờ xác nhận",
-    orderType: String(
-      row.orderType
-      || (String(row.statusNote || "").toUpperCase().includes("[POS]")
-        || String(row.diaChiNhanHang || "").toLowerCase().includes("mua tại quầy")
-        || String(row.diaChiNhanHang || "").toLowerCase().includes("mua tai quay")
-        ? "POS"
-        : "ONLINE")
-    ).toUpperCase(),
+    orderType: normalizedOrderType,
     statusNote: row.statusNote || latestHistoryNote,
     phuongThucThanhToan: row.phuongThucThanhToan || "COD",
+    customerEmail: firstNonEmptyValue(
+      row.customerEmail,
+      row.emailKhachHang,
+      row.emailNguoiNhan,
+      customerRow?.email,
+      customerRow?.taiKhoan?.email
+    ),
     fulfillmentStatusCode: row.fulfillmentStatusCode || deriveFulfillmentStatus(row.orderStatusCode).code,
     fulfillmentStatusName: row.fulfillmentStatusName || deriveFulfillmentStatus(row.orderStatusCode).label,
     businessClosureStatus: row.businessClosureStatus || deriveBusinessClosure(row.orderStatusCode),
@@ -595,7 +1031,9 @@ function applyInvoiceDetail(detail) {
   }
 
   manualStatusNote.value = hoaDon.value.statusNote || ""
-  items.value = normalizeLoadedItems(safeDetail?.items)
+  persistedVoucherCode.value = persistedDiscount > 0 ? voucherSnapshot.code : ""
+  persistedVoucherName.value = persistedDiscount > 0 ? voucherSnapshot.name : ""
+  items.value = normalizedItems
   history.value = normalizedHistory
 
   if (!hoaDon.value.soDienThoaiNhanHang && selectedCustomer.value?.soDienThoai) {
@@ -637,15 +1075,16 @@ async function loadData() {
     }
     await loadInvoice()
 
-    if (
-      isEmployeePanel.value
-      && !isCreate.value
-      && Number(hoaDon.value.nhanVienId || 0) > 0
-      && Number(hoaDon.value.nhanVienId) !== Number(currentEmployeeId.value)
-    ) {
-      employeeOwnershipMismatch.value = true
-      apiWarning.value = "Bạn không có quyền chỉnh sửa hóa đơn của nhân viên khác."
-    }
+    // TEMP DEMO MODE: disable cross-employee ownership restriction.
+    // if (
+    //   isEmployeePanel.value
+    //   && !isCreate.value
+    //   && Number(hoaDon.value.nhanVienId || 0) > 0
+    //   && Number(hoaDon.value.nhanVienId) !== Number(currentEmployeeId.value)
+    // ) {
+    //   employeeOwnershipMismatch.value = true
+    //   apiWarning.value = "Bạn không có quyền chỉnh sửa hóa đơn của nhân viên khác."
+    // }
 
     enforceEmployeeOwnership()
   } catch (error) {
@@ -683,11 +1122,12 @@ function addProduct() {
       giaBan: variant.giaBan,
       thanhTien: quantity * variant.giaBan,
       trangThai: "ACTIVE",
-      tenSanPhamChiTiet: variant.tenSanPhamChiTiet
+      tenSanPhamChiTiet: variant.tenSanPhamChiTiet,
+      image: variant.image || ""
     })
   }
 
-  newItem.value = { spctId: null, soLuong: 1 }
+  newItem.value = { spctId: Number(variant.spctId), soLuong: 1 }
   syncTotals()
 }
 
@@ -779,26 +1219,29 @@ function buildUpdatePayload() {
 }
 
 async function saveInvoice() {
-  if (employeeOwnershipMismatch.value) {
-    showToast("Bạn không có quyền lưu hóa đơn của nhân viên khác", "error")
-    return
-  }
+  // TEMP DEMO MODE: allow saving regardless of employee ownership.
+  // if (employeeOwnershipMismatch.value) {
+  //   showToast("Bạn không có quyền lưu hóa đơn của nhân viên khác", "error")
+  //   return
+  // }
 
-  if (isEmployeePanel.value) {
-    if (!currentEmployeeId.value) {
-      showToast("Không xác định được nhân viên đăng nhập", "error")
-      return
-    }
-    hoaDon.value.nhanVienId = Number(currentEmployeeId.value)
-  }
+  // TEMP DEMO MODE: keep employee editable and do not force owner.
+  // if (isEmployeePanel.value) {
+  //   if (!currentEmployeeId.value) {
+  //     showToast("Không xác định được nhân viên đăng nhập", "error")
+  //     return
+  //   }
+  //   hoaDon.value.nhanVienId = Number(currentEmployeeId.value)
+  // }
 
   if (!hoaDon.value.nhanVienId) {
     showToast("Vui lòng chọn nhân viên", "warning")
     return
   }
 
-  const canOperate = await canOperateForEmployeeShift(hoaDon.value.nhanVienId)
-  if (!canOperate) return
+  // TEMP DEMO MODE: disable shift guard.
+  // const canOperate = await canOperateForEmployeeShift(hoaDon.value.nhanVienId)
+  // if (isEmployeePanel.value && !canOperate) return
 
   if (!isPosOrder.value && !hoaDon.value.khachHangId) {
     showToast("Vui lòng chọn khách hàng", "warning")
@@ -873,14 +1316,22 @@ onMounted(loadData)
 
 watch(
   () => hoaDon.value.orderType,
-  (next) => {
+  (next, prev) => {
     const normalized = String(next || "ONLINE").toUpperCase()
+    const prevNormalized = String(prev || "ONLINE").toUpperCase()
+
     if (normalized === "POS") {
       hoaDon.value.phiShip = 0
       hoaDon.value.ngayNhanHangDuKien = ""
       hoaDon.value.ngayNhanHangMongMuon = ""
       hoaDon.value.diaChiNhanHang = "Mua tại quầy"
       hoaDon.value.soDienThoaiNhanHang = selectedCustomer.value?.soDienThoai || ""
+
+      if (isCreate.value && prevNormalized !== "POS") {
+        hoaDon.value.giaSauGiamGia = 0
+        selectedVoucher.value = null
+      }
+
       if (String(hoaDon.value.phuongThucThanhToan || "").toUpperCase() === "COD") {
         hoaDon.value.phuongThucThanhToan = "CASH"
       }
@@ -906,16 +1357,6 @@ watch(
   }
 )
 
-watch(
-  () => hoaDon.value.orderType,
-  () => {
-    if (isPosOrder.value) {
-      hoaDon.value.giaSauGiamGia = 0
-      selectedVoucher.value = null
-    }
-    syncTotals()
-  }
-)
 </script>
 
 <template>
@@ -932,6 +1373,16 @@ watch(
 
         <div class="hero-actions">
           <button class="btn ghost" @click="backToList()">Quay lại</button>
+          <button
+            v-if="!isCreate"
+            class="btn lookup-mail"
+            type="button"
+            :disabled="isSendingLookupMail"
+            @click="sendLookupMailNow"
+          >
+            <Loader2 v-if="isSendingLookupMail" :size="16" class="spin" />
+            <span>{{ isSendingLookupMail ? "Đang gửi mail" : "Gửi mail tra cứu" }}</span>
+          </button>
           <button class="btn primary" @click="saveInvoice" :disabled="isSaving">
             <Loader2 v-if="isSaving" :size="16" class="spin" />
             <Save v-else :size="16" />
@@ -1003,7 +1454,7 @@ watch(
                 </select>
               </label>
 
-              <label class="field">
+              <div class="field field-stack">
                 <span>Khách hàng</span>
                 <select class="strong-select" v-model.number="hoaDon.khachHangId" :disabled="!canEdit">
                   <option :value="null">Chọn khách hàng</option>
@@ -1011,6 +1462,57 @@ watch(
                     {{ khachHang.tenKhachHang || `KH #${khachHang.id}` }}
                   </option>
                 </select>
+                <button
+                  class="btn ghost quick-customer-toggle"
+                  type="button"
+                  :disabled="!canEdit || creatingCustomer"
+                  @click="showQuickCustomerForm = !showQuickCustomerForm"
+                >
+                  {{ showQuickCustomerForm ? "Ẩn tạo nhanh" : "Tạo nhanh khách hàng" }}
+                </button>
+                <div v-if="showQuickCustomerForm" class="quick-customer-form">
+                  <input
+                    v-model="quickCustomer.tenKhachHang"
+                    type="text"
+                    placeholder="Tên khách hàng"
+                    :disabled="!canEdit || creatingCustomer"
+                  />
+                  <input
+                    v-model="quickCustomer.soDienThoai"
+                    type="text"
+                    placeholder="Số điện thoại"
+                    :disabled="!canEdit || creatingCustomer"
+                  />
+                  <input
+                    v-model="quickCustomer.email"
+                    type="email"
+                    placeholder="Email (tùy chọn)"
+                    :disabled="!canEdit || creatingCustomer"
+                  />
+                  <div class="quick-customer-actions">
+                    <button
+                      class="btn ghost"
+                      type="button"
+                      :disabled="!canEdit || creatingCustomer"
+                      @click="resetQuickCustomerForm"
+                    >
+                      Làm mới
+                    </button>
+                    <button
+                      class="btn primary"
+                      type="button"
+                      :disabled="!canEdit || creatingCustomer"
+                      @click="quickCreateCustomer"
+                    >
+                      {{ creatingCustomer ? "Đang tạo" : "Tạo và chọn" }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <label class="field full">
+                <span>Email khách hàng</span>
+                <input :value="selectedCustomerEmail || 'Chưa có email khách hàng'" type="text" disabled />
               </label>
 
               <label class="field full" v-if="!isPosOrder">
@@ -1047,6 +1549,7 @@ watch(
                 <span>Loại đơn</span>
                 <select class="strong-select" v-model="hoaDon.orderType" :disabled="!canEdit">
                   <option value="ONLINE">Online</option>
+                  <option value="DELIVERY">Giao hàng</option>
                   <option value="POS">Bán hàng tại quầy</option>
                 </select>
               </label>
@@ -1061,6 +1564,7 @@ watch(
                   </template>
                   <template v-else>
                     <option value="COD">COD</option>
+                    <option value="CASH">Tiền mặt</option>
                     <option value="VNPAY">VNPay</option>
                     <option value="BANK">Chuyển khoản</option>
                   </template>
@@ -1072,6 +1576,10 @@ watch(
                 <VoucherSelector
                   :subtotal="subtotal"
                   :customer-id="hoaDon.khachHangId"
+                  :auto-select="isCreate"
+                  :initial-voucher-code="persistedVoucherCode"
+                  :initial-voucher-name="persistedVoucherName"
+                  :initial-discount="hoaDon.giaSauGiamGia"
                   @update:voucher="selectedVoucher = $event"
                   @discount-changed="applyDiscount"
                 />
@@ -1084,53 +1592,89 @@ watch(
               <div>
                 <h2>Trạng thái và tổng quan</h2>
               </div>
+            </div>
 
-              <span class="status-badge" :class="`status-${currentStatusTone}`">{{ currentStatusName }}</span>
+            <!-- ── Order Timeline ── -->
+            <div v-if="!isCreate" class="order-timeline">
+              <div class="timeline-track">
+                <div class="timeline-bg-line"></div>
+                <div class="timeline-progress-line" :style="{ width: timelineProgressPercent + '%' }"></div>
+                <div
+                  v-for="(step, idx) in timelineSteps"
+                  :key="step.code"
+                  class="timeline-step"
+                  :class="{
+                    done: timelineCurrentIndex >= idx && !isTerminalStatus,
+                    active: timelineCurrentIndex === idx && !isTerminalStatus,
+                    dimmed: isTerminalStatus
+                  }"
+                >
+                  <div class="timeline-dot">
+                    <CheckCircle2 v-if="timelineCurrentIndex > idx && !isTerminalStatus" :size="16" />
+                    <component v-else :is="{ ClipboardList, Package2, Truck, CheckCircle2 }[step.icon]" :size="16" />
+                  </div>
+                  <span class="timeline-label">{{ step.label }}</span>
+                </div>
+              </div>
+              <div v-if="isTerminalStatus" class="timeline-terminal-badge" :class="`status-${currentStatusTone}`">
+                <span class="material-icons-outlined" style="font-size:16px">{{ currentOrderCode === 'HUY' ? 'cancel' : 'replay' }}</span>
+                {{ currentStatusName }}
+              </div>
             </div>
 
             <div class="status-actions" v-if="!isCreate">
               <p class="status-hint">Trạng thái đơn hàng chỉ được cập nhật qua sự kiện hệ thống giao hàng/thanh toán.</p>
               <p v-if="hoaDon.finalOrder" class="status-hint">Hóa đơn đã kết thúc nên không thể nhận thêm sự kiện.</p>
-              <button
-                v-if="canConfirmOnlineOrder"
-                class="btn primary"
-                type="button"
-                :disabled="isSaving"
-                @click="confirmOnlineOrder"
-              >
-                <CheckCircle2 :size="16" />
-                <span>Xác nhận đơn hàng</span>
-              </button>
-              <button
-                v-if="canStartShipping"
-                class="btn primary"
-                type="button"
-                :disabled="isSaving"
-                @click="startShipping"
-              >
-                <CheckCircle2 :size="16" />
-                <span>Bắt đầu giao hàng</span>
-              </button>
-              <button
-                v-if="canQuickComplete"
-                class="btn primary"
-                type="button"
-                :disabled="isSaving"
-                @click="quickCompleteOrder"
-              >
-                <CheckCircle2 :size="16" />
-                <span>Xác nhận hoàn thành</span>
-              </button>
-              <button
-                v-if="canMarkReturned"
-                class="btn primary"
-                type="button"
-                :disabled="isSaving"
-                @click="markReturned"
-              >
-                <CheckCircle2 :size="16" />
-                <span>Xác nhận hoàn về</span>
-              </button>
+              <div class="status-btn-row">
+                <button v-if="canConfirmOnlineOrder" class="btn primary" type="button" :disabled="isSaving" @click="confirmOnlineOrder">
+                  <CheckCircle2 :size="16" /><span>Xác nhận đơn hàng</span>
+                </button>
+                <button v-if="canStartShipping" class="btn primary" type="button" :disabled="isSaving" @click="startShipping">
+                  <Truck :size="16" /><span>Bắt đầu giao hàng</span>
+                </button>
+                <button v-if="canQuickComplete" class="btn primary" type="button" :disabled="isSaving" @click="quickCompleteOrder">
+                  <CheckCircle2 :size="16" /><span>Xác nhận hoàn thành</span>
+                </button>
+                <button v-if="canMarkReturned" class="btn danger" type="button" :disabled="isSaving" @click="markReturned">
+                  <span>Xác nhận hoàn về</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- GHN Checkpoint sub-events: ghi milestone vận chuyển chi tiết -->
+            <div class="ghn-checkpoint-card" v-if="hasAnyGhnCheckpoint">
+              <p class="ghn-checkpoint-title">Cập nhật checkpoint GHN</p>
+              <p class="ghn-checkpoint-hint">Ghi mốc vận chuyển chi tiết theo GHN — không thay đổi trạng thái chính, chỉ cập nhật timeline theo dõi.</p>
+              <div class="ghn-checkpoint-actions">
+                <button
+                  v-if="canGhnLayHang"
+                  class="btn ghost small"
+                  type="button"
+                  :disabled="isSaving"
+                  @click="dispatchGhnCheckpoint('GHN_LAY_HANG', 'Shipper đã lấy hàng từ shop')"
+                ><PackageCheck :size="14" /><span>Đã lấy hàng</span></button>
+                <button
+                  v-if="canGhnTrungChuyen"
+                  class="btn ghost small"
+                  type="button"
+                  :disabled="isSaving"
+                  @click="dispatchGhnCheckpoint('GHN_TRUNG_CHUYEN', 'Hàng đang trung chuyển / tại kho chia')"
+                ><PackageSearch :size="14" /><span>Đang trung chuyển</span></button>
+                <button
+                  v-if="canGhnGiaoThatBai"
+                  class="btn ghost small"
+                  type="button"
+                  :disabled="isSaving"
+                  @click="dispatchGhnCheckpoint('GHN_GIAO_THAT_BAI', 'Giao hàng không thành công')"
+                ><OctagonX :size="14" /><span>Giao thất bại (GHN)</span></button>
+                <button
+                  v-if="canGhnDangHoanVe"
+                  class="btn ghost small"
+                  type="button"
+                  :disabled="isSaving"
+                  @click="dispatchGhnCheckpoint('GHN_DANG_HOAN_VE', 'Shipper đang trên đường hoàn hàng về shop')"
+                ><RotateCcw :size="14" /><span>Đang hoàn về shop</span></button>
+              </div>
             </div>
 
             <div class="payment-verify-card" v-if="paymentFlowState">
@@ -1176,28 +1720,20 @@ watch(
 
             <div class="history-box">
               <h3>Lịch sử trạng thái</h3>
-              <div class="table-wrap compact">
-                <table class="history-table">
-                  <thead>
-                    <tr>
-                      <th>Thời gian</th>
-                      <th>Từ</th>
-                      <th>Đến</th>
-                      <th>Ghi chú</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-if="!history.length">
-                      <td colspan="4" class="empty-cell">Chưa có lịch sử trạng thái.</td>
-                    </tr>
-                    <tr v-for="(entry, index) in history" :key="`${entry.changedAt || 'history'}-${index}`">
-                      <td>{{ formatDateTime(entry.changedAt) }}</td>
-                      <td>{{ entry.fromStatus }}</td>
-                      <td>{{ entry.toStatus }}</td>
-                      <td>{{ entry.note }}</td>
-                    </tr>
-                  </tbody>
-                </table>
+              <div v-if="!history.length" class="history-empty">Chưa có lịch sử trạng thái.</div>
+              <div v-else class="history-timeline">
+                <div v-for="(entry, index) in history" :key="`${entry.changedAt || 'history'}-${index}`" class="history-entry">
+                  <div class="history-dot" :class="{ first: index === 0 }"></div>
+                  <div class="history-content">
+                    <div class="history-status-row">
+                      <span class="history-from">{{ entry.fromStatus }}</span>
+                      <span class="history-arrow">→</span>
+                      <span class="history-to">{{ entry.toStatus }}</span>
+                    </div>
+                    <p v-if="entry.note" class="history-note">{{ entry.note }}</p>
+                    <time class="history-time">{{ formatDateTime(entry.changedAt) }}</time>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
@@ -1207,77 +1743,100 @@ watch(
           <div class="panel-head space-between">
             <div>
               <h2>Sản phẩm trong hoá đơn</h2>
-              <p>Dữ liệu lấy từ danh sách sản phẩm và biến thể hiện có.</p>
+              <p>{{ items.length }} sản phẩm · Tạm tính {{ formatCurrency(subtotal) }}</p>
             </div>
-          </div>
-
-          <div class="product-builder">
-            <select class="strong-select" v-model.number="newItem.spctId" :disabled="!canEdit">
-              <option :value="null">Chọn biến thể sản phẩm</option>
-              <option v-for="variant in sanPhamVariants" :key="variant.spctId" :value="variant.spctId">
-                {{ variant.tenSanPhamChiTiet }} · {{ formatCurrency(variant.giaBan) }} · Tồn {{ variant.soLuongTon }}
-              </option>
-            </select>
-
-            <input v-model.number="newItem.soLuong" type="number" min="1" :disabled="!canEdit" />
-
-            <button class="btn primary" type="button" @click="addProduct" :disabled="!canEdit">
-              <Plus :size="16" />
-              <span>Thêm sản phẩm</span>
+            <button v-if="canEdit" class="btn primary" type="button" @click="showAddProductModal = true">
+              <Plus :size="16" /><span>Thêm sản phẩm</span>
             </button>
           </div>
 
-          <div class="table-wrap">
-            <table class="order-table">
-              <thead>
-                <tr>
-                  <th>Sản phẩm</th>
-                  <th>Giá bán</th>
-                  <th>Số lượng</th>
-                  <th>Thành tiền</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="!items.length">
-                  <td colspan="5" class="empty-cell">Chưa có sản phẩm nào trong hoá đơn.</td>
-                </tr>
-                <tr v-for="(item, index) in items" :key="`${item.spctId}-${index}`">
-                  <td>
-                    <div class="product-name">{{ getItemName(item) }}</div>
-                    <small v-if="item.maSanPham || item.maSanPhamChiTiet || getVariant(item.spctId)">
-                      {{ getItemCodeMeta(item).productCode }} / {{ getItemCodeMeta(item).variantCode }}
-                    </small>
-                    <small v-else>SPCT #{{ item.spctId }}</small>
-                    <small
-                      v-if="getItemCodeMeta(item).mismatch"
-                      class="code-warning"
-                    >
-                      Cảnh báo lệch mã với catalog
-                    </small>
-                  </td>
-                  <td>{{ formatCurrency(item.giaBan) }}</td>
-                  <td>
-                    <input
-                      class="qty-input"
-                      type="number"
-                      min="1"
-                      :value="item.soLuong"
-                      :disabled="!canEdit"
-                      @change="changeItemQuantity(index, $event.target.value)"
-                    />
-                  </td>
-                  <td>{{ formatCurrency(item.thanhTien) }}</td>
-                  <td class="action-cell">
-                    <button class="icon-btn" type="button" @click="removeItem(index)" :disabled="!canEdit">
-                      <Trash2 :size="16" />
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <!-- Product cards grid -->
+          <div v-if="!items.length" class="product-empty-state">
+            <ShoppingBag :size="40" />
+            <p>Chưa có sản phẩm nào trong hoá đơn</p>
+            <button v-if="canEdit" class="btn ghost" type="button" @click="showAddProductModal = true">
+              <Plus :size="16" /><span>Thêm sản phẩm đầu tiên</span>
+            </button>
+          </div>
+
+          <div v-else class="product-cards">
+            <div v-for="(item, index) in items" :key="`${item.spctId}-${index}`" class="product-card">
+              <div class="product-card-img">
+                <img :src="getItemImage(item)" :alt="getItemName(item)" @error="onImgError" />
+              </div>
+              <div class="product-card-body">
+                <div class="product-card-name">{{ getItemName(item) }}</div>
+                <div class="product-card-meta">
+                  <small v-if="item.maSanPham || item.maSanPhamChiTiet || getVariant(item.spctId)">
+                    {{ getItemCodeMeta(item).productCode }} / {{ getItemCodeMeta(item).variantCode }}
+                  </small>
+                  <small v-else>SPCT #{{ item.spctId }}</small>
+                </div>
+                <div class="product-card-price">{{ formatCurrency(item.giaBan) }}</div>
+              </div>
+              <div class="product-card-actions">
+                <div class="product-card-qty">
+                  <button v-if="canEdit" class="qty-btn" type="button" @click="decrementItemQty(index)" :disabled="item.soLuong <= 1">
+                    <Minus :size="14" />
+                  </button>
+                  <span class="qty-value">{{ item.soLuong }}</span>
+                  <button v-if="canEdit" class="qty-btn" type="button" @click="incrementItemQty(index)">
+                    <Plus :size="14" />
+                  </button>
+                </div>
+                <div class="product-card-total">{{ formatCurrency(item.thanhTien) }}</div>
+                <button v-if="canEdit" class="icon-btn" type="button" @click="removeItem(index)">
+                  <Trash2 :size="16" />
+                </button>
+              </div>
+            </div>
           </div>
         </section>
+
+        <!-- ── Add Product Modal ── -->
+        <Teleport to="body">
+          <Transition name="modal-fade">
+            <div v-if="showAddProductModal" class="modal-overlay" @click.self="showAddProductModal = false">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h2>Thêm sản phẩm</h2>
+                  <button class="modal-close" @click="showAddProductModal = false"><X :size="20" /></button>
+                </div>
+                <div class="modal-search">
+                  <Search :size="18" class="modal-search-icon" />
+                  <input
+                    v-model="productSearchKeyword"
+                    type="text"
+                    placeholder="Tìm theo tên, mã sản phẩm, màu, size..."
+                    class="modal-search-input"
+                  />
+                </div>
+                <div class="modal-product-list">
+                  <div v-if="!filteredProductVariants.length" class="modal-empty">Không tìm thấy sản phẩm phù hợp</div>
+                  <div
+                    v-for="variant in filteredProductVariants"
+                    :key="variant.spctId"
+                    class="modal-product-item"
+                    @click="addProductFromModal(variant)"
+                  >
+                    <div class="modal-product-img">
+                      <img :src="variant.image || logoFallback" :alt="variant.tenSanPhamChiTiet" @error="onImgError" />
+                    </div>
+                    <div class="modal-product-info">
+                      <div class="modal-product-name">{{ variant.tenSanPhamChiTiet }}</div>
+                      <div class="modal-product-meta">
+                        <span v-if="variant.mauSac">{{ variant.mauSac }}</span>
+                        <span v-if="variant.kichThuoc">{{ variant.kichThuoc }}</span>
+                        <span>Tồn: {{ variant.soLuongTon }}</span>
+                      </div>
+                    </div>
+                    <div class="modal-product-price">{{ formatCurrency(variant.giaBan) }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Transition>
+        </Teleport>
       </template>
     </div>
   </main>
@@ -1286,9 +1845,7 @@ watch(
 <style scoped>
 .hoa-don-page {
   padding: 24px;
-  background:
-    radial-gradient(circle at top left, rgba(255, 224, 230, 0.9), transparent 35%),
-    linear-gradient(180deg, #fff8f6 0%, #f8fafc 100%);
+  background: transparent;
   min-height: 100vh;
 }
 
@@ -1315,9 +1872,8 @@ watch(
 .warning-banner {
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.9);
+  background: #ffffff;
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
-  backdrop-filter: blur(12px);
 }
 
 .hero-card {
@@ -1364,9 +1920,9 @@ watch(
 .code-warning {
   margin-top: 4px;
   display: inline-block;
-  color: #b45309;
-  background: #fffbeb;
-  border: 1px solid #fcd34d;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
   border-radius: 999px;
   padding: 2px 8px;
 }
@@ -1388,6 +1944,17 @@ watch(
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.btn.lookup-mail {
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid #dbe2ea;
+}
+
+.btn.lookup-mail:hover:not(:disabled) {
+  border-color: #f1b3be;
+  background: #fff7f8;
 }
 
 .btn.primary {
@@ -1432,9 +1999,9 @@ watch(
 }
 
 .warning-banner {
-  color: #92400e;
-  background: #fff7ed;
-  border-color: #fdba74;
+  color: #b91c1c;
+  background: #fff5f5;
+  border-color: #fecaca;
   font-weight: 600;
 }
 
@@ -1461,8 +2028,8 @@ watch(
 }
 
 .metric-icon.accent { background: #fee2e2; color: #b91c1c; }
-.metric-icon.gold { background: #fef3c7; color: #b45309; }
-.metric-icon.teal { background: #ccfbf1; color: #0f766e; }
+.metric-icon.gold { background: #f3f4f6; color: #374151; }
+.metric-icon.teal { background: #f3f4f6; color: #374151; }
 .metric-icon.slate { background: #e2e8f0; color: #334155; }
 
 .detail-grid {
@@ -1487,11 +2054,11 @@ watch(
 }
 
 .panel.soft {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 247, 247, 0.95));
+  background: #ffffff;
 }
 
 .panel.contrast {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.98));
+  background: #ffffff;
 }
 
 .wide-panel {
@@ -1518,6 +2085,11 @@ watch(
 .field {
   display: grid;
   gap: 8px;
+  align-content: start;
+}
+
+.field-stack {
+  align-content: start;
 }
 
 .field-hint {
@@ -1603,6 +2175,29 @@ watch(
   resize: vertical;
 }
 
+.quick-customer-toggle {
+  justify-content: flex-start;
+  min-height: auto;
+  width: auto;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.quick-customer-form {
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  background: #f8fafc;
+}
+
+.quick-customer-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .status-badge {
   padding: 8px 12px;
   border-radius: 999px;
@@ -1612,21 +2207,21 @@ watch(
 }
 
 .status-success {
-  background: #dcfce7;
-  color: #166534;
-  border-color: #86efac;
+  background: #f3f4f6;
+  color: #111827;
+  border-color: #d1d5db;
 }
 
 .status-warning {
-  background: #fef3c7;
-  color: #92400e;
-  border-color: #fcd34d;
+  background: #fff1f2;
+  color: #b91c1c;
+  border-color: #fecdd3;
 }
 
 .status-danger {
   background: #fee2e2;
   color: #991b1b;
-  border-color: #fca5a5;
+  border-color: #fecaca;
 }
 
 .status-actions {
@@ -1636,6 +2231,45 @@ watch(
   gap: 10px;
 }
 
+.ghn-checkpoint-card {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.ghn-checkpoint-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+}
+
+.ghn-checkpoint-hint {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0 0 8px 0;
+}
+
+.ghn-checkpoint-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ghn-checkpoint-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn.small {
+  font-size: 12px;
+  padding: 4px 10px;
+  height: auto;
+}
+
 .status-action {
   border-width: 1px;
   border-style: solid;
@@ -1643,15 +2277,15 @@ watch(
 }
 
 .status-action-success {
-  background: #ecfdf3;
-  border-color: #86efac;
-  color: #166534;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
 }
 
 .status-action-warning {
-  background: #fffbeb;
-  border-color: #fcd34d;
-  color: #92400e;
+  background: #fff5f5;
+  border-color: #fecaca;
+  color: #b91c1c;
 }
 
 .status-action-danger {
@@ -1675,8 +2309,8 @@ watch(
   gap: 10px;
   padding: 18px;
   border-radius: 18px;
-  background: linear-gradient(180deg, #fff7ed, #ffffff);
-  border: 1px solid #fed7aa;
+  background: #fff;
+  border: 1px solid #e5e7eb;
 }
 
 .summary-row strong {
@@ -1693,7 +2327,7 @@ watch(
 .summary-row.total {
   margin-top: 6px;
   padding-top: 12px;
-  border-top: 1px dashed #fdba74;
+  border-top: 1px dashed #d1d5db;
   color: #b91c1c;
   font-size: 18px;
 }
@@ -1718,11 +2352,11 @@ watch(
 }
 
 .payment-success {
-  color: #166534;
+  color: #111827;
 }
 
 .payment-warning {
-  color: #b45309;
+  color: #b91c1c;
 }
 
 .payment-neutral {
@@ -1773,6 +2407,48 @@ watch(
   gap: 12px;
   margin-bottom: 18px;
   align-items: center;
+}
+
+.selected-variant-preview {
+  margin: -6px 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.selected-variant-meta {
+  display: grid;
+  gap: 2px;
+}
+
+.selected-variant-meta strong {
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.selected-variant-meta small {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.variant-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.item-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
 }
 
 .table-wrap {
@@ -1855,6 +2531,475 @@ watch(
   }
 }
 
+/* ── Order Timeline ── */
+.order-timeline {
+  margin-bottom: 20px;
+  padding: 20px 16px 12px;
+  background: linear-gradient(135deg, #fafafa, #f8f9fb);
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+}
+.timeline-track {
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+  padding: 0 8px;
+}
+.timeline-bg-line {
+  position: absolute;
+  top: 18px;
+  left: 28px;
+  right: 28px;
+  height: 3px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  z-index: 0;
+}
+.timeline-progress-line {
+  position: absolute;
+  top: 18px;
+  left: 28px;
+  height: 3px;
+  background: linear-gradient(90deg, #dc2626, #ef4444);
+  border-radius: 2px;
+  z-index: 1;
+  transition: width 0.6s cubic-bezier(.25,.8,.25,1);
+}
+.timeline-step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+}
+.timeline-dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  border: 2px solid #d1d5db;
+  color: #9ca3af;
+  transition: all 0.3s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.timeline-step.done .timeline-dot {
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  border-color: #dc2626;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(220,38,38,0.25);
+}
+.timeline-step.active .timeline-dot {
+  background: #fff;
+  border-color: #dc2626;
+  color: #dc2626;
+  box-shadow: 0 0 0 4px rgba(220,38,38,0.12), 0 2px 8px rgba(220,38,38,0.15);
+  animation: pulse-ring 2s ease infinite;
+}
+.timeline-step.dimmed .timeline-dot {
+  opacity: 0.4;
+}
+.timeline-label {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #9ca3af;
+  text-align: center;
+  line-height: 1.3;
+}
+.timeline-step.done .timeline-label,
+.timeline-step.active .timeline-label {
+  color: #dc2626;
+}
+.timeline-step.dimmed .timeline-label {
+  opacity: 0.4;
+}
+.timeline-terminal-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 12px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+}
+@keyframes pulse-ring {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(220,38,38,0.12), 0 2px 8px rgba(220,38,38,0.15); }
+  50% { box-shadow: 0 0 0 8px rgba(220,38,38,0.06), 0 2px 8px rgba(220,38,38,0.15); }
+}
+
+/* ── Status button row ── */
+.status-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ── History vertical timeline ── */
+.history-empty {
+  text-align: center;
+  color: #94a3b8;
+  padding: 16px;
+  font-size: 13px;
+}
+.history-timeline {
+  position: relative;
+  padding-left: 24px;
+}
+.history-timeline::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: #e5e7eb;
+  border-radius: 1px;
+}
+.history-entry {
+  position: relative;
+  padding: 0 0 16px 0;
+}
+.history-entry:last-child {
+  padding-bottom: 0;
+}
+.history-dot {
+  position: absolute;
+  left: -20px;
+  top: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d1d5db;
+  border: 2px solid #fff;
+}
+.history-dot.first {
+  background: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220,38,38,0.15);
+}
+.history-content {
+  display: grid;
+  gap: 2px;
+}
+.history-status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.history-from { color: #64748b; }
+.history-arrow { color: #9ca3af; font-size: 11px; }
+.history-to { color: #111827; }
+.history-note { margin: 0; font-size: 12px; color: #64748b; }
+.history-time { font-size: 11px; color: #94a3b8; }
+
+/* ── Product cards ── */
+.product-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 20px;
+  color: #94a3b8;
+}
+.product-empty-state p {
+  margin: 0;
+  font-weight: 600;
+}
+.product-cards {
+  display: grid;
+  gap: 10px;
+}
+.product-card {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid #eef2f7;
+  background: #fafbfc;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.product-card:hover {
+  border-color: #dbe2ea;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.product-card-img {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f1f5f9;
+  flex-shrink: 0;
+}
+.product-card-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.product-card-placeholder {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #94a3b8;
+}
+.product-card-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.product-card-name {
+  font-weight: 700;
+  color: #111827;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.product-card-meta small {
+  color: #64748b;
+  font-size: 12px;
+}
+.product-card-price {
+  font-weight: 800;
+  color: #b91c1c;
+  font-size: 14px;
+}
+.product-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.product-card-qty {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.qty-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: #f9fafb;
+  color: #374151;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.qty-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+.qty-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.qty-value {
+  width: 36px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #111827;
+  border-left: 1px solid #d1d5db;
+  border-right: 1px solid #d1d5db;
+  line-height: 30px;
+}
+.product-card-total {
+  font-weight: 800;
+  color: #111827;
+  font-size: 14px;
+  min-width: 90px;
+  text-align: right;
+}
+
+/* ── Modal ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,0.5);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 9999;
+  padding: 20px;
+}
+.modal-content {
+  background: #fff;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 640px;
+  max-height: 80vh;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  box-shadow: 0 24px 60px rgba(15,23,42,0.2);
+  overflow: hidden;
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #eef2f7;
+}
+.modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: #111827;
+}
+.modal-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: none;
+  background: #f1f5f9;
+  color: #475569;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.modal-close:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+.modal-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 24px;
+  border-bottom: 1px solid #eef2f7;
+}
+.modal-search-icon {
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+.modal-search-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  background: transparent;
+}
+.modal-search-input::placeholder {
+  color: #94a3b8;
+}
+.modal-product-list {
+  overflow-y: auto;
+  padding: 8px;
+}
+.modal-empty {
+  text-align: center;
+  padding: 32px;
+  color: #94a3b8;
+  font-weight: 600;
+}
+.modal-product-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.modal-product-item:hover {
+  background: #fef2f2;
+}
+.modal-product-img {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f1f5f9;
+  flex-shrink: 0;
+}
+.modal-product-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.modal-product-placeholder {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #94a3b8;
+}
+.modal-product-info {
+  flex: 1;
+  min-width: 0;
+}
+.modal-product-name {
+  font-weight: 700;
+  color: #111827;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.modal-product-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+}
+.modal-product-meta span {
+  font-weight: 600;
+}
+.modal-product-price {
+  font-weight: 800;
+  color: #b91c1c;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* ── Modal transition ── */
+.modal-fade-enter-active {
+  transition: opacity 0.2s ease;
+}
+.modal-fade-enter-active .modal-content {
+  transition: transform 0.25s cubic-bezier(.25,.8,.25,1), opacity 0.2s ease;
+}
+.modal-fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.modal-fade-leave-active .modal-content {
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.modal-fade-enter-from {
+  opacity: 0;
+}
+.modal-fade-enter-from .modal-content {
+  transform: translateY(20px) scale(0.97);
+  opacity: 0;
+}
+.modal-fade-leave-to {
+  opacity: 0;
+}
+.modal-fade-leave-to .modal-content {
+  transform: translateY(10px) scale(0.98);
+  opacity: 0;
+}
+
 @media (max-width: 1100px) {
   .overview-grid,
   .detail-grid {
@@ -1870,14 +3015,34 @@ watch(
   .hero-card,
   .space-between,
   .hero-actions,
-  .product-builder,
   .form-grid {
     display: grid;
     grid-template-columns: 1fr;
   }
 
-  .status-actions .btn {
+  .status-actions .btn,
+  .status-btn-row .btn {
     width: 100%;
+  }
+
+  .product-card {
+    grid-template-columns: 48px 1fr;
+    gap: 10px;
+  }
+  .product-card-actions {
+    grid-column: 1 / -1;
+    justify-content: space-between;
+  }
+  .timeline-label {
+    font-size: 10px;
+  }
+  .timeline-dot {
+    width: 28px;
+    height: 28px;
+  }
+  .modal-content {
+    max-height: 90vh;
+    border-radius: 16px;
   }
 }
 </style>

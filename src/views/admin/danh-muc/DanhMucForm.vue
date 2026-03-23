@@ -101,10 +101,10 @@ const saveCategory = async () => {
           <label>Mã danh mục</label>
           <input
             type="text"
-            placeholder="VD: DM010"
-            v-model="form.maDanhMuc"
+            readonly
+            value="Mã tự sinh"
+            class="auto-code-input"
           />
-          <small class="muted">Có thể để BE tự sinh</small>
         </div>
 
         <div class="field">
@@ -171,3 +171,12 @@ const saveCategory = async () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.auto-code-input {
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: #cbd5e1;
+  font-weight: 600;
+}
+</style>

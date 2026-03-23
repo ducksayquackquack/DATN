@@ -1,3 +1,9 @@
 {
-  "recommendations": ["Vue.volar"]
+  "recommendations": [
+    "Vue.volar",
+    "ms-vscode-remote.remote-ssh",
+    "rangav.vscode-thunder-client",
+    "humao.rest-client",
+    "ms-azuretools.vscode-docker"
+  ]
 }

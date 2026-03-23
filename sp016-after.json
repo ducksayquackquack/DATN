@@ -1,0 +1,242 @@
+{
+  "id": 16,
+  "idKhuyenMai": null,
+  "maSanPham": "SP016",
+  "tenSanPham": "THANK YOU THANK YOU THANK YOU!",
+  "moTa": "",
+  "ngayTao": "2026-03-20T10:41:36",
+  "ngaySua": "2026-03-20T13:15:12",
+  "nguoiTao": null,
+  "nguoiSua": null,
+  "trangThai": "Hoạt động",
+  "sanPhamChiTiets": [
+    {
+      "id": 18,
+      "ma": "SP016-01",
+      "giaNhap": 0,
+      "giaBan": 676767,
+      "soLuong": 67,
+      "chatLieu": {
+        "id": 1,
+        "maChatLieu": "CL001",
+        "tenChatLieu": "Vải dù",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "mauSac": {
+        "id": 1,
+        "maMau": "M001",
+        "tenMau": "Đen",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "kichThuoc": {
+        "id": 2,
+        "maKichThuoc": "M",
+        "tenKichThuoc": "M",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "hang": {
+        "id": 1,
+        "maHang": "DW",
+        "tenHang": "DirtyWave",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "xuatSu": {
+        "id": 1,
+        "maXuatSu": "VN",
+        "tenXuatSu": "Việt Nam",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "danhMuc": {
+        "id": 1,
+        "maDanhMuc": "DM001",
+        "tenDanhMuc": "Áo khoác",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "loai": {
+        "id": 1,
+        "maLoai": "L001",
+        "tenLoai": "Hoodie Jacket",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "ngayTao": "2026-03-20T10:41:36",
+      "ngaySua": "2026-03-20T13:15:12",
+      "nguoiTao": null,
+      "nguoiSua": null,
+      "trangThai": "Hoạt động",
+      "barcode": null
+    },
+    {
+      "id": 19,
+      "ma": "SP016-02",
+      "giaNhap": 0,
+      "giaBan": 676767,
+      "soLuong": 67,
+      "chatLieu": {
+        "id": 1,
+        "maChatLieu": "CL001",
+        "tenChatLieu": "Vải dù",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "mauSac": {
+        "id": 1,
+        "maMau": "M001",
+        "tenMau": "Đen",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "kichThuoc": {
+        "id": 3,
+        "maKichThuoc": "L",
+        "tenKichThuoc": "L",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "hang": {
+        "id": 1,
+        "maHang": "DW",
+        "tenHang": "DirtyWave",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "xuatSu": {
+        "id": 1,
+        "maXuatSu": "VN",
+        "tenXuatSu": "Việt Nam",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "danhMuc": {
+        "id": 1,
+        "maDanhMuc": "DM001",
+        "tenDanhMuc": "Áo khoác",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "loai": {
+        "id": 1,
+        "maLoai": "L001",
+        "tenLoai": "Hoodie Jacket",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "ngayTao": "2026-03-20T10:41:36",
+      "ngaySua": "2026-03-20T13:15:12",
+      "nguoiTao": null,
+      "nguoiSua": null,
+      "trangThai": "Hoạt động",
+      "barcode": null
+    },
+    {
+      "id": 20,
+      "ma": "SP016-03",
+      "giaNhap": 0,
+      "giaBan": 676767,
+      "soLuong": 67,
+      "chatLieu": {
+        "id": 1,
+        "maChatLieu": "CL001",
+        "tenChatLieu": "Vải dù",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "mauSac": {
+        "id": 7,
+        "maMau": "M007",
+        "tenMau": "Hồng",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "kichThuoc": {
+        "id": 4,
+        "maKichThuoc": "XL",
+        "tenKichThuoc": "XL",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "hang": {
+        "id": 1,
+        "maHang": "DW",
+        "tenHang": "DirtyWave",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "xuatSu": {
+        "id": 1,
+        "maXuatSu": "VN",
+        "tenXuatSu": "Việt Nam",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "danhMuc": {
+        "id": 1,
+        "maDanhMuc": "DM001",
+        "tenDanhMuc": "Áo khoác",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "loai": {
+        "id": 1,
+        "maLoai": "L001",
+        "tenLoai": "Hoodie Jacket",
+        "ngayTao": "2026-03-16T22:22:52",
+        "ngaySua": "2026-03-16T22:22:52",
+        "trangThai": "Hoạt động",
+        "hibernateLazyInitializer": {}
+      },
+      "ngayTao": "2026-03-20T10:41:36",
+      "ngaySua": "2026-03-20T13:12:35",
+      "nguoiTao": null,
+      "nguoiSua": null,
+      "trangThai": "Hoạt động",
+      "barcode": null
+    }
+  ]
+}

@@ -189,12 +189,30 @@ const buildStaffNotifications = (rows, scope) => {
 export function useNotifications(scope = "customer") {
   const notifications = ref([])
   const loading = ref(false)
+  const hasAnnouncedUnread = ref(false)
 
   const unreadCount = computed(() => notifications.value.filter((item) => !item.read).length)
+
+  const maybeAnnounceUnread = () => {
+    if (scope === "customer") return
+
+    const count = Number(unreadCount.value || 0)
+    if (!count) {
+      hasAnnouncedUnread.value = false
+      return
+    }
+
+    if (hasAnnouncedUnread.value) return
+    hasAnnouncedUnread.value = true
+
+    // Use global toast instance mounted by App.vue
+    window.toast?.info?.(`Bạn có ${count} thông báo cần xử lý`, 4500)
+  }
 
   const refresh = async () => {
     if (scope === "customer") {
       notifications.value = await buildCustomerNotifications()
+      maybeAnnounceUnread()
       return
     }
 
@@ -206,6 +224,7 @@ export function useNotifications(scope = "customer") {
     } catch {
       notifications.value = []
     } finally {
+      maybeAnnounceUnread()
       loading.value = false
     }
   }

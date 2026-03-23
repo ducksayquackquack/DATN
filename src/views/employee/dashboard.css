@@ -1,20 +1,23 @@
 /* Layout for employee (reuse admin look) */
 .app{
   display:grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 248px 1fr;
   min-height:100vh;
+  width: 100%;
 }
 .sidebar{
-  border-right:1px solid rgba(255,255,255,.06);
-  background: rgba(0,0,0,.18);
-  backdrop-filter: blur(10px);
-  padding:14px;
+  border-right:1px solid #e5e7eb;
+  background: white;
+  padding:10px;
   position:sticky; top:0; height:100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .brand{
   display:flex; gap:10px; align-items:center;
   padding:10px 10px 14px;
-  border-bottom:1px solid rgba(255,255,255,.06);
+  border-bottom:1px solid #e5e7eb;
   margin-bottom:12px;
 }
 .logo{
@@ -28,24 +31,25 @@
   font-size:12px;
   letter-spacing:.4px;
   text-transform:uppercase;
-  color:rgba(238,242,255,.75);
+  color: #64748b;
 }
 .nav a{
   display:flex; align-items:center; justify-content:space-between;
   padding:10px 10px;
   border-radius:12px;
   border:1px solid transparent;
-  color:rgba(238,242,255,.9);
+  color: #111827;
 }
 .nav a span.left{display:flex; gap:10px; align-items:center}
-.nav a:hover{background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.06)}
+.nav a:hover{background: #f1f5f9; border-color: #e5e7eb;}
 .nav a.active{
-  background: linear-gradient(135deg, rgba(255,204,0,.14), rgba(94,234,212,.08));
-  border-color: rgba(255,255,255,.08);
+  background: rgba(220,38,38,.10);
+  border-left: 3px solid #dc2626;
+  color: #dc2626;
 }
 
-.content{display:flex; flex-direction:column; min-width:0}
-.wrap{max-width: var(--max); padding:18px}
+.content{display:flex; flex-direction:column; min-width:0; width: 100%}
+.wrap{width: 100%; max-width: none; padding:18px}
 
 /* KPI grid */
 .kpi{

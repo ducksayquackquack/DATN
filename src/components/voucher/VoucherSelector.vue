@@ -83,6 +83,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { Gift, Ticket } from 'lucide-vue-next'
+import { useToast } from '@/composables/useToast'
 import {
   getActiveVouchers,
   getAllVouchers,
@@ -102,22 +103,109 @@ const props = defineProps({
   autoSelect: {
     type: Boolean,
     default: false
+  },
+  initialVoucherCode: {
+    type: String,
+    default: ''
+  },
+  initialVoucherName: {
+    type: String,
+    default: ''
+  },
+  initialDiscount: {
+    type: Number,
+    default: null
   }
 })
 
 const emit = defineEmits(['update:voucher', 'discount-changed'])
 
+const toast = useToast()
 const vouchers = ref([])
 const selectedVoucher = ref(null)
 const showVoucherModal = ref(false)
 const loading = ref(false)
 const pollingInterval = ref(null)
 
+const normalizeCode = (value) => String(value || '').trim().toUpperCase()
+
+const normalizedInitialCode = computed(() => normalizeCode(props.initialVoucherCode))
+
+const normalizedInitialName = computed(() => String(props.initialVoucherName || '').trim().toLowerCase())
+
+const resolvedInitialDiscount = computed(() => {
+  const value = Number(props.initialDiscount)
+  return Number.isFinite(value) && value > 0 ? value : null
+})
+
+const isSelectedFromPersistedOrder = computed(() => Boolean(selectedVoucher.value?._fromPersistedOrder))
+
+const isMatchingPersistedVoucher = computed(() => {
+  if (!selectedVoucher.value) return false
+  if (isSelectedFromPersistedOrder.value) return true
+  if (!normalizedInitialCode.value) return false
+  return normalizeCode(selectedVoucher.value?.maPhieuGiamGia) === normalizedInitialCode.value
+})
+
 // Computed
 const currentDiscount = computed(() => {
   if (!selectedVoucher.value) return 0
+
+  if (resolvedInitialDiscount.value && isMatchingPersistedVoucher.value) {
+    return resolvedInitialDiscount.value
+  }
+
   return calculateVoucherDiscount(selectedVoucher.value, props.subtotal)
 })
+
+const emitCurrentDiscount = () => {
+  emit('discount-changed', currentDiscount.value)
+}
+
+const applyPersistedVoucherSelection = () => {
+  const targetDiscount = resolvedInitialDiscount.value
+  if (!normalizedInitialCode.value && !normalizedInitialName.value && !targetDiscount) return false
+
+  const matched = modalVouchers.value.find((voucher) => {
+    const codeMatches = normalizedInitialCode.value
+      ? normalizeCode(voucher?.maPhieuGiamGia) === normalizedInitialCode.value
+      : false
+
+    const nameMatches = normalizedInitialName.value
+      ? String(voucher?.tenPhieuGiamGia || '').trim().toLowerCase() === normalizedInitialName.value
+      : false
+
+    const discountMatches = targetDiscount
+      ? Number(voucher?.discountAmount || 0) === Number(targetDiscount)
+      : false
+
+    return codeMatches || nameMatches || discountMatches
+  })
+
+  if (matched) {
+    selectedVoucher.value = matched
+    emit('update:voucher', matched)
+    emitCurrentDiscount()
+    return true
+  }
+
+  const fallbackCode = normalizedInitialCode.value
+  const fallbackName = String(props.initialVoucherName || '').trim() || (fallbackCode ? `Voucher ${fallbackCode}` : 'Voucher đã áp dụng')
+  if (!fallbackCode && !fallbackName) return false
+
+  const syntheticVoucher = {
+    id: `persisted-${fallbackCode || fallbackName}`,
+    maPhieuGiamGia: fallbackCode || fallbackName,
+    tenPhieuGiamGia: fallbackName,
+    moTa: 'Không có mô tả',
+    _fromPersistedOrder: true
+  }
+
+  selectedVoucher.value = syntheticVoucher
+  emit('update:voucher', syntheticVoucher)
+  emitCurrentDiscount()
+  return true
+}
 
 const isVoucherActiveNow = (voucher) => {
   if (!voucher) return false
@@ -170,6 +258,27 @@ const extractVoucherList = (response) => {
   return []
 }
 
+const autoSelectBestVoucher = () => {
+  if (!props.autoSelect) return
+  const best = modalVouchers.value.find((voucher) => voucher.isApplicable)
+  if (!best) {
+    if (selectedVoucher.value) removeVoucher()
+    return
+  }
+
+  if (selectedVoucher.value?.id === best.id) {
+    emitCurrentDiscount()
+    return
+  }
+
+  selectedVoucher.value = best
+  emit('update:voucher', best)
+  emitCurrentDiscount()
+  toast.success(`Đã tự động áp dụng voucher tốt nhất: ${best.maPhieuGiamGia}`, {
+    onceKey: `voucher-selector-auto-${best.id}`
+  })
+}
+
 const loadVouchers = async () => {
   try {
     loading.value = true
@@ -186,21 +295,26 @@ const loadVouchers = async () => {
       const fallbackRes = await getAllVouchers()
       newVouchers = extractVoucherList(fallbackRes)
     }
-    
+
     vouchers.value = newVouchers
 
     if (selectedVoucher.value) {
-      const refreshed = newVouchers.find(v => v.id === selectedVoucher.value.id)
+      const refreshed = newVouchers.find((v) => v.id === selectedVoucher.value.id)
       if (refreshed) {
         selectedVoucher.value = refreshed
       }
 
-      if (!isVoucherApplicable(selectedVoucher.value, props.subtotal, props.customerId)) {
+      if (
+        selectedVoucher.value
+        && !selectedVoucher.value?._fromPersistedOrder
+        && !isVoucherApplicable(selectedVoucher.value, props.subtotal, props.customerId)
+      ) {
         removeVoucher()
-      } else {
-        emit('discount-changed', currentDiscount.value)
       }
     }
+
+    const restored = applyPersistedVoucherSelection()
+    if (!restored) autoSelectBestVoucher()
   } catch (error) {
     console.error('Error loading vouchers:', error)
     vouchers.value = []
@@ -221,7 +335,7 @@ const selectVoucher = (voucher) => {
   selectedVoucher.value = voucher
   showVoucherModal.value = false
   emit('update:voucher', voucher)
-  emit('discount-changed', currentDiscount.value)
+  emitCurrentDiscount()
 }
 
 const removeVoucher = () => {
@@ -232,14 +346,38 @@ const removeVoucher = () => {
 
 // Watch subtotal changes
 watch(() => props.subtotal, (newSubtotal) => {
-  if (selectedVoucher.value) {
-    if (!isVoucherApplicable(selectedVoucher.value, newSubtotal, props.customerId)) {
-      removeVoucher()
-    } else {
-      emit('discount-changed', currentDiscount.value)
+  if (
+    selectedVoucher.value
+    && !selectedVoucher.value?._fromPersistedOrder
+    && !isVoucherApplicable(selectedVoucher.value, newSubtotal, props.customerId)
+  ) {
+    removeVoucher()
+  }
+
+  if (isMatchingPersistedVoucher.value) {
+    emitCurrentDiscount()
+    return
+  }
+
+  autoSelectBestVoucher()
+})
+
+watch(() => props.customerId, () => {
+  if (isMatchingPersistedVoucher.value) {
+    emitCurrentDiscount()
+    return
+  }
+  autoSelectBestVoucher()
+})
+
+watch(
+  () => [props.initialVoucherCode, props.initialVoucherName],
+  () => {
+    if (!selectedVoucher.value) {
+      applyPersistedVoucherSelection()
     }
   }
-})
+)
 
 // Polling for new vouchers (every 30 seconds)
 const startPolling = () => {

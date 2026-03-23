@@ -1,6 +1,7 @@
 import axios from "axios"
+import { resolveApiOrigin } from "../utils/apiOrigin"
 
-const API = "http://localhost:8080/api/khach-hang"
+const API = `${resolveApiOrigin()}/api/khach-hang`
 
 export const getAllKhachHang = (page = 0, size = 5) =>
   axios.get(`${API}?page=${page}&size=${size}`)
@@ -8,10 +9,21 @@ export const getAllKhachHang = (page = 0, size = 5) =>
 export const getKhachHangById = (id) =>
   axios.get(`${API}/${id}`)
 
+export const getKhachHangByTaiKhoanIdDirect = (idTaiKhoan) =>
+  axios.get(`${API}/by-tai-khoan/${idTaiKhoan}`)
+
 export const getKhachHangByTaiKhoanId = async (idTaiKhoan) => {
   const targetId = Number(idTaiKhoan)
   if (!targetId) {
     return { data: null }
+  }
+
+  try {
+    return await getKhachHangByTaiKhoanIdDirect(targetId)
+  } catch (error) {
+    if (error?.response?.status && error.response.status !== 404) {
+      throw error
+    }
   }
 
   const pageSize = 50
@@ -58,4 +70,4 @@ export const deleteKhachHang = (id) =>
   axios.delete(`${API}/${id}`)
 
 export const getHoaDonByKhachHang = (id) =>
-  axios.get(`http://localhost:8080/api/hoa-don/by-khach-hang/${id}`)
+  axios.get(`${resolveApiOrigin()}/api/hoa-don/by-khach-hang/${id}`)

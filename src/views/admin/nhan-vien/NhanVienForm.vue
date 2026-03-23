@@ -17,13 +17,37 @@ const form = reactive({
   name: "",
   email: "",
   phone: "",
-  role: "STAFF",
-  status: "Active",
+  role: "NHAN_VIEN",
+  status: "Hoạt động",
   password: "",
   note: "",
   taiKhoanId: null,
   chucVuId: null
 })
+
+const toBackendRole = (role) => role === "ADMIN" ? "ADMIN" : "EMPLOYEE"
+
+const taoMatKhauTam = () => {
+  const part = String(Math.floor(100000 + Math.random() * 900000))
+  return `DW@${part}`
+}
+
+const guiMailThongTinTaiKhoan = (email, password, role) => {
+  if (!email || !password) return
+  const vaiTroHienThi = role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'
+  const subject = encodeURIComponent('Thông tin tài khoản đăng nhập nội bộ')
+  const body = encodeURIComponent(
+    `Chào bạn,\n\n` +
+    `Bạn đã được cấp tài khoản nội bộ DirtyWave.\n` +
+    `Tài khoản: ${email}\n` +
+    `Mật khẩu tạm thời: ${password}\n` +
+    `Vai trò: ${vaiTroHienThi}\n` +
+    `Trang đăng nhập nội bộ: http://localhost:5173/auth/staff-login\n\n` +
+    `Vui lòng đổi mật khẩu ngay sau khi đăng nhập.`
+  )
+
+  window.location.href = `mailto:${email}?subject=${subject}&body=${body}`
+}
 
 function goBack() {
   router.push("/admin/nhan-vien/list")
@@ -49,7 +73,7 @@ onMounted(async () => {
     form.role =
       data.chucVu?.tenChucVu === "ADMIN"
         ? "ADMIN"
-        : "STAFF"
+        : "NHAN_VIEN"
 
     form.taiKhoanId = data.taiKhoan?.id || null
     form.chucVuId = data.chucVu?.id || null
@@ -58,16 +82,18 @@ onMounted(async () => {
 
     form.status =
       data.trangThaiHoatDong === "Ngừng hoạt động"
-        ? "Inactive"
-        : "Active"
+        ? "Ngừng hoạt động"
+        : "Hoạt động"
   }
 })
 
 async function save() {
   try {
-    const action = id ? "update" : "create"
-    const confirmed = await window.confirm(`Do you really wanna change it? (${action} employee)`)
+    const action = id ? "cập nhật" : "tạo mới"
+    const confirmed = await window.confirm(`Bạn có chắc muốn ${action} nhân viên này không?`)
     if (!confirmed) return
+
+    const matKhauTam = form.password || taoMatKhauTam()
 
     const nhanVienPayload = {
       maNhanVien: form.code,
@@ -75,9 +101,9 @@ async function save() {
       soDienThoai: form.phone,
       chucVu: form.chucVuId
         ? { id: form.chucVuId }
-        : { maChucVu: form.role === "ADMIN" ? "ADMIN" : "EMPLOYEE" },
+        : { maChucVu: toBackendRole(form.role) },
       trangThaiHoatDong:
-        form.status === "Inactive"
+        form.status === "Ngừng hoạt động"
           ? "Ngừng hoạt động"
           : "Hoạt động",
       taiKhoan: form.taiKhoanId ? { id: form.taiKhoanId } : null
@@ -87,8 +113,8 @@ async function save() {
       if (form.taiKhoanId) {
         await taiKhoanService.update(form.taiKhoanId, {
           email: form.email,
-          vaiTro: form.role === "ADMIN" ? "ADMIN" : "EMPLOYEE",
-          trangThaiHoatDong: form.status === "Inactive" ? "Ngừng hoạt động" : "Hoạt động",
+          vaiTro: toBackendRole(form.role),
+          trangThaiHoatDong: form.status === "Ngừng hoạt động" ? "Ngừng hoạt động" : "Hoạt động",
           matKhau: form.password || undefined
         })
       }
@@ -98,9 +124,9 @@ async function save() {
       try {
         const accountRes = await taiKhoanService.create({
           email: form.email,
-          matKhau: form.password || "123456",
-          vaiTro: form.role === "ADMIN" ? "ADMIN" : "EMPLOYEE",
-          trangThaiHoatDong: form.status === "Inactive" ? "Ngừng hoạt động" : "Hoạt động",
+          matKhau: matKhauTam,
+          vaiTro: toBackendRole(form.role),
+          trangThaiHoatDong: form.status === "Ngừng hoạt động" ? "Ngừng hoạt động" : "Hoạt động",
           trangThaiTaiKhoan: "Kích hoạt"
         })
 
@@ -113,14 +139,18 @@ async function save() {
           ...nhanVienPayload,
           taiKhoan: { id: createdTaiKhoanId }
         })
+
+        guiMailThongTinTaiKhoan(form.email, matKhauTam, form.role)
       } catch {
         await createNhanVien({
           ...nhanVienPayload,
           taiKhoan: null,
           email: form.email,
-          matKhau: form.password || "123456",
-          vaiTro: form.role === "ADMIN" ? "ADMIN" : "EMPLOYEE"
+          matKhau: matKhauTam,
+          vaiTro: toBackendRole(form.role)
         })
+
+        guiMailThongTinTaiKhoan(form.email, matKhauTam, form.role)
       }
     }
 
@@ -159,6 +189,11 @@ async function save() {
         <div class="grid cols2">
 
           <div class="field">
+            <label>Mã nhân viên</label>
+            <input class="auto-code-input" readonly value="Mã tự sinh" />
+          </div>
+
+          <div class="field">
             <label>Họ tên</label>
             <input v-model="form.name" placeholder="VD: Nguyễn Văn C"/>
           </div>
@@ -167,7 +202,7 @@ async function save() {
             <label>Vai trò</label>
             <select v-model="form.role">
               <option>ADMIN</option>
-              <option>STAFF</option>
+              <option>NHAN_VIEN</option>
             </select>
           </div>
 
@@ -184,15 +219,15 @@ async function save() {
           <div class="field">
             <label>Trạng thái</label>
             <select v-model="form.status">
-              <option>Active</option>
-              <option>Inactive</option>
+              <option>Hoạt động</option>
+              <option>Ngừng hoạt động</option>
             </select>
           </div>
 
           <div class="field">
             <label>Mật khẩu</label>
             <input type="text" v-model="form.password"
-                   placeholder="Để trống nếu không đổi"/>
+                   placeholder="Để trống để hệ thống tự tạo mật khẩu tạm"/>
           </div>
 
           <div class="field" style="grid-column:1/-1">
@@ -226,5 +261,12 @@ textarea:focus {
 textarea {
   min-height: 90px;
   resize: vertical;
+}
+
+.auto-code-input {
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: #cbd5e1;
+  font-weight: 600;
 }
 </style>

@@ -109,9 +109,9 @@ const save = async () => {
           <div class="field">
             <label>Mã khách</label>
             <input
-              class="input"
-              v-model="form.maKhachHang"
-              placeholder="VD: KH001"
+              class="input auto-code-input"
+              readonly
+              value="Mã tự sinh"
             />
           </div>
 
@@ -198,5 +198,12 @@ const save = async () => {
   color: #991b1b;
   border-color: #fca5a5;
   font-weight: 500;
+}
+
+.auto-code-input {
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: #cbd5e1;
+  font-weight: 600;
 }
 </style>

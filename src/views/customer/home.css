@@ -1,4 +1,4 @@
-
+﻿
     :root{
       --bg:#f5f7fb;
       --card:#ffffff;
@@ -473,13 +473,9 @@
       .hero h1{font-size:34px}
     }
 
-    /* FIX sticky bị “đi theo 1 chút rồi thôi” */
-    html, body{
-      overflow: visible !important;
-      height: auto !important;
-    }
-    /* chỉ chặn tràn ngang cho đẹp */
-    body{ overflow-x: hidden !important; }
+        /* Allow vertical scroll; block horizontal overflow */
+    html{ overflow-y: auto; overflow-x: clip; height: auto; }
+    body{ overflow-x: clip !important; height: auto !important; }
 
     /* =========================
        LIGHT THEME OVERRIDE

@@ -10,6 +10,7 @@ import mastercard from "../../assets/img/payments/mastercard.png?url"
 import vnpay from "../../assets/img/payments/vnpay.png?url"
 import { createVnpayPayment } from "../../services/vnpayService"
 import { createBackendCheckoutOrder, loadCheckoutContext } from "../../services/checkoutOrderService"
+import { quoteShippingFeeAll } from "../../services/shippingQuoteService"
 import { getAllSanPham } from "../../services/sanPhamService"
 import {
   calculateVoucherDiscount,
@@ -18,6 +19,12 @@ import {
   isVoucherApplicable
 } from "../../services/khuyenMaiService"
 import { useToast } from "../../composables/useToast"
+import {
+  readCheckoutCartArray,
+  writeCheckoutCartArray,
+  clearCheckoutCartArray,
+  clearCartObject
+} from "../../utils/cartStorage"
 
 const router = useRouter()
 const toast = useToast()
@@ -33,8 +40,6 @@ const selectedVoucher = ref(null)
 const loadingVouchers = ref(false)
 const paymentMethod = ref("COD")
 const vnpayChannel = ref("AUTO")
-const checkoutVoucherDrawerOpen = ref(false)
-
 const restoreCheckoutPaymentState = () => {
   try {
     const savedOrder = JSON.parse(localStorage.getItem("currentOrder") || "null")
@@ -48,51 +53,103 @@ const restoreCheckoutPaymentState = () => {
     if (["VNPAYQR", "AUTO", "ATM", "INTCARD"].includes(savedChannel)) {
       vnpayChannel.value = savedChannel
     }
-  } catch {
-    // Ignore invalid localStorage payload.
-  }
+  } catch {}
 }
+const checkoutVoucherDrawerOpen = ref(false)
 
-const cart = ref(JSON.parse(localStorage.getItem("checkoutCart") || "[]"))
+const cart = ref(readCheckoutCartArray())
 const customerId = ref(null)
 const variantCatalog = ref({})
 
+/* ===================== DELIVERY ===================== */
 const delivery = ref({
   name: "",
   phone: "",
-  address: ""
+  province: "",
+  district: "",
+  ward: "",
+  addressDetail: ""
 })
 
-const VND = (n) => new Intl.NumberFormat("vi-VN").format(Number(n || 0)) + "₫"
-const persistResolvedCustomerContext = (context) => {
-  const account = context?.account || null
-  const customer = context?.customer || null
-  const deliveryData = context?.delivery || {}
+/* ===================== ADDRESS DATA ===================== */
+const provinces = ref([])
+const districts = ref([])
+const wards = ref([])
 
-  if (account?.id) localStorage.setItem("userId", String(account.id))
-  if (account?.email) localStorage.setItem("userEmail", String(account.email).trim().toLowerCase())
-  localStorage.setItem("role", "CUSTOMER")
+/* ===================== ADDRESS LOGIC ===================== */
+const onProvinceChange = async () => {
+  delivery.value.district = ""
+  delivery.value.ward = ""
+  delivery.value.addressDetail = ""
+  wards.value = []
 
-  if (customer?.tenKhachHang || deliveryData?.name) {
-    localStorage.setItem("userName", String(customer?.tenKhachHang || deliveryData?.name || ""))
-  }
-  if (customer?.soDienThoai || deliveryData?.phone) {
-    localStorage.setItem("userPhone", String(customer?.soDienThoai || deliveryData?.phone || ""))
-  }
-  if (deliveryData?.address) {
-    localStorage.setItem("userAddress", String(deliveryData.address || ""))
-  }
+  const p = provinces.value.find(x => x.name === delivery.value.province)
+  if (!p) return
+
+  const res = await fetch(`https://provinces.open-api.vn/api/p/${p.code}?depth=2`)
+  const data = await res.json()
+  districts.value = data.districts || []
 }
+
+const onDistrictChange = async () => {
+  delivery.value.ward = ""
+  delivery.value.addressDetail = ""
+
+  const d = districts.value.find(x => x.name === delivery.value.district)
+  if (!d) return
+
+  const res = await fetch(`https://provinces.open-api.vn/api/d/${d.code}?depth=2`)
+  const data = await res.json()
+  wards.value = data.wards || []
+}
+
+const onWardChange = () => {
+  delivery.value.addressDetail = ""
+}
+
+/* ===================== SHIPPING ===================== */
+const shippingProvider = ref("GHN")
+const shippingLoading = ref(false)
+const shippingError = ref("")
+const shippingQuote = ref(null)
+const shippingSpec = ref({
+  weightGram: 1200,
+  lengthCm: 30,
+  widthCm: 20,
+  heightCm: 12,
+  manualWeight: false
+})
+
+/* ===================== COMPUTED ===================== */
+const VND = (n) => new Intl.NumberFormat("vi-VN").format(Number(n || 0)) + "₫"
+
+const deliveryAddress = computed(() => {
+  return [
+    delivery.value.addressDetail,
+    delivery.value.ward,
+    delivery.value.district,
+    delivery.value.province
+  ]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(", ")
+})
+
+const shipping = computed(() => Number(shippingQuote.value?.fee || 0))
+const voucherDiscount = computed(() => {
+  if (!selectedVoucher.value) return 0
+  return calculateVoucherDiscount(selectedVoucher.value, subtotal.value)
+})
 
 const subtotal = computed(() => {
   return cart.value.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0)
 })
 
-const shipping = computed(() => (subtotal.value >= 1000000 ? 0 : 30000))
-const voucherDiscount = computed(() => {
-  if (!selectedVoucher.value) return 0
-  return calculateVoucherDiscount(selectedVoucher.value, subtotal.value)
+const estimatedWeightByCart = computed(() => {
+  const totalQty = cart.value.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+  return Math.max(500, totalQty * 450)
 })
+
 
 const total = computed(() => Math.max(subtotal.value + shipping.value - voucherDiscount.value, 0))
 const cartCount = computed(() => cart.value.reduce((sum, item) => sum + Number(item.quantity || 0), 0))
@@ -103,13 +160,13 @@ const displayVouchers = computed(() => {
 })
 
 const persistCheckoutCart = () => {
-  localStorage.setItem("checkoutCart", JSON.stringify(cart.value))
+  writeCheckoutCartArray(cart.value)
 }
 
 const clearCartStorage = () => {
   cart.value = []
-  localStorage.removeItem("cart")
-  localStorage.removeItem("checkoutCart")
+  clearCartObject()
+  clearCheckoutCartArray()
 }
 
 const normalizeCartItemQuantity = (item) => {
@@ -233,11 +290,11 @@ const bestVoucher = computed(() => {
 
 const canSubmit = computed(() => {
   if (submitting.value) return false
-  return validateCheckout() === ""
+  return Array.isArray(cart.value) && cart.value.length > 0
 })
 
 const goHome = () => {
-  router.push("/home")
+  router.push("/trang-chu")
 }
 
 const checkoutVoucherChipLabel = (v) => {
@@ -285,12 +342,44 @@ const loadVouchers = async () => {
   try {
     const normalizeVoucher = (voucher) => ({
       ...voucher,
-      id: voucher?.id ?? voucher?.phieuGiamGiaId ?? voucher?.maPhieuGiamGia ?? voucher?.maPhieu,
-      maPhieuGiamGia: String(voucher?.maPhieuGiamGia || voucher?.maPhieu || voucher?.maKhuyenMai || voucher?.code || "").trim(),
-      tenPhieuGiamGia: String(voucher?.tenPhieuGiamGia || voucher?.tenKhuyenMai || voucher?.tenPhieu || "").trim(),
-      giaTriGiamGia: Number(voucher?.giaTriGiamGia ?? voucher?.giaTriGiam ?? 0),
-      hoaDonToiThieu: Number(voucher?.hoaDonToiThieu ?? voucher?.donToiThieu ?? voucher?.dieuKienToiThieu ?? 0),
-      soTienGiamToiDa: Number(voucher?.soTienGiamToiDa ?? 0)
+      id: voucher?.id ?? voucher?.phieuGiamGiaId ?? voucher?.maPhieuGiamGia ?? voucher?.maPhieu ?? voucher?.code,
+
+      maPhieuGiamGia: String(
+        voucher?.maPhieuGiamGia ||
+        voucher?.maPhieu ||
+        voucher?.maKhuyenMai ||
+        voucher?.code ||
+        ""
+      ).trim(),
+
+      tenPhieuGiamGia: String(
+        voucher?.tenPhieuGiamGia ||
+        voucher?.tenKhuyenMai ||
+        voucher?.tenPhieu ||
+        voucher?.name ||
+        ""
+      ).trim(),
+
+      giaTriGiamGia: Number(
+        voucher?.giaTriGiamGia ??
+        voucher?.giaTriGiam ??
+        voucher?.discountValue ??
+        0
+      ),
+
+      hoaDonToiThieu: Number(
+        voucher?.hoaDonToiThieu ??
+        voucher?.donToiThieu ??
+        voucher?.dieuKienToiThieu ??
+        voucher?.minOrderValue ??
+        0
+      ),
+
+      soTienGiamToiDa: Number(
+        voucher?.soTienGiamToiDa ??
+        voucher?.maxDiscount ??
+        0
+      )
     })
 
     let payload = []
@@ -298,12 +387,15 @@ const loadVouchers = async () => {
     try {
       const response = await getActiveVouchers()
       const activeData = response?.data
+
       payload = Array.isArray(activeData)
         ? activeData
         : (Array.isArray(activeData?.content) ? activeData.content : [])
+
       if (!payload.length) {
         const fallbackResponse = await getAllVouchers()
         const fallbackData = fallbackResponse?.data
+
         payload = Array.isArray(fallbackData)
           ? fallbackData
           : (Array.isArray(fallbackData?.content) ? fallbackData.content : [])
@@ -311,12 +403,18 @@ const loadVouchers = async () => {
     } catch {
       const response = await getAllVouchers()
       const fullData = response?.data
+
       payload = Array.isArray(fullData)
         ? fullData
         : (Array.isArray(fullData?.content) ? fullData.content : [])
     }
 
-    vouchers.value = payload.map(normalizeVoucher).filter((voucher) => voucher.maPhieuGiamGia)
+    // ✅ FIX QUAN TRỌNG: KHÔNG filter theo maPhieu nữa
+    vouchers.value = payload.map(normalizeVoucher)
+    autoSelectBestVoucher()
+
+    console.log("VOUCHERS:", vouchers.value)
+
   } catch (error) {
     vouchers.value = []
     console.error("Load vouchers failed:", error)
@@ -360,6 +458,134 @@ const removeVoucher = () => {
   voucherHint.value = ""
 }
 
+const normalizeAddressText = (value = "") => {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+const matchAddressName = (options = [], value = "") => {
+  const keyword = normalizeAddressText(value)
+  if (!keyword) return null
+  return options.find((entry) => normalizeAddressText(entry?.name) === keyword)
+    || options.find((entry) => {
+      const normalized = normalizeAddressText(entry?.name)
+      return normalized && (normalized.includes(keyword) || keyword.includes(normalized))
+    })
+    || null
+}
+
+const adminPartKeywords = [
+  "phuong", "xa", "quan", "huyen", "thi tran", "thi xa", "thanh pho", "tinh", "tp"
+]
+
+const cleanAddressDetailAfterLocationChange = () => {
+  const raw = String(delivery.value.addressDetail || "").trim()
+  if (!raw) return
+
+  const normalizedSelections = [delivery.value.province, delivery.value.district, delivery.value.ward]
+    .map((part) => normalizeAddressText(part))
+    .filter(Boolean)
+
+  const cleaned = raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => {
+      const normalizedPart = normalizeAddressText(part)
+      if (!normalizedPart) return false
+      if (normalizedSelections.includes(normalizedPart)) return false
+      if (normalizedSelections.some((sel) => sel && (normalizedPart.includes(sel) || sel.includes(normalizedPart)))) return false
+      if (adminPartKeywords.some((keyword) => normalizedPart.includes(keyword))) return false
+      return true
+    })
+
+  delivery.value.addressDetail = cleaned.join(", ")
+}
+
+const parseAddressParts = (value = "") => {
+  const parts = String(value || "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  if (!parts.length) {
+    return {
+      province: "",
+      district: "",
+      ward: "",
+      addressDetail: ""
+    }
+  }
+
+  const fromTail = {
+    province: parts[parts.length - 1] || "",
+    district: parts.length >= 2 ? parts[parts.length - 2] : "",
+    ward: parts.length >= 3 ? parts[parts.length - 3] : "",
+    addressDetail: parts.length >= 4
+      ? parts.slice(0, parts.length - 3).join(", ")
+      : ""
+  }
+
+  const fromHead = {
+    province: parts[0] || "",
+    district: parts.length >= 2 ? parts[1] : "",
+    ward: parts.length >= 3 ? parts[2] : "",
+    addressDetail: parts.length >= 4
+      ? parts.slice(3).join(", ")
+      : ""
+  }
+
+  return {
+    fromTail,
+    fromHead,
+    raw: parts
+  }
+}
+
+const fetchShippingQuote = async () => {
+  shippingError.value = ""
+
+  const toProvince = String(delivery.value.province || "").trim()
+  const toDistrict = String(delivery.value.district || "").trim()
+  const toWard = String(delivery.value.ward || "").trim()
+
+  if (!toProvince || !toDistrict) {
+    shippingQuote.value = null
+    return
+  }
+
+  shippingLoading.value = true
+  try {
+    const payload = {
+      provider: shippingProvider.value,
+      toProvince,
+      toDistrict,
+      toWard,
+      weightGram: Number(shippingSpec.value.weightGram || 0),
+      lengthCm: Number(shippingSpec.value.lengthCm || 0),
+      widthCm: Number(shippingSpec.value.widthCm || 0),
+      heightCm: Number(shippingSpec.value.heightCm || 0)
+    }
+
+    const response = await quoteShippingFeeAll(payload)
+    const quotes = Array.isArray(response?.data?.quotes) ? response.data.quotes : []
+    const matched = quotes.find((item) => String(item?.provider || "").toUpperCase() === shippingProvider.value)
+    shippingQuote.value = matched || quotes[0] || null
+  } catch (error) {
+    shippingQuote.value = { fee: 30000 }
+    shippingError.value = error?.response?.data?.message || "Không lấy được phí ship realtime, tạm dùng mức 30.000đ"
+  } finally {
+    shippingLoading.value = false
+  }
+}
+
 const isValidPhone = (value) => {
   const phone = String(value || "").replace(/\s+/g, "")
   return /^(0|\+84)\d{9,10}$/.test(phone)
@@ -379,7 +605,9 @@ const validateCheckout = () => {
 
   if (!delivery.value.name.trim()) return "Vui lòng nhập họ tên người nhận"
   if (!isValidPhone(delivery.value.phone)) return "Số điện thoại không hợp lệ"
-  if (delivery.value.address.trim().length < 10) return "Địa chỉ nhận hàng cần chi tiết hơn"
+  if (!String(delivery.value.province || "").trim()) return "Vui lòng chọn Tỉnh/Thành phố nhận hàng"
+  if (!String(delivery.value.district || "").trim()) return "Vui lòng nhập Quận/Huyện nhận hàng"
+  if (String(delivery.value.addressDetail || "").trim().length < 6) return "Địa chỉ cụ thể cần chi tiết hơn"
 
   return ""
 }
@@ -428,15 +656,87 @@ const selectVoucherCard = (v) => {
     voucherHint.value = `Đã áp dụng ${v.maPhieuGiamGia}`
 }
 
+const autoSelectBestVoucher = () => {
+  const best = vouchers.value
+    .filter((voucher) => isVoucherApplicable(voucher, subtotal.value, customerId.value))
+    .sort((a, b) => calculateVoucherDiscount(b, subtotal.value) - calculateVoucherDiscount(a, subtotal.value))[0]
+
+  if (!best) {
+    selectedVoucher.value = null
+    voucherCode.value = ""
+    voucherHint.value = ""
+    return
+  }
+
+  if (selectedVoucher.value?.id === best.id) return
+
+  selectedVoucher.value = best
+  voucherCode.value = best.maPhieuGiamGia
+  voucherHint.value = `Đã tự động áp dụng voucher tốt nhất: ${best.maPhieuGiamGia}`
+  toast.success(voucherHint.value)
+}
+
 const loadProfile = async () => {
   loadingProfile.value = true
   try {
     const context = await loadCheckoutContext()
-    persistResolvedCustomerContext(context)
     customerId.value = context.customer?.id || null
-    delivery.value.name = context.delivery.name || ""
-    delivery.value.phone = context.delivery.phone || ""
-    delivery.value.address = context.delivery.address || ""
+    const addr = context.delivery
+
+    delivery.value.name = addr.name || ""
+    delivery.value.phone = addr.phone || ""
+
+    // Use separate DB fields when available, fall back to parsing combined string
+    let rawProvince = addr.tinhThanh || ""
+    let rawDistrict = addr.quanHuyen || ""
+    let rawWard = addr.phuongXa || ""
+    let rawDetail = addr.diaChiCuThe || ""
+
+    if (!rawProvince && addr.address) {
+      const parsedAddress = parseAddressParts(addr.address)
+      const pref = [parsedAddress.fromTail, parsedAddress.fromHead]
+        .find((c) => matchAddressName(provinces.value, c.province)) || parsedAddress.fromTail
+      rawProvince = pref.province || ""
+      rawDistrict = pref.district || ""
+      rawWard = pref.ward || ""
+      rawDetail = pref.addressDetail || ""
+      if (!rawDetail) {
+        const unresolved = (parsedAddress.raw || []).filter((part) => {
+          const norm = normalizeAddressText(part)
+          return norm && [rawProvince, rawDistrict, rawWard].every((sel) => normalizeAddressText(sel) !== norm)
+        })
+        rawDetail = unresolved.join(", ")
+      }
+    }
+
+    // Set specific address detail from DB directly (no aggressive stripping)
+    delivery.value.addressDetail = rawDetail
+
+    // Cascading load: province -> districts -> district -> wards -> ward
+    const matchedProvince = matchAddressName(provinces.value, rawProvince)
+    if (matchedProvince) {
+      delivery.value.province = matchedProvince.name
+      try {
+        const pRes = await fetch(`https://provinces.open-api.vn/api/p/${matchedProvince.code}?depth=2`)
+        const pData = await pRes.json()
+        districts.value = pData.districts || []
+
+        const matchedDistrict = matchAddressName(districts.value, rawDistrict)
+        if (matchedDistrict) {
+          delivery.value.district = matchedDistrict.name
+          try {
+            const dRes = await fetch(`https://provinces.open-api.vn/api/d/${matchedDistrict.code}?depth=2`)
+            const dData = await dRes.json()
+            wards.value = dData.wards || []
+
+            const matchedWard = matchAddressName(wards.value, rawWard)
+            if (matchedWard) {
+              delivery.value.ward = matchedWard.name
+            }
+          } catch { /* ward load failed */ }
+        }
+      } catch { /* district load failed */ }
+    }
   } catch (error) {
     console.error("Load checkout profile failed:", error)
   } finally {
@@ -476,7 +776,11 @@ const submitOrder = async () => {
         delivery: {
           name: delivery.value.name.trim(),
           phone: delivery.value.phone.trim(),
-          address: delivery.value.address.trim()
+          province: String(delivery.value.province || "").trim(),
+          district: String(delivery.value.district || "").trim(),
+          ward: String(delivery.value.ward || "").trim(),
+          addressDetail: String(delivery.value.addressDetail || "").trim(),
+          address: deliveryAddress.value
         },
         shipping: shipping.value,
         discount: voucherDiscount.value,
@@ -502,7 +806,11 @@ const submitOrder = async () => {
           delivery: {
             name: delivery.value.name.trim(),
             phone: delivery.value.phone.trim(),
-            address: delivery.value.address.trim()
+            province: String(delivery.value.province || "").trim(),
+            district: String(delivery.value.district || "").trim(),
+            ward: String(delivery.value.ward || "").trim(),
+            addressDetail: String(delivery.value.addressDetail || "").trim(),
+            address: deliveryAddress.value
           },
           shipping: shipping.value,
           discount: voucherDiscount.value,
@@ -521,7 +829,11 @@ const submitOrder = async () => {
           delivery: {
             name: delivery.value.name.trim(),
             phone: delivery.value.phone.trim(),
-            address: delivery.value.address.trim()
+            province: String(delivery.value.province || "").trim(),
+            district: String(delivery.value.district || "").trim(),
+            ward: String(delivery.value.ward || "").trim(),
+            addressDetail: String(delivery.value.addressDetail || "").trim(),
+            address: deliveryAddress.value
           },
           shipping: shipping.value,
           discount: voucherDiscount.value,
@@ -537,7 +849,7 @@ const submitOrder = async () => {
       localStorage.removeItem("currentOrder")
       clearCartStorage()
       toast.success("Đặt hàng COD thành công")
-      router.push("/home")
+      router.push("/trang-chu")
       return
     }
 
@@ -563,11 +875,16 @@ const submitOrder = async () => {
 }
 
 onMounted(async () => {
-  restoreCheckoutPaymentState()
+  const res = await fetch("https://provinces.open-api.vn/api/?depth=1")
+  provinces.value = await res.json()
+
+
   cart.value.forEach((item) => normalizeCartItemQuantity(item))
   persistCheckoutCart()
+  shippingSpec.value.weightGram = estimatedWeightByCart.value
   await Promise.all([loadProfile(), loadVouchers()])
   loadVariantCatalog()
+  await fetchShippingQuote()
 
   // Pre-apply voucher selected from ProductDetail page
   const savedVoucher = localStorage.getItem('checkoutSelectedVoucher')
@@ -588,12 +905,31 @@ onMounted(async () => {
 })
 
 watch([subtotal, customerId], () => {
-  if (selectedVoucher.value && !isVoucherApplicable(selectedVoucher.value, subtotal.value, customerId.value)) {
-    selectedVoucher.value = null
-    voucherCode.value = ""
-    voucherHint.value = "Voucher không còn phù hợp với giá trị đơn hiện tại"
+  autoSelectBestVoucher()
+})
+
+watch(estimatedWeightByCart, (nextWeight) => {
+  if (!shippingSpec.value.manualWeight) {
+    shippingSpec.value.weightGram = nextWeight
   }
 })
+
+watch(
+  () => [
+    shippingProvider.value,
+    delivery.value.province,
+    delivery.value.district,
+    delivery.value.ward,
+    shippingSpec.value.weightGram,
+    shippingSpec.value.lengthCm,
+    shippingSpec.value.widthCm,
+    shippingSpec.value.heightCm,
+    cartCount.value
+  ],
+  () => {
+    fetchShippingQuote()
+  }
+)
 
 </script>
 
@@ -622,7 +958,35 @@ watch([subtotal, customerId], () => {
           <div class="form-grid single">
             <input v-model="delivery.name" type="text" placeholder="Họ và tên" />
             <input v-model="delivery.phone" type="text" placeholder="Số điện thoại" />
-            <input v-model="delivery.address" type="text" placeholder="Địa chỉ" />
+
+            <div class="address-row">
+              <select v-model="delivery.province" @change="onProvinceChange">
+                <option value="">Chọn Tỉnh / Thành phố</option>
+                <option v-for="p in provinces" :key="p.code" :value="p.name">
+                  {{ p.name }}
+                </option>
+              </select>
+
+              <select v-model="delivery.district" @change="onDistrictChange">
+                <option value="">Chọn Quận / Huyện</option>
+                <option v-for="d in districts" :key="d.code" :value="d.name">
+                  {{ d.name }}
+                </option>
+              </select>
+
+              <select v-model="delivery.ward" @change="onWardChange">
+                <option value="">Chọn Phường / Xã</option>
+                <option v-for="w in wards" :key="w.code" :value="w.name">
+                  {{ w.name }}
+                </option>
+              </select>
+            </div>
+
+            <input
+              v-model="delivery.addressDetail"
+              type="text"
+              placeholder="Địa chỉ cụ thể (số nhà, tên đường)"
+            />
           </div>
 
           <div class="address-note" v-if="loadingProfile">Đang tải thông tin giao hàng...</div>
@@ -634,11 +998,31 @@ watch([subtotal, customerId], () => {
             <div class="option-main">
               <span class="option-icon">🚚</span>
               <div>
-                <strong>Freeship đơn hàng</strong>
-                <p>{{ shipping === 0 ? 'Miễn phí cho đơn từ 1tr trở lên' : `Phí vận chuyển ${VND(shipping)}` }}</p>
+                <strong>Đơn vị vận chuyển</strong>
+                <p>{{ shippingLoading ? 'Đang tính phí vận chuyển...' : `Phí vận chuyển ${VND(shipping)}` }}</p>
               </div>
             </div>
           </label>
+
+          <div class="shipping-grid">
+            <select v-model="shippingProvider">
+              <option value="GHN">GHN (Giao Hàng Nhanh)</option>
+              <option value="GHTK">GHTK (Giao Hàng Tiết Kiệm)</option>
+            </select>
+          </div>
+
+          <div class="shipping-auto-note">
+            Phí vận chuyển được tính tự động theo địa chỉ giao hàng, khối lượng ước tính từ giỏ hàng và quy cách đóng gói mặc định.
+          </div>
+
+          <div class="address-note" v-if="shippingQuote">
+            <div>Khoảng cách dự kiến: {{ shippingQuote.distanceKm }} km</div>
+            <div>
+              Trọng lượng tính phí: {{ shippingQuote.packageInfo?.chargeableWeightKg || 0 }} kg
+              (thực: {{ shippingQuote.packageInfo?.actualWeightKg || 0 }} kg, quy đổi: {{ shippingQuote.packageInfo?.volumetricWeightKg || 0 }} kg)
+            </div>
+          </div>
+          <div class="error-box" v-if="shippingError">{{ shippingError }}</div>
         </div>
 
         <div class="section-card">
@@ -696,8 +1080,6 @@ watch([subtotal, customerId], () => {
             <h2>Giỏ hàng</h2>
             <span>{{ cartCount }} sản phẩm</span>
           </div>
-
-          <div class="cart-progress-line"><span></span></div>
 
           <div v-if="!cart.length" class="empty-cart">Giỏ hàng đang trống</div>
 
@@ -768,14 +1150,14 @@ watch([subtotal, customerId], () => {
           <div class="checkout-totals">
             <div class="checkout-total-row">
               <span>Tạm tính:</span>
-              <span>
+              <span class="subtotal-value">
                 {{ VND(subtotal) }}
                 <small v-if="voucherDiscount > 0" class="saving-inline">Tiết kiệm: {{ VND(voucherDiscount) }}</small>
               </span>
             </div>
             <div class="checkout-total-row">
               <span>Phí vận chuyển:</span>
-              <span class="free-label">{{ shipping === 0 ? 'Miễn phí' : VND(shipping) }}</span>
+              <span class="free-label">{{ shippingLoading ? 'Đang tính...' : VND(shipping) }}</span>
             </div>
             <div class="checkout-total-row muted">
               <span>Voucher giảm giá:</span>
@@ -920,9 +1302,9 @@ watch([subtotal, customerId], () => {
 .cart-panel {
   background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 18px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
 }
 
 .section-card + .section-card {
@@ -962,9 +1344,43 @@ watch([subtotal, customerId], () => {
 .form-grid input {
   width: 100%;
   border: 1px solid #d1d5db;
+  border-radius: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.form-grid input:focus,
+.shipping-grid input:focus,
+.shipping-grid select:focus,
+.address-row select:focus {
+  outline: none;
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+
+.shipping-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.shipping-grid input,
+.shipping-grid select {
+  width: 100%;
+  border: 1px solid #cbd5e1;
   border-radius: 4px;
   padding: 10px 12px;
   font-size: 14px;
+  background: #fff;
+}
+
+.shipping-auto-note {
+  margin-top: 10px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .address-note {
@@ -1130,34 +1546,33 @@ watch([subtotal, customerId], () => {
 
 .promo-box {
   border: 1px solid #dbe2ec;
-  border-radius: 8px;
-  padding: 12px;
+  border-radius: 12px;
+  padding: 14px;
   margin-bottom: 16px;
 }
 
 .promo-chips-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   gap: 8px;
   margin-bottom: 10px;
 }
 
 .promo-chip {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  min-width: 86px;
+  min-height: 34px;
+  width: 100%;
   padding: 0 11px;
   border: 1px solid #ef4444;
-  border-radius: 4px;
+  border-radius: 8px;
   color: #b91c1c;
   background: #ffffff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  clip-path: polygon(0 0, 100% 0, 100% 44%, 98.5% 50%, 100% 56%, 100% 100%, 0 100%, 0 56%, 1.5% 50%, 0 44%);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .promo-chip.is-selected {
@@ -1308,9 +1723,9 @@ watch([subtotal, customerId], () => {
 }
 
 .promo-title {
-  font-size: 18px;
-  font-weight: 900;
-  margin-bottom: 8px;
+  font-size: 22px;
+  font-weight: 800;
+  margin-bottom: 10px;
 }
 
 .promo-row {
@@ -1573,9 +1988,16 @@ watch([subtotal, customerId], () => {
   color: #4b5563;
 }
 
+.subtotal-value {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.2;
+}
+
 .saving-inline {
   display: block;
-  margin-top: 2px;
+  margin-top: 3px;
   font-size: 11px;
   color: #ef4444;
 }
@@ -1806,6 +2228,27 @@ watch([subtotal, customerId], () => {
   .variant-select,
   .delivery-tag {
     font-size: 13px;
+  }
+}
+
+.address-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.address-row select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+}
+@media (max-width: 768px) {
+  .address-row {
+    flex-direction: column;
   }
 }
 </style>

@@ -33,12 +33,10 @@
             <label>Mã màu</label>
             <input
               type="text"
-              placeholder="VD: MS010"
-              v-model="form.code"
+              readonly
+              value="Mã tự sinh"
+              class="auto-code-input"
             />
-            <small class="muted">
-              Có thể để BE tự sinh
-            </small>
           </div>
 
           <div class="field">
@@ -132,3 +130,12 @@ async function save() {
   router.push("/admin/mau-sac/list")
 }
 </script>
+
+<style scoped>
+.auto-code-input {
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: #cbd5e1;
+  font-weight: 600;
+}
+</style>

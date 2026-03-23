@@ -13,15 +13,16 @@ import {
   CreditCard,
   Users,
   UserCog,
+  House,
   Bell,
   Search,
   BarChart3,
-  ChevronDown
+  ChevronDown,
+  ShoppingCart
 } from "lucide-vue-next"
 import taiKhoanService from '../../../services/taiKhoanService'
 import { getAllNhanVien, getNhanVienByTaiKhoanId } from '../../../services/nhanVienService'
 import { useNotifications } from '../../../composables/useNotifications'
-import { useToast } from '../../../composables/useToast'
 import {
   AUTH_CONTEXT_CHANGED_EVENT,
   extractAccountList,
@@ -32,7 +33,7 @@ import logo from '../../../assets/img/logo/new logo.png?url'
 
 const router = useRouter()
 const route = useRoute()
-const toast = useToast()
+const OPS_TOAST_SHIFT_CLASS = 'ops-toast-shift'
 
 const openSections = ref({
   vanhanh: true,
@@ -49,6 +50,7 @@ const userDisplayName = ref('Admin')
 const userRole = ref('Quản trị viên')
 const { unreadCount: notificationCount } = useNotifications('admin')
 const notificationToastShown = ref(false)
+let notificationToastBootstrapTimer = null
 
 const avatarInitials = computed(() => {
   const name = String(userDisplayName.value || 'AD').trim()
@@ -132,11 +134,48 @@ const handleAuthContextChanged = () => {
 const maybeToastNotifications = (count) => {
   if (notificationToastShown.value || !Number(count)) return
   notificationToastShown.value = true
-  toast.info(`Bạn có ${count} thông báo cần xử lý`)
+  window.toast?.info?.(`Bạn có ${count} thông báo cần xử lý`, 4500)
+}
+
+const startNotificationToastBootstrap = () => {
+  const startedAt = Date.now()
+  if (notificationToastBootstrapTimer) clearInterval(notificationToastBootstrapTimer)
+
+  notificationToastBootstrapTimer = setInterval(() => {
+    const count = Number(notificationCount.value || 0)
+    if (count > 0) {
+      maybeToastNotifications(count)
+      clearInterval(notificationToastBootstrapTimer)
+      notificationToastBootstrapTimer = null
+      return
+    }
+
+    if (Date.now() - startedAt > 7000) {
+      clearInterval(notificationToastBootstrapTimer)
+      notificationToastBootstrapTimer = null
+    }
+  }, 300)
+}
+
+const syncOpsToastOffset = (isOpen) => {
+  const isMobile = window.matchMedia('(max-width: 768px)').matches
+  const topValue = isOpen
+    ? (isMobile ? '146px' : '188px')
+    : (isMobile ? '74px' : '92px')
+  document.body.style.setProperty('--ops-toast-top', topValue)
 }
 
 watch(notificationCount, (count) => {
+  if (!Number(count)) {
+    notificationToastShown.value = false
+    return
+  }
   maybeToastNotifications(count)
+}, { immediate: true })
+
+watch(openUserMenu, (isOpen) => {
+  document.body.classList.toggle(OPS_TOAST_SHIFT_CLASS, Boolean(isOpen))
+  syncOpsToastOffset(Boolean(isOpen))
 })
 
 // Update time every second
@@ -166,7 +205,7 @@ function logout() {
   localStorage.removeItem("role")
   localStorage.removeItem("userId")
   localStorage.removeItem("userEmail")
-  router.push("/login")
+  router.push("/auth/staff-login")
 }
 
 function goToProfile() {
@@ -192,11 +231,19 @@ onMounted(() => {
   document.addEventListener("click", closeUserMenu)
   window.addEventListener(AUTH_CONTEXT_CHANGED_EVENT, handleAuthContextChanged)
   loadTopbarUser()
+  startNotificationToastBootstrap()
+  syncOpsToastOffset(false)
 })
 
 onUnmounted(() => {
   document.removeEventListener("click", closeUserMenu)
   window.removeEventListener(AUTH_CONTEXT_CHANGED_EVENT, handleAuthContextChanged)
+  document.body.classList.remove(OPS_TOAST_SHIFT_CLASS)
+  document.body.style.removeProperty('--ops-toast-top')
+  if (notificationToastBootstrapTimer) {
+    clearInterval(notificationToastBootstrapTimer)
+    notificationToastBootstrapTimer = null
+  }
 })
 
 watch(() => route.fullPath, () => {
@@ -229,6 +276,23 @@ function handleGlobalSearch() {
       </div>
 
       <div class="nav">
+        <div class="navgrp">
+          <RouterLink to="/admin/trang-chu" class="nav-single">
+            <span class="left">
+              <House class="icon" /> Trang chủ
+            </span>
+          </RouterLink>
+        </div>
+
+        <!-- Bán hàng - Top level -->
+        <div class="navgrp">
+          <RouterLink to="/admin/ban-hang" class="nav-single nav-sales">
+            <span class="left">
+              <ShoppingCart class="icon" /> Bán hàng
+            </span>
+          </RouterLink>
+        </div>
+
         <!-- Thống kê - Single button -->
         <div class="navgrp">
           <RouterLink to="/admin/thong-ke/doanh-thu" class="nav-single">
@@ -256,6 +320,13 @@ function handleGlobalSearch() {
               <RouterLink to="/admin/san-pham/list">
                 <span class="left">
                   <Shirt class="icon" /> Sản phẩm
+                </span>
+              </RouterLink>
+
+              <RouterLink to="/admin/san-pham/bien-the">
+                <span class="left">
+                  <span class="material-icons-outlined icon-material">tune</span>
+                  Biến thể sản phẩm
                 </span>
               </RouterLink>
 
@@ -396,6 +467,7 @@ function handleGlobalSearch() {
 
             <div
               class="avatar-wrapper"
+              :class="{ 'avatar-wrapper--open': openUserMenu }"
               @click.stop="toggleUserMenu"
               @mouseenter="openUserMenu = true"
               @mouseleave="openUserMenu = false"
@@ -412,7 +484,7 @@ function handleGlobalSearch() {
               <transition name="menu-pop">
                 <div v-if="openUserMenu" class="dropdown user-dropdown">
                   <button class="dropdown-item" type="button" @click="goToProfile">
-                    Settings
+                    Hồ sơ
                   </button>
                   <button class="dropdown-item logout" type="button" @click="logout">
                     Đăng xuất
@@ -525,7 +597,7 @@ function handleGlobalSearch() {
 }
 
 .navgrp-header:hover {
-  background: rgba(255,255,255,0.04);
+  background: #f1f5f9;
 }
 
 .navgrp-header h4 {
@@ -533,12 +605,12 @@ function handleGlobalSearch() {
   font-size: 12px;
   letter-spacing: 0.4px;
   text-transform: uppercase;
-  color: rgba(238,242,255,.75);
+  color: #64748b;
 }
 
 .chevron {
   transition: transform 0.3s ease;
-  color: rgba(238,242,255,.5);
+  color: #94a3b8;
 }
 
 .chevron.open {
@@ -561,7 +633,7 @@ function handleGlobalSearch() {
 
 .nav a:hover,
 .nav-single:hover {
-  background: rgba(255,255,255,0.06);
+  background: #f1f5f9;
   transform: translateX(4px);
 }
 
@@ -577,6 +649,15 @@ function handleGlobalSearch() {
   border-left: 3px solid #dc2626;
 }
 
+.nav-sales {
+  font-weight: inherit;
+}
+
+.nav-sales.router-link-active {
+  background: rgba(220,38,38,.10);
+  border-left: 3px solid #dc2626;
+}
+
 .avatar-wrapper {
   position: relative;
   cursor: pointer;
@@ -588,6 +669,10 @@ function handleGlobalSearch() {
   background: white;
   border: 1px solid var(--line);
   transition: all 0.2s;
+}
+
+.avatar-wrapper--open {
+  z-index: 10050;
 }
 
 .avatar-wrapper:hover {
@@ -632,7 +717,7 @@ function handleGlobalSearch() {
   font-size: 16px;
   font-weight: 600;
   color: #1f2937;
-  font-family: 'Courier New', monospace;
+  font-family: inherit;
 }
 
 .date {
@@ -650,7 +735,7 @@ function handleGlobalSearch() {
   padding: 8px;
   width: 180px;
   box-shadow: 0 10px 25px rgba(0,0,0,.25);
-  z-index: 1000;
+  z-index: 10060;
 }
 
 .dropdown-item {

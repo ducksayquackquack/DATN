@@ -1,10 +1,11 @@
 {
-  "name": "icondenim-vue",
+  "name": "dirtywave-vue",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "npm run dev:clean",
+    "dev:clean": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$p=(Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess); if($p){ taskkill /PID $p /T /F | Out-Null }; vite\"",
     "dev:vnpay": "npm --prefix backend run dev",
     "build": "vite build",
     "preview": "vite preview"
@@ -17,6 +18,7 @@
     "vue-router": "^5.0.3"
   },
   "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "^2.2.0",
     "@vitejs/plugin-vue": "^6.0.2",
     "vite": "^7.3.1"
   }

@@ -12,6 +12,9 @@ import {
   AUTH_CONTEXT_CHANGED_EVENT,
   resolveAccountByRole
 } from "../utils/authContext"
+import { resolveApiOrigin } from "../utils/apiOrigin"
+import { getProductImageOverride } from "../utils/productImageOverrides"
+import { readCartObject } from "../utils/cartStorage"
 import logo from "../assets/img/logo/new logo.png?url"
 import img1 from "../assets/img/Jackets/Áo bomber da lộn DirtyWave.jpg?url"
 import img2 from "../assets/img/Jackets/Áo bomber dáng lửng.jpg?url"
@@ -68,7 +71,7 @@ const fallbackImageFor = (id, code = "") => {
   return fallbackImages[0] || logo
 }
 
-const BACKEND_ORIGIN = (import.meta.env.VITE_API_ORIGIN || "http://localhost:8080").replace(/\/$/, "")
+const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, "")
 
 const normalizeText = (value = "") => String(value).trim().toLowerCase()
 
@@ -164,6 +167,7 @@ const normalizeSearchProduct = (item) => {
   const id = Number(item?.id)
   const code = String(item?.maSanPham || "")
   const extractedImage = pickImageValue([item?.anh, item?.hinhAnh, item?.images, item?.image, item?.listAnh, item?.anhChinh, variants])
+  const overrideImage = getProductImageOverride({ id, maSanPham: code })[0]
 
   return {
     id,
@@ -171,7 +175,7 @@ const normalizeSearchProduct = (item) => {
     code,
     category: String(item?.danhMuc?.tenDanhMuc || item?.loai?.tenLoai || "Thời trang nam"),
     price: variantPrices.length ? Math.min(...variantPrices) : toNumber(item?.giaBan || item?.gia || 0),
-    image: extractedImage || fallbackImageFor(id, code),
+    image: overrideImage || extractedImage || fallbackImageFor(id, code),
   }
 }
 
@@ -201,9 +205,40 @@ const searchMatches = computed(() => {
   return list.slice(0, 7)
 })
 
-const getNotificationToastKey = () => {
+const lastToastSignature = ref("")
+const lastToastIdentity = ref("")
+
+const getNotificationToastStorageKey = (identity) => `customer:notification-toast-signature:${identity || "guest"}`
+
+const readLastToastSignature = (identity) => {
+  try {
+    return String(sessionStorage.getItem(getNotificationToastStorageKey(identity)) || "")
+  } catch {
+    return ""
+  }
+}
+
+const writeLastToastSignature = (identity, signature) => {
+  try {
+    sessionStorage.setItem(getNotificationToastStorageKey(identity), String(signature || ""))
+  } catch {
+    // Ignore storage access errors.
+  }
+}
+
+const getGlobalNotificationToastState = () => {
+  if (typeof window === "undefined") return null
+  const key = "__dirtywaveNotificationToastState"
+  if (!window[key]) {
+    window[key] = { signature: "", at: 0 }
+  }
+  return window[key]
+}
+
+const getCurrentCustomerIdentity = () => {
   const userId = String(localStorage.getItem("userId") || "guest").trim() || "guest"
-  return `customer:notification-toast:last-signature:${userId}`
+  const userEmail = String(localStorage.getItem("userEmail") || "").trim().toLowerCase() || "guest"
+  return `${userId}:${userEmail}`
 }
 
 const unreadSignature = computed(() => {
@@ -248,8 +283,10 @@ const resolvedCartCount = computed(() => {
   return internalCartCount.value
 })
 
+const isLoggedInAsCustomer = ref(false)
+
 const refreshCartCount = () => {
-  const stored = JSON.parse(localStorage.getItem("cart") || "{}")
+  const stored = readCartObject()
   internalCartCount.value = Object.values(stored).reduce((s, v) => s + Number(v || 0), 0)
 }
 
@@ -259,6 +296,7 @@ const loadCurrentUser = async () => {
   userAvatar.value = ""
   userDisplayName.value = "Tài khoản"
   userRoleLabel.value = "Khách hàng"
+  isLoggedInAsCustomer.value = false
 
   // Customer navbar should never render admin/employee identity.
   if (storedRole && !isCustomerRole(storedRole)) {
@@ -275,6 +313,7 @@ const loadCurrentUser = async () => {
     })
     if (!account) return
 
+    isLoggedInAsCustomer.value = true
     userRoleLabel.value = toRoleLabel(account?.vaiTro)
     if (account?.email) userDisplayName.value = toDisplayNameFromEmail(account.email)
 
@@ -348,7 +387,7 @@ const openNotificationsPage = () => {
   router.push("/customer/notifications")
 }
 
-const goHome = () => router.push("/home")
+const goHome = () => router.push("/trang-chu")
 
 const toggleMobileMenu = () => {
   mobileOpen.value = !mobileOpen.value
@@ -369,12 +408,17 @@ const openOrdersPage = () => {
   router.push({ path: "/customer/profile", query: { tab: "orders" } })
 }
 
+const openOrderLookupPage = () => {
+  profileOpen.value = false
+  router.push({ path: "/customer/profile", query: { tab: "lookup" } })
+}
+
 const logout = () => {
   profileOpen.value = false
   localStorage.removeItem("role")
   localStorage.removeItem("userId")
   localStorage.removeItem("userEmail")
-  router.push("/login")
+  router.push("/auth/customer-login")
 }
 
 const handleDocumentClick = (event) => {
@@ -405,19 +449,31 @@ const maybeToastNotifications = (count) => {
   const signature = unreadSignature.value
   if (!signature) return
 
-  let lastSignature = ""
-  try {
-    lastSignature = String(sessionStorage.getItem(getNotificationToastKey()) || "")
-  } catch {
-    lastSignature = ""
+  const identity = getCurrentCustomerIdentity()
+  if (identity !== lastToastIdentity.value) {
+    lastToastIdentity.value = identity
+    lastToastSignature.value = readLastToastSignature(identity)
   }
 
-  if (signature === lastSignature) return
+  const persistedSignature = readLastToastSignature(identity)
+  if (signature === persistedSignature) {
+    lastToastSignature.value = persistedSignature
+    return
+  }
 
-  try {
-    sessionStorage.setItem(getNotificationToastKey(), signature)
-  } catch {
-    // Ignore storage issues and still show once for this render.
+  if (signature === lastToastSignature.value) return
+
+  const globalState = getGlobalNotificationToastState()
+  const now = Date.now()
+  if (globalState?.signature === signature && now - Number(globalState?.at || 0) < 6000) {
+    return
+  }
+
+  lastToastSignature.value = signature
+  writeLastToastSignature(identity, signature)
+  if (globalState) {
+    globalState.signature = signature
+    globalState.at = now
   }
 
   toast.info(`Bạn có ${count} thông báo mới`)
@@ -428,6 +484,8 @@ watch([notificationCount, unreadSignature], ([count]) => {
 })
 
 onMounted(async () => {
+  lastToastIdentity.value = getCurrentCustomerIdentity()
+  lastToastSignature.value = readLastToastSignature(lastToastIdentity.value)
   refreshCartCount()
   await Promise.all([loadCurrentUser(), loadSearchProducts()])
   document.addEventListener("click", handleDocumentClick)
@@ -467,10 +525,9 @@ onUnmounted(() => {
         </button>
 
         <nav class="sn-menu">
-          <RouterLink class="sn-menu-link" to="/home">Trang chủ</RouterLink>
+          <RouterLink class="sn-menu-link" to="/trang-chu">Trang chủ</RouterLink>
           <RouterLink class="sn-menu-link" to="/san-pham">Sản phẩm</RouterLink>
           <RouterLink class="sn-menu-link" to="/gioi-thieu">Giới thiệu</RouterLink>
-          <RouterLink class="sn-menu-link" to="/tin-tuc">Tin tức</RouterLink>
           <RouterLink class="sn-menu-link" to="/lien-he">Liên hệ</RouterLink>
         </nav>
 
@@ -535,9 +592,16 @@ onUnmounted(() => {
               </span>
             </button>
             <div v-if="profileOpen" class="sn-profile-dropdown">
-              <button type="button" class="sn-dropdown-item" @click="openProfilePage">Tài khoản</button>
-              <button type="button" class="sn-dropdown-item" @click="openOrdersPage">Đơn hàng</button>
-              <button type="button" class="sn-dropdown-item sn-dropdown-item--danger" @click="logout">Đăng xuất</button>
+              <template v-if="isLoggedInAsCustomer">
+                <button type="button" class="sn-dropdown-item" @click="openProfilePage">Tài khoản</button>
+                <button type="button" class="sn-dropdown-item" @click="openOrdersPage">Đơn hàng</button>
+                <button type="button" class="sn-dropdown-item" @click="openOrderLookupPage">Tra cứu đơn hàng</button>
+                <button type="button" class="sn-dropdown-item sn-dropdown-item--danger" @click="logout">Đăng xuất</button>
+              </template>
+              <template v-else>
+                <button type="button" class="sn-dropdown-item" @click="navigateTo('/auth/customer-login')">Đăng nhập</button>
+                <button type="button" class="sn-dropdown-item" @click="navigateTo('/auth/customer-register')">Tạo tài khoản</button>
+              </template>
             </div>
           </div>
 
@@ -555,10 +619,9 @@ onUnmounted(() => {
 
       <div v-show="mobileOpen" class="sn-mobile-menu">
         <div class="sn-mobile-menu__panel">
-          <button type="button" @click="navigateTo('/home')">Trang chủ</button>
+          <button type="button" @click="navigateTo('/trang-chu')">Trang chủ</button>
           <button type="button" @click="navigateTo('/san-pham')">Sản phẩm</button>
           <button type="button" @click="navigateTo('/gioi-thieu')">Giới thiệu</button>
-          <button type="button" @click="navigateTo('/tin-tuc')">Tin tức</button>
           <button type="button" @click="navigateTo('/lien-he')">Liên hệ</button>
         </div>
       </div>
@@ -677,7 +740,7 @@ onUnmounted(() => {
   font-weight: 800;
   letter-spacing: -0.035em;
   color: #151515;
-  font-family: 'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  font-family: "Be Vietnam Pro", "Segoe UI", Tahoma, sans-serif;
   transition: color 0.25s ease;
 }
 
@@ -1217,8 +1280,39 @@ onUnmounted(() => {
 }
 
 @media (max-width: 640px) {
+  .sn-site-header__inner {
+    width: calc(100% - 16px);
+    padding: 10px 0 8px;
+  }
+
+  .sn-nav-shell {
+    gap: 8px;
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .sn-actions {
+    gap: 6px;
+  }
+
+  .sn-icon-button {
+    width: 38px;
+    height: 38px;
+  }
+
+  .sn-user-btn {
+    padding: 4px 8px;
+    min-height: 38px;
+    gap: 6px;
+  }
+
+  .sn-identity {
+    display: none;
+  }
+
   .sn-search {
     display: none;
   }
 }
 </style>
+
+

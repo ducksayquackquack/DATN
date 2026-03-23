@@ -19,7 +19,7 @@ const containerStyle = computed(() => ({
 
     <div class="cp-breadcrumb">
       <div class="cp-container">
-        <RouterLink class="cp-home-link" to="/home">Trang chủ</RouterLink>
+        <RouterLink class="cp-home-link" to="/trang-chu">Trang chủ</RouterLink>
         <span>/</span>
         <strong>{{ breadcrumb }}</strong>
       </div>
@@ -78,3 +78,5 @@ const containerStyle = computed(() => ({
   padding: 24px 0 40px;
 }
 </style>
+
+

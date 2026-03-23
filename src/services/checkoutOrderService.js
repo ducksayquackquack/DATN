@@ -265,7 +265,11 @@ export async function loadCheckoutContext() {
     delivery: {
       name: customer?.tenKhachHang || localStorage.getItem("userName") || account?.tenTaiKhoan || toDisplayNameFromEmail(account?.email) || "",
       phone: customer?.soDienThoai || localStorage.getItem("userPhone") || "",
-      address: formatAddress(primaryAddress) || localStorage.getItem("userAddress") || ""
+      address: formatAddress(primaryAddress) || localStorage.getItem("userAddress") || "",
+      diaChiCuThe: String(primaryAddress?.diaChiCuThe || "").trim(),
+      phuongXa: String(primaryAddress?.phuongXa || "").trim(),
+      quanHuyen: String(primaryAddress?.quanHuyen || "").trim(),
+      tinhThanh: String(primaryAddress?.tinhThanh || "").trim()
     }
   }
 }
@@ -276,10 +280,19 @@ const isValidPhone = (value) => {
 }
 
 const normalizeDelivery = (delivery = {}, contextDelivery = {}) => {
+  const province = String(delivery?.province || "").trim()
+  const district = String(delivery?.district || "").trim()
+  const ward = String(delivery?.ward || "").trim()
+  const addressDetail = String(delivery?.addressDetail || "").trim()
+
+  const mergedAddress = [addressDetail, ward, district, province]
+    .filter(Boolean)
+    .join(", ")
+
   return {
     name: String(delivery?.name || contextDelivery?.name || "").trim(),
     phone: String(delivery?.phone || contextDelivery?.phone || "").trim(),
-    address: String(delivery?.address || contextDelivery?.address || "").trim()
+    address: String(mergedAddress || delivery?.address || contextDelivery?.address || "").trim()
   }
 }
 

@@ -100,13 +100,11 @@ async function save() {
           <div class="field">
             <label>Mã loại</label>
             <input
-              v-model="form.code"
               type="text"
-              placeholder="VD: L010"
+              readonly
+              value="Mã tự sinh"
+              class="auto-code-input"
             />
-            <small class="muted">
-              Có thể để BE tự sinh
-            </small>
           </div>
 
           <div class="field">
@@ -222,5 +220,12 @@ async function save() {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+}
+
+.auto-code-input {
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: #cbd5e1;
+  font-weight: 600;
 }
 </style>

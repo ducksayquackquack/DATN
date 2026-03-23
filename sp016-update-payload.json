@@ -1,0 +1,80 @@
+{
+  "maSanPham": "SP016",
+  "tenSanPham": "THANK YOU THANK YOU THANK YOU!",
+  "moTa": "",
+  "trangThai": "Hoạt động",
+  "anh": "",
+  "anhChinh": "",
+  "hinhAnh": "",
+  "images": [],
+  "listAnh": [],
+  "sanPhamChiTiets": [
+    {
+      "id": 18,
+      "ma": "SP016-01",
+      "giaNhap": 0,
+      "giaBan": 676767,
+      "soLuong": 67,
+      "chatLieu": {
+        "id": 1
+      },
+      "mauSac": {
+        "id": 1
+      },
+      "kichThuoc": {
+        "id": 2
+      },
+      "hang": {
+        "id": 1
+      },
+      "xuatSu": {
+        "id": 1
+      },
+      "danhMuc": {
+        "id": 1
+      },
+      "loai": {
+        "id": 1
+      },
+      "trangThai": "Hoạt động"
+    },
+    {
+      "id": 19,
+      "ma": "SP016-02",
+      "giaNhap": 0,
+      "giaBan": 676767,
+      "soLuong": 67,
+      "chatLieu": {
+        "id": 1
+      },
+      "mauSac": {
+        "id": 1
+      },
+      "kichThuoc": {
+        "id": 3
+      },
+      "hang": {
+        "id": 1
+      },
+      "xuatSu": {
+        "id": 1
+      },
+      "danhMuc": {
+        "id": 1
+      },
+      "loai": {
+        "id": 1
+      },
+      "trangThai": "Hoạt động"
+    }
+  ],
+  "deletedVariantIds": [
+    20
+  ],
+  "sanPhamChiTietIdsXoa": [
+    20
+  ],
+  "xoaSanPhamChiTietIds": [
+    20
+  ]
+}

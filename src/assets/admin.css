@@ -60,14 +60,15 @@ small{color: var(--text);}
 
 .app{
   display:grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 268px 1fr;
   min-height:100vh;
+  width: 100%;
 }
 
 .sidebar{
   border-right:1px solid var(--line);
   background: white;
-  padding:14px;
+  padding:10px;
   position:sticky; top:0; height:100vh;
   display: flex;
   flex-direction: column;
@@ -77,7 +78,7 @@ small{color: var(--text);}
 
 .brand{
   display:flex; gap:12px; align-items:center;
-  padding:16px;
+  padding:12px;
   border-bottom:1px solid var(--line);
   margin-bottom:12px;
 }
@@ -133,12 +134,12 @@ small{color: var(--text);}
 }
 .nav a{
   display:flex; align-items:center; justify-content:space-between;
-  padding:14px;
+  padding:11px;
   border-radius:12px;
   border:1px solid transparent;
   color: var(--text-secondary);
   transition: all 0.2s;
-  font-size: 15px;
+  font-size: 14px;
 }
 .nav a span.left{display:flex; gap:12px; align-items:center}
 .nav a span.left svg{width: 20px; height: 20px;}
@@ -199,6 +200,7 @@ small{color: var(--text);}
 .content{
   display:flex; flex-direction:column;
   min-width:0;
+  width: 100%;
 }
 
 .topbar{
@@ -303,6 +305,7 @@ small{color: var(--text);}
 }
 
 .wrap{
+  width: 100%;
   max-width: 100%;
   padding:40px;
 }
@@ -1044,13 +1047,14 @@ body.ops-theme .content {
 }
 
 body.ops-theme .wrap {
+  width: 100%;
+  max-width: none;
   background:
     radial-gradient(120% 135% at -10% -8%, rgba(239, 68, 68, 0.24), transparent 56%),
     radial-gradient(120% 135% at 110% 10%, rgba(37, 99, 235, 0.22), transparent 58%),
     #f4f6fb;
   background-repeat: no-repeat;
   border-radius: 20px;
-  min-height: calc(100vh - 84px);
 }
 
 body.ops-theme .card,

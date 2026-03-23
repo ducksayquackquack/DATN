@@ -7,6 +7,8 @@ import logo from "../../assets/img/logo/new logo.png?url"
 import SiteNav from '../../components/SiteNav.vue'
 import CustomerFooter from '../../components/customer/CustomerFooter.vue'
 import { useToast } from '../../composables/useToast'
+import { resolveApiOrigin } from '../../utils/apiOrigin'
+import { getProductImageOverride } from '../../utils/productImageOverrides'
 import img1 from "../../assets/img/Jackets/Áo bomber da lộn DirtyWave.jpg?url"
 import img2 from "../../assets/img/Jackets/Áo bomber dáng lửng.jpg?url"
 import img3 from "../../assets/img/Jackets/Áo bomber giả da DirtyWave.jpg?url"
@@ -22,11 +24,12 @@ import momo from "../../assets/img/payments/momo.png?url"
 import visa from "../../assets/img/payments/visa.png?url"
 import mastercard from "../../assets/img/payments/mastercard.png?url"
 import vnpay from "../../assets/img/payments/vnpay.png?url"
+import { readCartObject, writeCartObject } from "../../utils/cartStorage"
 const router = useRouter()
 const route = useRoute()
 const { success: toastSuccess } = useToast()
+const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, '')
 const VND = n => new Intl.NumberFormat("vi-VN").format(n) + "₫"
-const CART_STORAGE_KEY = "cart"
 const CART_UPDATED_EVENT = "dirtywave:cart-updated"
 
 const activeFilter = ref(null)
@@ -77,6 +80,63 @@ const allProducts = [
 
 const products = ref(allProducts)
 
+const isAbsoluteUrl = (value = '') => /^https?:\/\//i.test(value) || /^data:image\//i.test(value)
+
+const toImageUrl = (value) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  if (isAbsoluteUrl(raw)) return raw
+  const normalized = raw.replace(/\\/g, '/')
+  const uploadsMatch = normalized.match(/(?:^|\/)(uploads\/.*)$/i)
+  if (uploadsMatch?.[1]) return `${BACKEND_ORIGIN}/${uploadsMatch[1]}`
+  if (normalized.startsWith('/uploads/')) return `${BACKEND_ORIGIN}${normalized}`
+  if (normalized.startsWith('uploads/')) return `${BACKEND_ORIGIN}/${normalized}`
+  if (normalized.startsWith('assets/') || normalized.startsWith('img/')) return `/${normalized}`
+  if (normalized.startsWith('/')) return normalized
+  return normalized
+}
+
+const pickImageValue = (entry) => {
+  if (!entry) return ''
+  if (typeof entry === 'string') return toImageUrl(entry)
+  if (Array.isArray(entry)) {
+    for (const child of entry) {
+      const found = pickImageValue(child)
+      if (found) return found
+    }
+    return ''
+  }
+  if (typeof entry === 'object') {
+    const keys = ['anh', 'hinhAnh', 'image', 'imageUrl', 'images', 'listAnh', 'anhChinh', 'url', 'path']
+    for (const key of keys) {
+      const found = pickImageValue(entry[key])
+      if (found) return found
+    }
+  }
+  return ''
+}
+
+const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
+  const variants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
+  const variantPrices = variants.map((variant) => Number(variant?.giaBan || 0)).filter((n) => n > 0)
+  const variantOldPrices = variants.map((variant) => Number(variant?.giaNhap || 0)).filter((n) => n > 0)
+  const id = Number(item?.id)
+  const overrideImage = getProductImageOverride({ id, maSanPham: item?.maSanPham })[0]
+
+  const variantStock = variants.reduce((sum, v) => sum + Number(v?.soLuong || 0), 0)
+  const totalStock = variantStock > 0 ? variantStock : Number(item?.soLuong || 0)
+
+  return {
+    id,
+    name: String(item?.tenSanPham || item?.name || `Sản phẩm ${id || fallbackIndex + 1}`),
+    cat: String(item?.loai?.tenLoai || item?.danhMuc?.tenDanhMuc || 'Thời trang nam'),
+    price: variantPrices.length ? Math.min(...variantPrices) : Number(item?.giaBan || item?.gia || 0),
+    old: variantOldPrices.length ? Math.max(...variantOldPrices) : Number(item?.giaGoc || 0) || null,
+    tag: totalStock > 0 ? 'New' : 'Sold out',
+    img: overrideImage || pickImageValue([item, variants]) || allProducts[fallbackIndex % allProducts.length]?.img || img1,
+  }
+}
+
 watch(() => route.query.category, async (cat) => {
   if (cat) {
     activeFilter.value = String(cat)
@@ -107,7 +167,7 @@ onMounted(() => {
     activeFilter.value = String(route.query.category)
   }
 
-  const savedCart = JSON.parse(localStorage.getItem(CART_STORAGE_KEY) || "{}")
+  const savedCart = readCartObject()
   if (savedCart && typeof savedCart === "object") {
     cart.value = savedCart
   }
@@ -221,7 +281,7 @@ const addToCart = (id) => {
 watch(
   cart,
   (nextCart) => {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextCart))
+    writeCartObject(nextCart)
   },
   { deep: true }
 )
@@ -246,12 +306,37 @@ const homeBackendProducts = ref([])
 const normalizeKeyword = (value = '') =>
   String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
+const isActiveStatus = (value = '') => {
+  const normalized = normalizeKeyword(value)
+  if (!normalized) return true
+  if (normalized.includes('ngung')) return false
+  if (normalized.includes('inactive')) return false
+  if (normalized.includes('an')) return false
+  return true
+}
+
+const isBackendProductActive = (item) => {
+  if (!isActiveStatus(item?.trangThai || item?.status)) return false
+
+  const variants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
+  if (!variants.length) return true
+
+  return variants.some((variant) => isActiveStatus(variant?.trangThai || variant?.status))
+}
+
 const loadHomeBackendProducts = async () => {
   try {
     const response = await getAllSanPham()
     homeBackendProducts.value = Array.isArray(response?.data) ? response.data : []
+    if (homeBackendProducts.value.length) {
+      products.value = homeBackendProducts.value
+        .filter((item) => isBackendProductActive(item))
+        .map((item, index) => mapBackendProductToHomeCard(item, index))
+        .filter((item) => Number.isFinite(item.id) && item.id > 0)
+    }
   } catch {
     homeBackendProducts.value = []
+    products.value = allProducts
   }
 }
 
@@ -792,9 +877,9 @@ Thêm giỏ
       <div class="quick-promo-box">
         <div class="quick-promo-title">ƯU ĐÃI ONLINE</div>
         <ul>
-          <li>Nhập mã <b>MAR20</b> giảm 20K đơn từ 299K</li>
-          <li>Nhập mã <b>MAR50</b> giảm 50K đơn từ 699K</li>
-          <li>Nhập mã <b>MAR80</b> giảm 80K đơn từ 999K</li>
+          <li>Nhập mã <b>PGG001</b> giảm 20K đơn từ 299K</li>
+          <li>Nhập mã <b>PGG002</b> giảm 50K đơn từ 699K</li>
+          <li>Nhập mã <b>PGG003</b> giảm 80K đơn từ 999K</li>
         </ul>
       </div>
 

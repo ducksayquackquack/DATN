@@ -4,6 +4,15 @@ import { useRouter } from "vue-router"
 import SiteNav from "../../../components/SiteNav.vue"
 import CustomerFooter from "../../../components/customer/CustomerFooter.vue"
 import { getAllSanPham } from "../../../services/sanPhamService"
+import {
+  readCartObject,
+  writeCartObject,
+  readCartVariantsObject,
+  writeCartVariantsObject,
+  writeCheckoutCartArray
+} from "../../../utils/cartStorage"
+import { resolveApiOrigin } from "../../../utils/apiOrigin"
+import { getProductImageOverride } from "../../../utils/productImageOverrides"
 import img1 from "../../../assets/img/Jackets/Áo bomber da lộn DirtyWave.jpg?url"
 import img2 from "../../../assets/img/Jackets/Áo bomber dáng lửng.jpg?url"
 import img3 from "../../../assets/img/Jackets/Áo bomber giả da DirtyWave.jpg?url"
@@ -18,10 +27,9 @@ import img11 from "../../../assets/img/Jackets/Áo khoác coach lông cừu Dirt
 
 const router = useRouter()
 
-const CART_STORAGE_KEY = "cart"
-const CHECKOUT_CART_STORAGE_KEY = "checkoutCart"
 const CART_UPDATED_EVENT = "dirtywave:cart-updated"
 const year = new Date().getFullYear()
+const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, "")
 
 const cart = ref({})
 const cartVariants = ref({})
@@ -89,16 +97,23 @@ const normalizeImage = (value) => {
   const raw = String(value || "").trim()
   if (!raw) return ""
   if (/^https?:\/\//i.test(raw) || /^data:image\//i.test(raw)) return raw
-  if (raw.startsWith("/")) return raw
-  if (raw.startsWith("assets/") || raw.startsWith("img/") || raw.startsWith("uploads/")) return `/${raw}`
-  if (raw.includes("\\")) return raw.replace(/\\/g, "/")
-  return raw
+  const normalized = raw.replace(/\\/g, "/")
+  const uploadsMatch = normalized.match(/(?:^|\/)(uploads\/.*)$/i)
+  if (uploadsMatch?.[1]) return `${BACKEND_ORIGIN}/${uploadsMatch[1]}`
+  if (normalized.startsWith("/uploads/")) return `${BACKEND_ORIGIN}${normalized}`
+  if (normalized.startsWith("uploads/")) return `${BACKEND_ORIGIN}/${normalized}`
+  if (normalized.startsWith("assets/") || normalized.startsWith("img/")) return `/${normalized}`
+  if (normalized.startsWith("/")) return normalized
+  return normalized
 }
 
 const normalizeBackendProduct = (item) => {
   const variants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
   const variantPrices = variants.map((v) => toNumber(v?.giaBan)).filter((v) => v > 0)
   const price = variantPrices.length ? Math.min(...variantPrices) : toNumber(item?.giaBan || item?.gia || 0)
+  const id = Number(item?.id)
+  const code = String(item?.maSanPham || "")
+  const overrideImage = getProductImageOverride({ id, maSanPham: code })[0]
   const imageCandidate = pickImageValue([
     item?.anh,
     item?.hinhAnh,
@@ -110,11 +125,11 @@ const normalizeBackendProduct = (item) => {
   ])
 
   return {
-    id: Number(item?.id),
+    id,
     name: String(item?.tenSanPham || item?.name || "Sản phẩm"),
     cat: String(item?.danhMuc?.tenDanhMuc || item?.loai?.tenLoai || "Thời trang nam"),
     price,
-    img: normalizeImage(imageCandidate),
+    img: normalizeImage(overrideImage || imageCandidate),
     variants: variants.map((v) => ({
       spctId: v?.id,
       color: String(v?.mauSac?.tenMau || "").trim(),
@@ -134,25 +149,17 @@ const backendMap = computed(() => {
 })
 
 const readCart = () => {
-  try {
-    const stored = JSON.parse(localStorage.getItem(CART_STORAGE_KEY) || "{}")
-    cart.value = stored && typeof stored === "object" ? stored : {}
-  } catch {
-    cart.value = {}
-  }
+  const stored = readCartObject()
+  cart.value = stored && typeof stored === "object" ? stored : {}
 }
 
 const readCartVariants = () => {
-  try {
-    const stored = JSON.parse(localStorage.getItem("cartVariants") || "{}")
-    cartVariants.value = stored && typeof stored === "object" ? stored : {}
-  } catch {
-    cartVariants.value = {}
-  }
+  const stored = readCartVariantsObject()
+  cartVariants.value = stored && typeof stored === "object" ? stored : {}
 }
 
 const writeCartVariants = () => {
-  localStorage.setItem("cartVariants", JSON.stringify(cartVariants.value))
+  writeCartVariantsObject(cartVariants.value)
 }
 
 const getColorOptions = (id) => {
@@ -228,7 +235,7 @@ const notifyCartUpdated = () => {
 }
 
 const writeCart = () => {
-  localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart.value))
+  writeCartObject(cart.value)
   notifyCartUpdated()
 }
 
@@ -413,7 +420,7 @@ const beginCheckout = () => {
     spctId: line.spctId || null,
   }))
 
-  localStorage.setItem(CHECKOUT_CART_STORAGE_KEY, JSON.stringify(payload))
+  writeCheckoutCartArray(payload)
   router.push("/checkout")
 }
 

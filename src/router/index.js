@@ -1,77 +1,91 @@
 import { createRouter, createWebHistory } from "vue-router"
 
-import Login from "../views/auth/Login.vue"
-import Register from "../views/auth/Register.vue"
-import CustomerHomeView from "../views/customer/HomeView.vue"
-import CustomerProfileView from "../views/customer/ProfileView.vue"
-import CustomerProductsPage from "../views/customer/pages/CustomerProductsPage.vue"
-import CustomerAboutPage from "../views/customer/pages/CustomerAboutPage.vue"
-import CustomerNewsPage from "../views/customer/pages/CustomerNewsPage.vue"
-import CustomerContactPage from "../views/customer/pages/CustomerContactPage.vue"
-import CustomerCartPage from "../views/customer/pages/CustomerCartPage.vue"
-import ProductDetail from "../views/customer/ProductDetail.vue"
-import Checkout from "../views/customer/Checkout.vue"
-import VNPayTest from "../views/customer/VNPayTest.vue"
-import PaymentReturn from "../views/PaymentReturn.vue"
-import NotificationsPage from "../views/shared/NotificationsPage.vue"
+const LoginManager = () => import("../views/auth/LoginManager.vue")
+const CustomerLoginPage = () => import("../views/customer/pages/CustomerLoginPage.vue")
+const Register = () => import("../views/auth/Register.vue")
 
-import EmployeeLayout from "../views/employee/EmployeeLayout.vue"
-import EmployeeGiaoCa from "../views/employee/MoKetCaTest.vue"
-import EmployeeDangKyDoiCa from "../views/employee/DangKyDoiCa.vue"
-import EmployeeProfileView from "../views/employee/ProfileView.vue"
+const CustomerHomeView = () => import("../views/customer/HomeView.vue")
+const CustomerProfileView = () => import("../views/customer/ProfileView.vue")
+const CustomerProductsPage = () => import("../views/customer/pages/CustomerProductsPage.vue")
+const CustomerAboutPage = () => import("../views/customer/pages/CustomerAboutPage.vue")
+const CustomerNewsPage = () => import("../views/customer/pages/CustomerNewsPage.vue")
+const CustomerContactPage = () => import("../views/customer/pages/CustomerContactPage.vue")
+const CustomerCartPage = () => import("../views/customer/pages/CustomerCartPage.vue")
+const OrderLookupPage = () => import("../views/customer/pages/OrderLookupPage.vue")
+const ProductDetail = () => import("../views/customer/ProductDetail.vue")
+const Checkout = () => import("../views/customer/Checkout.vue")
+const VNPayTest = () => import("../views/customer/VNPayTest.vue")
+const PaymentReturn = () => import("../views/PaymentReturn.vue")
+const NotificationsPage = () => import("../views/shared/NotificationsPage.vue")
 
-import AdminLayout from "../views/admin/AdminLayout/AdminLayout.vue"
+const EmployeeLayout = () => import("../views/employee/EmployeeLayout.vue")
+const EmployeeGiaoCa = () => import("../views/employee/MoKetCaTest.vue")
+const EmployeeGiaoCaTest = () => import("../views/employee/GiaoCaTest.vue")
+const EmployeeDangKyDoiCa = () => import("../views/employee/DangKyDoiCa.vue")
+const EmployeeProfileView = () => import("../views/employee/ProfileView.vue")
+const EmployeeHome = () => import("../views/employee/EmployeeHome.vue")
+const EmployeeProductList = () => import("../views/employee/san-pham/EmployeeProductList.vue")
 
-import AdminProductList from "../views/admin/san-pham/ProductList.vue"
-import AdminProductForm from "../views/admin/san-pham/ProductForm.vue"
+const AdminLayout = () => import("../views/admin/AdminLayout/AdminLayout.vue")
+const AdminHome = () => import("../views/admin/AdminHome.vue")
 
-import DanhMucList from "../views/admin/danh-muc/DanhMucList.vue"
-import DanhMucForm from "../views/admin/danh-muc/DanhMucForm.vue"
+const AdminProductList = () => import("../views/admin/san-pham/ProductList.vue")
+const AdminProductForm = () => import("../views/admin/san-pham/ProductForm.vue")
+const BienTheSanPham = () => import("../views/admin/san-pham/BienTheSanPham.vue")
 
-import HoaDonList from "../views/admin/hoa-don/HoaDonList.vue"
-import HoaDonDetail from "../views/admin/hoa-don/HoaDonDetail.vue"
-import POSCheckout from "../views/admin/hoa-don/POSCheckout.vue"
+const DanhMucList = () => import("../views/admin/danh-muc/DanhMucList.vue")
+const DanhMucForm = () => import("../views/admin/danh-muc/DanhMucForm.vue")
 
-import KhachHangList from "../views/admin/khach-hang/KhachHangList.vue"
-import KhachHangForm from "../views/admin/khach-hang/KhachHangForm.vue"
+const HoaDonList = () => import("../views/admin/hoa-don/HoaDonList.vue")
+const HoaDonDetail = () => import("../views/admin/hoa-don/HoaDonDetail.vue")
+const POSCheckout = () => import("../views/admin/hoa-don/POSCheckout.vue")
+const BanHangView = () => import("../views/admin/hoa-don/BanHangView.vue")
 
-import KhuyenMaiList from "../views/admin/khuyen-mai/KhuyenMaiList.vue"
-import KhuyenMaiForm from "../views/admin/khuyen-mai/KhuyenMaiForm.vue"
-import VoucherForm from "../views/admin/khuyen-mai/VoucherForm.vue"
+const KhachHangList = () => import("../views/admin/khach-hang/KhachHangList.vue")
+const KhachHangForm = () => import("../views/admin/khach-hang/KhachHangForm.vue")
 
-import KichThuocList from "../views/admin/kich-thuoc/KichThuocList.vue"
-import KichThuocForm from "../views/admin/kich-thuoc/KichThuocForm.vue"
+const KhuyenMaiList = () => import("../views/admin/khuyen-mai/KhuyenMaiList.vue")
+const KhuyenMaiForm = () => import("../views/admin/khuyen-mai/KhuyenMaiForm.vue")
+const VoucherForm = () => import("../views/admin/khuyen-mai/VoucherForm.vue")
 
-import LoaiList from "../views/admin/loai/LoaiList.vue"
-import LoaiForm from "../views/admin/loai/LoaiForm.vue"
+const KichThuocList = () => import("../views/admin/kich-thuoc/KichThuocList.vue")
+const KichThuocForm = () => import("../views/admin/kich-thuoc/KichThuocForm.vue")
 
-import MauSacList from "../views/admin/mau-sac/MauSacList.vue"
-import MauSacForm from "../views/admin/mau-sac/MauSacForm.vue"
+const LoaiList = () => import("../views/admin/loai/LoaiList.vue")
+const LoaiForm = () => import("../views/admin/loai/LoaiForm.vue")
 
-import PhuongThucThanhToanList from "../views/admin/phuong-thuc-thanh-toan/PhuongThucThanhToanList.vue"
-import PhuongThucThanhToanForm from "../views/admin/phuong-thuc-thanh-toan/PhuongThucThanhToanForm.vue"
+const MauSacList = () => import("../views/admin/mau-sac/MauSacList.vue")
+const MauSacForm = () => import("../views/admin/mau-sac/MauSacForm.vue")
 
-import NhanVienList from "../views/admin/nhan-vien/NhanVienList.vue"
-import NhanVienForm from "../views/admin/nhan-vien/NhanVienForm.vue"
-import LichLamViec from "../views/admin/lich-lam-viec/LichLamViec.vue"
-import LichCaLam from "../views/admin/lich-lam-viec/LichCaLam.vue"
-import LichSuHoatDong from "../views/admin/lich-lam-viec/LichSuHoatDong.vue"
-import ThongKeDoanhThu from "../views/admin/thong-ke/ThongKeDoanhThu.vue"
-import AdminProfileView from "../views/admin/profile/ProfileView.vue"
+const PhuongThucThanhToanList = () => import("../views/admin/phuong-thuc-thanh-toan/PhuongThucThanhToanList.vue")
+const PhuongThucThanhToanForm = () => import("../views/admin/phuong-thuc-thanh-toan/PhuongThucThanhToanForm.vue")
+
+const NhanVienList = () => import("../views/admin/nhan-vien/NhanVienList.vue")
+const NhanVienForm = () => import("../views/admin/nhan-vien/NhanVienForm.vue")
+const LichLamViec = () => import("../views/admin/lich-lam-viec/LichLamViec.vue")
+const LichCaLam = () => import("../views/admin/lich-lam-viec/LichCaLam.vue")
+const LichSuHoatDong = () => import("../views/admin/lich-lam-viec/LichSuHoatDong.vue")
+const ThongKeDoanhThu = () => import("../views/admin/thong-ke/ThongKeDoanhThu.vue")
+const AdminProfileView = () => import("../views/admin/profile/ProfileView.vue")
 
 const routes = [
-  { path: "/", redirect: "/login" },
+  { path: "/", redirect: "/trang-chu" },
 
-  { path: "/login", component: Login },
-  { path: "/register", component: Register },
+  { path: "/auth/staff-login", component: LoginManager, alias: ["/dang-nhap", "/admin/login", "/employee/login", "/staff/login"] },
+  { path: "/auth/customer-login", component: CustomerLoginPage, alias: ["/client/login", "/khach-hang/dang-nhap"] },
+  { path: "/auth/customer-register", component: Register, alias: ["/client/register", "/khach-hang/dang-ky"] },
+  { path: "/login", redirect: "/auth/customer-login" },
+  { path: "/register", redirect: "/auth/customer-register" },
 
-  { path: "/home", component: CustomerHomeView },
+  { path: "/trang-chu", component: CustomerHomeView, alias: ["/dirtywave/trangchu", "/dirtywave/home"] },
+  { path: "/home", redirect: "/trang-chu" },
   { path: "/san-pham", component: CustomerProductsPage },
   { path: "/gioi-thieu", component: CustomerAboutPage },
   { path: "/tin-tuc", component: CustomerNewsPage },
   { path: "/lien-he", component: CustomerContactPage },
   { path: "/gio-hang", component: CustomerCartPage },
-  { path: "/customer/profile", component: CustomerProfileView },
+  { path: "/tra-cuu-don-hang", component: OrderLookupPage, alias: ["/dirtywave/tra-cuu-don-hang"] },
+  { path: "/customer/profile", component: CustomerProfileView, meta: { requiresCustomerAuth: true } },
   { path: "/customer/notifications", component: NotificationsPage },
 
   {
@@ -84,7 +98,8 @@ const routes = [
   {
     path: "/checkout",
     name: "checkout",
-    component: Checkout
+    component: Checkout,
+    meta: { requiresCustomerAuth: true }
   },
 
   {
@@ -106,8 +121,13 @@ const routes = [
     component: EmployeeLayout,
     children: [
 
-      { path: "", redirect: "/employee/dashboard" },
+      { path: "", redirect: "/employee/trang-chu" },
+      { path: "trang-chu", component: EmployeeHome },
       { path: "dashboard", component: ThongKeDoanhThu },
+
+      /* BAN HANG */
+
+      { path: "ban-hang", component: BanHangView },
 
       /* HOA DON */
 
@@ -118,9 +138,10 @@ const routes = [
 
       /* SAN PHAM */
 
-      { path: "san-pham/list", component: AdminProductList },
-      { path: "san-pham/form", component: AdminProductForm },
-      { path: "san-pham/form/:id", component: AdminProductForm },
+      { path: "san-pham/list", component: EmployeeProductList },
+      { path: "san-pham/form", redirect: "/employee/san-pham/list" },
+      { path: "san-pham/form/:id", redirect: "/employee/san-pham/list" },
+      { path: "san-pham/bien-the", component: BienTheSanPham },
 
       /* KHUYEN MAI */
 
@@ -133,6 +154,7 @@ const routes = [
       /* GIAO CA */
 
       { path: "giao-ca", component: EmployeeGiaoCa },
+      { path: "giao-ca-test", component: EmployeeGiaoCaTest },
       { path: "dang-ky-doi-ca", component: EmployeeDangKyDoiCa },
 
       /* PROFILE */
@@ -150,13 +172,19 @@ const routes = [
     component: AdminLayout,
     children: [
 
-      { path: "", redirect: "/admin/san-pham/list" },
+      { path: "", redirect: "/admin/trang-chu" },
+      { path: "trang-chu", component: AdminHome },
 
       /* SAN PHAM */
 
       { path: "san-pham/list", component: AdminProductList },
       { path: "san-pham/form", component: AdminProductForm },
       { path: "san-pham/form/:id", component: AdminProductForm },
+      { path: "san-pham/bien-the", component: BienTheSanPham },
+
+      /* BAN HANG */
+
+      { path: "ban-hang", component: BanHangView },
 
       /* HOA DON */
 
@@ -246,7 +274,7 @@ const routes = [
     ]
   },
 
-  { path: "/:pathMatch(.*)*", redirect: "/home" }
+  { path: "/:pathMatch(.*)*", redirect: "/trang-chu" }
 ]
 
 const normalizeRole = (role) => String(role || "").trim().toUpperCase().replace(/^ROLE_/, "")
@@ -263,20 +291,6 @@ const isEmployeeRole = (role) => {
 
 const isAdminRole = (role) => normalizeRole(role) === "ADMIN"
 
-const customerPrefixes = [
-  "/home",
-  "/san-pham",
-  "/gioi-thieu",
-  "/tin-tuc",
-  "/lien-he",
-  "/gio-hang",
-  "/product",
-  "/checkout",
-  "/vnpay-test",
-  "/payment-return",
-  "/customer"
-]
-
 const router = createRouter({
   history: createWebHistory(),
   routes
@@ -284,12 +298,35 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   const role = localStorage.getItem("role")
-  const isCustomerArea = customerPrefixes.some((prefix) => to.path === prefix || to.path.startsWith(`${prefix}/`))
+  const isAdminArea = to.path === "/admin" || to.path.startsWith("/admin/")
+  const isEmployeeArea = to.path === "/employee" || to.path.startsWith("/employee/")
+  const isInternalLogin = ["/auth/staff-login", "/dang-nhap", "/admin/login", "/employee/login", "/staff/login"].includes(to.path)
+  const isClientAuth = [
+    "/auth/customer-login",
+    "/auth/customer-register",
+    "/client/login",
+    "/client/register",
+    "/khach-hang/dang-nhap",
+    "/khach-hang/dang-ky"
+  ].includes(to.path)
 
-  if (!isCustomerArea) return true
+  if (isAdminArea && !isAdminRole(role)) return "/auth/staff-login"
+  if (isEmployeeArea && !isEmployeeRole(role)) return "/auth/staff-login"
 
-  if (isAdminRole(role)) return "/admin"
-  if (isEmployeeRole(role)) return "/employee"
+  if (isInternalLogin) {
+    if (isAdminRole(role)) return "/admin/trang-chu"
+    if (isEmployeeRole(role)) return "/employee/trang-chu"
+  }
+
+  if (isClientAuth) {
+    if (isCustomerRole(role)) return "/trang-chu"
+    return true
+  }
+
+  // Protect routes that require a logged-in customer
+  if (to.meta?.requiresCustomerAuth && !isCustomerRole(role)) {
+    return { path: '/auth/customer-login', query: { redirect: to.fullPath } }
+  }
 
   return true
 })

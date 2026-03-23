@@ -3,6 +3,9 @@ import { computed, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import CustomerPageLayout from "../../../components/customer/CustomerPageLayout.vue"
 import { getAllSanPham } from "../../../services/sanPhamService"
+import { getAllDanhMuc } from "../../../services/danhMucService"
+import { resolveApiOrigin } from "../../../utils/apiOrigin"
+import { getProductImageOverride } from "../../../utils/productImageOverrides"
 import img1 from "../../../assets/img/Jackets/Áo bomber da lộn DirtyWave.jpg?url"
 import img2 from "../../../assets/img/Jackets/Áo bomber dáng lửng.jpg?url"
 import img3 from "../../../assets/img/Jackets/Áo bomber giả da DirtyWave.jpg?url"
@@ -17,10 +20,12 @@ import img11 from "../../../assets/img/Jackets/Áo khoác coach lông cừu Dirt
 
 const route = useRoute()
 const router = useRouter()
+const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, "")
 
 const loading = ref(false)
 const errorMessage = ref("")
 const products = ref([])
+const danhMucOptions = ref([])
 const search = ref(String(route.query.q || ""))
 const sortBy = ref("newest")
 const selectedCategories = ref([])
@@ -44,7 +49,21 @@ const toNumber = (value) => {
 
 const normalizeText = (value) => String(value || "").trim().toLowerCase()
 
+const resolveProductId = (item) => {
+  const id = Number(item?.id ?? item?.idSanPham ?? item?.sanPhamId ?? item?.productId)
+  return Number.isFinite(id) && id > 0 ? id : 0
+}
+
 const isAbsoluteUrl = (value) => /^https?:\/\//i.test(value) || /^data:image\//i.test(value)
+
+const isImageString = (value = "") => {
+  const raw = String(value || "").trim()
+  if (!raw) return false
+  if (isAbsoluteUrl(raw)) return true
+  const normalized = raw.replace(/\\/g, "/").split(/[?#]/)[0]
+  if (normalized.startsWith("/uploads/") || normalized.startsWith("uploads/")) return true
+  return /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(normalized)
+}
 
 const toImageUrl = (value) => {
   if (!value) return ""
@@ -52,16 +71,22 @@ const toImageUrl = (value) => {
   if (!raw) return ""
 
   if (isAbsoluteUrl(raw)) return raw
-  if (raw.startsWith("/")) return raw
-  if (raw.startsWith("assets/") || raw.startsWith("img/")) return `/${raw}`
-  if (raw.startsWith("uploads/")) return `/${raw}`
-  if (raw.includes("\\")) return raw.replace(/\\/g, "/")
-  return raw
+
+  const normalizedSlash = raw.replace(/\\/g, "/")
+  const uploadsMatch = normalizedSlash.match(/(?:^|\/)(uploads\/.*)$/i)
+  if (uploadsMatch?.[1]) return `${BACKEND_ORIGIN}/${uploadsMatch[1]}`
+
+  if (normalizedSlash.startsWith("/uploads/")) return `${BACKEND_ORIGIN}${normalizedSlash}`
+  if (normalizedSlash.startsWith("uploads/")) return `${BACKEND_ORIGIN}/${normalizedSlash}`
+  if (normalizedSlash.startsWith("assets/") || normalizedSlash.startsWith("img/")) return `/${normalizedSlash}`
+  if (normalizedSlash.startsWith("/")) return normalizedSlash
+
+  return normalizedSlash
 }
 
 const pickImageValue = (entry) => {
   if (!entry) return ""
-  if (typeof entry === "string") return toImageUrl(entry)
+  if (typeof entry === "string") return isImageString(entry) ? toImageUrl(entry) : ""
   if (Array.isArray(entry)) {
     for (const child of entry) {
       const found = pickImageValue(child)
@@ -120,14 +145,16 @@ const normalizeProduct = (item) => {
     variants,
   ])
 
-  const id = Number(item?.id)
+  const id = resolveProductId(item)
+  const code = String(item?.maSanPham || item?.ma || "")
   const category = String(item?.danhMuc?.tenDanhMuc || item?.loai?.tenLoai || "Thời trang nam")
+  const overrideImage = getProductImageOverride({ id, maSanPham: code })[0]
 
   return {
     id,
     name: String(item?.tenSanPham || item?.name || "Sản phẩm"),
-    code: String(item?.maSanPham || ""),
-    image: imageCandidate || fallbackImageFor(id),
+    code,
+    image: overrideImage || imageCandidate || fallbackImageFor(id),
     category,
     categoryKey: normalizeText(category),
     price,
@@ -140,6 +167,12 @@ const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(toNumber(valu
 
 const categoryOptions = computed(() => {
   const set = new Set()
+
+  for (const item of danhMucOptions.value) {
+    const name = String(item || '').trim()
+    if (name) set.add(name)
+  }
+
   for (const item of products.value) {
     if (item.category) set.add(item.category)
   }
@@ -230,11 +263,22 @@ const loadProducts = async () => {
   errorMessage.value = ""
 
   try {
-    const response = await getAllSanPham()
-    const source = Array.isArray(response?.data) ? response.data : []
+    const [productRes, danhMucRes] = await Promise.all([
+      getAllSanPham(),
+      getAllDanhMuc().catch(() => ({ data: [] }))
+    ])
+
+    const source = Array.isArray(productRes?.data) ? productRes.data : []
+    const danhMucRaw = Array.isArray(danhMucRes?.data) ? danhMucRes.data : []
+
+    danhMucOptions.value = danhMucRaw
+      .map((item) => String(item?.tenDanhMuc || item?.name || '').trim())
+      .filter(Boolean)
+
     products.value = source.map(normalizeProduct)
   } catch {
     products.value = []
+    danhMucOptions.value = []
     errorMessage.value = "Không thể tải danh sách sản phẩm."
   } finally {
     loading.value = false
@@ -242,6 +286,10 @@ const loadProducts = async () => {
 }
 
 const openProductDetail = (id) => {
+  if (!Number.isFinite(Number(id)) || Number(id) <= 0) {
+    window.toast?.warning("Không xác định được sản phẩm để mở chi tiết")
+    return
+  }
   router.push(`/product/${id}`)
 }
 

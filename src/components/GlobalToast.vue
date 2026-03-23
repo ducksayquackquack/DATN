@@ -48,11 +48,17 @@ const toastProgressStyle = (toast) => {
   position: fixed;
   top: 90px;
   right: 20px;
-  z-index: 9999;
+  z-index: 12000;
   display: flex;
   flex-direction: column;
   gap: 12px;
   pointer-events: none;
+}
+
+:global(body.ops-theme .toast-container) {
+  top: var(--ops-toast-top, 92px);
+  right: 24px;
+  transition: top 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .toast-card {
@@ -67,7 +73,7 @@ const toastProgressStyle = (toast) => {
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.18);
   min-width: 300px;
   max-width: 420px;
-  pointer-events: auto;
+  pointer-events: none;
   overflow: hidden;
 }
 
@@ -191,6 +197,20 @@ const toastProgressStyle = (toast) => {
 
 .toast-move {
   transition: transform 0.35s ease;
+}
+
+@media (max-width: 768px) {
+  .toast-container,
+  :global(body.ops-theme .toast-container) {
+    top: var(--ops-toast-top, 74px);
+    right: 12px;
+    left: 12px;
+  }
+
+  .toast-card {
+    min-width: 0;
+    max-width: none;
+  }
 }
 
 @keyframes toast-progress {

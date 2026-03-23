@@ -332,7 +332,7 @@ const fetchRevenue = async () => {
       if (bucket === 'unknown') continue
       if (resolveRevenueDateKey(order, bucket) !== dateKey) continue
 
-      const amount = Number(order?.thanhTien || 0)
+      const amount = Math.max(0, Number(order?.thanhTien || 0) - Number(order?.phiShip || 0))
       if (amount <= 0) continue
 
       orderCount += 1

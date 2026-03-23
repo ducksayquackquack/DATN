@@ -6,16 +6,25 @@ import { Eye, EyeOff } from 'lucide-vue-next'
 import { useToast } from '../../composables/useToast'
 import taiKhoanService from '../../services/taiKhoanService'
 import { getAllKhachHang } from '../../services/KhachHangService'
+import { clearAuthStorage, dispatchAuthContextChanged } from '../../utils/authContext'
+import { resolveApiOrigin } from '../../utils/apiOrigin'
 import logo from '../../assets/img/logo/new logo.png?url'
 
 const router = useRouter()
 const { error: toastError, warning: toastWarning } = useToast()
+const authApiUrl = `${resolveApiOrigin()}/api/auth/login`
 
 const identity = ref('')
 const password = ref('')
 const error = ref(null)
 const showPassword = ref(false)
 const remember = ref(false)
+const props = defineProps({
+  embedded: {
+    type: Boolean,
+    default: false
+  }
+})
 
 const LOCAL_AUTH_USERS_KEY = 'localAuthUsers'
 const LOCAL_REGISTERED_PROFILES_KEY = 'localRegisteredProfiles'
@@ -107,11 +116,24 @@ const extractAccounts = (payload) => {
   return []
 }
 
+const clearAuth = () => {
+  clearAuthStorage()
+  dispatchAuthContextChanged()
+}
+
+const isCustomerRole = (role) => {
+  return ['CUSTOMER', 'KHACH_HANG', 'KHACHHANG', 'USER'].includes(role)
+}
+
 const routeByRole = (role) => {
-  if (role === 'ADMIN') router.push('/admin')
-  else if (role === 'EMPLOYEE') router.push('/employee/dashboard')
-  else if (role === 'CUSTOMER' || role === 'KHACH_HANG' || role === 'KHACHHANG') router.push('/home')
-  else router.push('/')
+  if (isCustomerRole(role)) {
+    router.push('/trang-chu')
+    return
+  }
+
+  clearAuth()
+  error.value = 'Đây là cổng đăng nhập khách hàng. Vui lòng dùng trang đăng nhập nội bộ.'
+  toastError(error.value)
 }
 
 const login = async () => {
@@ -129,6 +151,8 @@ const login = async () => {
     return
   }
 
+  clearAuth()
+
   const username = await resolveUsername()
   const normalizedIdentity = username || identity.value.trim().toLowerCase()
   try {
@@ -141,7 +165,7 @@ const login = async () => {
     }
 
     const response = await axios.post(
-      'http://localhost:8080/api/auth/login',
+      authApiUrl,
       authPayload,
       {
         withCredentials: true,
@@ -181,6 +205,7 @@ const login = async () => {
       }
     }
 
+    dispatchAuthContextChanged()
     routeByRole(normalizedRole)
   } catch (e) {
     // Fallback path: allow login when auth endpoint format differs but account exists.
@@ -194,7 +219,7 @@ const login = async () => {
         const role = normalizeRole(acc?.vaiTro)
         const rawPassword = String(acc?.matKhau || acc?.password || '')
         const localPassword = String(localAuthUsers[email] || '')
-        const isKnownRole = ['ADMIN', 'EMPLOYEE', 'CUSTOMER', 'KHACH_HANG', 'KHACHHANG'].includes(role)
+        const isKnownRole = ['CUSTOMER', 'KHACH_HANG', 'KHACHHANG', 'USER'].includes(role)
 
         if (email !== normalizedIdentity || !isKnownRole) return false
 
@@ -205,11 +230,17 @@ const login = async () => {
         // Compatibility mode: some environments return account with null password
         // even after successful registration. Keep this fallback customer-only
         // and require a locally known password.
-        const isCustomer = ['CUSTOMER', 'KHACH_HANG', 'KHACHHANG'].includes(role)
+        const isCustomer = ['CUSTOMER', 'KHACH_HANG', 'KHACHHANG', 'USER'].includes(role)
         if (!isCustomer) return false
 
         if (localPassword) {
           return localPassword === password.value
+        }
+
+        // Dev-only compatibility: allow customer login when backend account exists
+        // but password contract is inconsistent across environments.
+        if (import.meta.env.DEV) {
+          return true
         }
 
         return false
@@ -219,7 +250,7 @@ const login = async () => {
         const role = normalizeRole(matched?.vaiTro)
         const email = String(matched?.email || normalizedIdentity).trim().toLowerCase()
 
-        if (['CUSTOMER', 'KHACH_HANG', 'KHACHHANG'].includes(role)) {
+        if (['CUSTOMER', 'KHACH_HANG', 'KHACHHANG', 'USER'].includes(role)) {
           const localAuthUsers = loadLocalAuthUsers()
           localAuthUsers[email] = password.value
           saveLocalAuthUsers(localAuthUsers)
@@ -229,6 +260,7 @@ const login = async () => {
         localStorage.setItem('userEmail', email)
         localStorage.setItem('role', role)
         applyLocalProfileSnapshot(email)
+        dispatchAuthContextChanged()
         routeByRole(role)
         return
       }
@@ -236,6 +268,7 @@ const login = async () => {
       // Keep user-facing error below.
     }
 
+    clearAuth()
     error.value = 'Email hoặc mật khẩu không đúng'
     toastError(error.value)
   }
@@ -243,13 +276,13 @@ const login = async () => {
 </script>
 
 <template>
-  <div class="auth">
+  <div class="auth" :class="{ 'auth-embedded': props.embedded }">
     <div class="auth-ambient" aria-hidden="true">
       <span class="orb orb-a"></span>
       <span class="orb orb-b"></span>
     </div>
 
-    <router-link to="/home" class="auth-brand">
+    <router-link v-if="!props.embedded" to="/trang-chu" class="auth-brand">
       <div class="brand">
         <span class="brand-wordmark">
           <img :src="logo" alt="D" class="brand-d-icon" />
@@ -341,8 +374,15 @@ const login = async () => {
 
           <div class="footnote">
             <small class="muted">Chưa có tài khoản?</small>
-            <router-link to="/register" class="link">
+            <router-link to="/auth/customer-register" class="link">
               Tạo tài khoản
+            </router-link>
+          </div>
+
+          <div class="footnote">
+            <small class="muted">Nhân viên hoặc quản trị viên?</small>
+            <router-link to="/auth/staff-login" class="link">
+              Đăng nhập nội bộ
             </router-link>
           </div>
 
@@ -350,7 +390,7 @@ const login = async () => {
       </div>
     </div>
 
-    <div class="footer">
+    <div v-if="!props.embedded" class="footer">
       © {{ new Date().getFullYear() }} DirtyWave
     </div>
 
@@ -367,6 +407,22 @@ const login = async () => {
     radial-gradient(circle at 12% 18%, rgba(239, 68, 68, 0.2), transparent 44%),
     radial-gradient(circle at 88% 82%, rgba(14, 116, 144, 0.16), transparent 42%),
     linear-gradient(145deg, #f8fafc 0%, #eef2ff 45%, #fef2f2 100%);
+}
+
+.auth.auth-embedded {
+  min-height: auto;
+  display: block;
+  padding: 0;
+  background: transparent;
+}
+
+.auth-embedded .auth-ambient {
+  display: none;
+}
+
+.auth-embedded .auth-card {
+  width: min(720px, 100%);
+  margin: 0 auto;
 }
 
 .auth-ambient {
@@ -408,6 +464,33 @@ const login = async () => {
   backdrop-filter: blur(10px);
   box-shadow: 0 24px 65px rgba(15, 23, 42, 0.14);
   animation: authCardIn 0.55s ease;
+}
+
+.mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 2px 0 12px;
+}
+
+.mode-pill {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 999px;
+  min-height: 38px;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  color: #334155;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.mode-pill.active {
+  color: #9f1239;
+  border-color: rgba(251, 113, 133, 0.45);
+  background: rgba(255, 241, 242, 0.86);
 }
 
 .brand-wordmark {
@@ -526,6 +609,13 @@ label {
   font-size: 16px;
 }
 
+.switch-internal {
+  margin-top: 6px;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+
 .footer {
   text-align: center;
   font-size: 15px;
@@ -567,3 +657,4 @@ label {
   }
 }
 </style>
+

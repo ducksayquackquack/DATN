@@ -1,0 +1,16 @@
+[Unit]
+Description=DirtyWave Spring API
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/dirtywave/api
+EnvironmentFile=/opt/dirtywave/api/.env
+ExecStart=/usr/bin/java -jar /opt/dirtywave/api/app.jar
+SuccessExitStatus=143
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

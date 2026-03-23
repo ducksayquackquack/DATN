@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import taiKhoanService from '../../services/taiKhoanService'
 import {
@@ -15,6 +15,8 @@ import {
   updateDiaChi
 } from '../../services/diaChiService'
 import { useToast } from '../../composables/useToast'
+import { resolvePublicAppOrigin } from '../../utils/publicTrackingUrl'
+import { buildOrderLookupTrackingUrl } from '../../utils/publicTrackingUrl'
 import { getVietnameseNameByEmail, isGenericVietnameseName } from '../../utils/vietnameseNames'
 import { normalizeAdminStatusLabel } from '../../utils/adminStatus'
 import { describePaymentFlowState } from '../../utils/paymentWorkflow'
@@ -29,7 +31,12 @@ const loading = ref(true)
 const saving = ref(false)
 const confirmingOrderId = ref(null)
 const error = ref('')
-const activeTab = ref(route.query.tab === 'orders' ? 'orders' : 'profile')
+const resolveInitialTab = (tab) => {
+  if (tab === 'orders' || tab === 'delivery' || tab === 'lookup') return tab
+  return 'profile'
+}
+
+const activeTab = ref(resolveInitialTab(route.query.tab))
 
 const account = ref(null)
 const customer = ref(null)
@@ -320,10 +327,12 @@ const confirmPayment = async (order) => {
 
   confirmingOrderId.value = order.id
   try {
+    const trackingUrl = buildOrderLookupTrackingUrl({ maHoaDon: order.maHoaDon })
     await updateHoaDonBySystemEvent(
       order.id,
       'THANH_TOAN_KHACH_XAC_NHAN',
-      'Khach hang da bam xac nhan thanh toan'
+      'Khach hang da bam xac nhan thanh toan',
+      trackingUrl
     )
     toast.success('Đã gửi yêu cầu xác nhận thanh toán tới nhân viên')
     await loadOrders(customer.value?.id)
@@ -597,17 +606,31 @@ const deliveryOrders = computed(() => {
 })
 
 const goBackHome = () => {
-  router.push('/home')
+  router.push('/trang-chu')
+}
+
+const goToOrderLookup = () => {
+  const publicOrigin = resolvePublicAppOrigin()
+  if (publicOrigin) {
+    window.location.href = `${publicOrigin}/tra-cuu-don-hang`
+    return
+  }
+
+  router.push('/tra-cuu-don-hang')
 }
 
 const logout = () => {
   localStorage.removeItem('role')
   localStorage.removeItem('userId')
   localStorage.removeItem('userEmail')
-  router.push('/login')
+  router.push('/auth/customer-login')
 }
 
 onMounted(loadAccountCenter)
+
+watch(() => route.query.tab, (tab) => {
+  activeTab.value = resolveInitialTab(tab)
+})
 </script>
 
 <template>
@@ -620,12 +643,17 @@ onMounted(loadAccountCenter)
           <h1>Tài khoản của tôi</h1>
           <p>Thông tin người dùng, địa chỉ, mật khẩu và đơn hàng</p>
         </div>
+        <div class="header-actions">
+          <button class="btn" type="button" @click="goToOrderLookup">Tra cứu đơn hàng</button>
+          <button class="btn" type="button" @click="goBackHome">Về trang chủ</button>
+        </div>
       </header>
 
       <div class="tabs" v-if="!loading && !error">
         <button class="tab" :class="{ active: activeTab === 'profile' }" @click="activeTab = 'profile'">Thông tin người dùng</button>
         <button class="tab" :class="{ active: activeTab === 'orders' }" :disabled="!hasCustomerProfile" @click="activeTab = 'orders'">Lịch sử mua hàng</button>
         <button class="tab" :class="{ active: activeTab === 'delivery' }" :disabled="!hasCustomerProfile" @click="activeTab = 'delivery'">Đang giao</button>
+        <button class="tab" :class="{ active: activeTab === 'lookup' }" @click="activeTab = 'lookup'">Tra cứu đơn hàng</button>
       </div>
 
       <section class="card" v-if="loading">Đang tải trung tâm tài khoản...</section>
@@ -778,6 +806,14 @@ onMounted(loadAccountCenter)
             </article>
           </div>
           <p class="muted" v-else>Hiện không có đơn hàng đang giao.</p>
+        </section>
+
+        <section class="card" v-show="activeTab === 'lookup'">
+          <h2>Tra cứu đơn hàng</h2>
+          <p class="muted">Mở công cụ tra cứu theo mã đơn và số điện thoại để kiểm tra nhanh trạng thái đơn hàng.</p>
+          <div class="section-actions">
+            <button class="btn primary" type="button" @click="goToOrderLookup">Mở trang tra cứu đơn hàng</button>
+          </div>
         </section>
 
         <div class="page-bottom-actions">
@@ -1094,3 +1130,5 @@ select {
   }
 }
 </style>
+
+

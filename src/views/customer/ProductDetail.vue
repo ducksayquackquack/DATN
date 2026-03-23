@@ -27,6 +27,13 @@ import {
   AUTH_CONTEXT_CHANGED_EVENT,
   resolveAccountByRole
 } from "../../utils/authContext"
+import {
+  readCartObject,
+  writeCartObject,
+  writeCheckoutCartArray
+} from "../../utils/cartStorage"
+import { resolveApiOrigin } from "../../utils/apiOrigin"
+import { getProductImageOverride } from "../../utils/productImageOverrides"
 import SiteNav from "../../components/SiteNav.vue"
 import logo from "../../assets/img/logo/new logo.png?url"
 import img1 from "../../assets/img/Jackets/Áo bomber da lộn DirtyWave.jpg?url"
@@ -44,6 +51,8 @@ import img11 from "../../assets/img/Jackets/Áo khoác coach lông cừu DirtyWa
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, "")
+const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11]
 
 const PRODUCTS = [
   {
@@ -346,8 +355,178 @@ const normalizeKeyword = (value = "") => String(value)
   .toLowerCase()
   .trim()
 
+const resolveProductId = (item) => {
+  const id = Number(item?.id ?? item?.idSanPham ?? item?.sanPhamId ?? item?.productId)
+  return Number.isFinite(id) && id > 0 ? id : 0
+}
+
+const isAbsoluteUrl = (value = "") => /^https?:\/\//i.test(value) || /^data:image\//i.test(value)
+
+const isImageString = (value = "") => {
+  const raw = String(value || "").trim()
+  if (!raw) return false
+  if (isAbsoluteUrl(raw)) return true
+
+  const normalized = raw.replace(/\\/g, "/").split(/[?#]/)[0]
+  if (normalized.startsWith("/uploads/") || normalized.startsWith("uploads/")) return true
+  return /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(normalized)
+}
+
+const toImageUrl = (value) => {
+  if (!value) return ""
+  const raw = String(value).trim()
+  if (!raw) return ""
+  if (isAbsoluteUrl(raw)) return raw
+
+  const normalized = raw.replace(/\\/g, "/")
+  const uploadsMatch = normalized.match(/(?:^|\/)(uploads\/.*)$/i)
+  if (uploadsMatch?.[1]) return `${BACKEND_ORIGIN}/${uploadsMatch[1]}`
+  if (normalized.startsWith("/uploads/")) return `${BACKEND_ORIGIN}${normalized}`
+  if (normalized.startsWith("uploads/")) return `${BACKEND_ORIGIN}/${normalized}`
+  if (normalized.startsWith("assets/") || normalized.startsWith("img/")) return `/${normalized}`
+  if (normalized.startsWith("/")) return normalized
+  return normalized
+}
+
+const pickImageValues = (entry) => {
+  if (!entry) return []
+  if (typeof entry === "string") {
+    if (!isImageString(entry)) return []
+    const parsed = toImageUrl(entry)
+    return parsed ? [parsed] : []
+  }
+  if (Array.isArray(entry)) {
+    return entry.flatMap((item) => pickImageValues(item)).filter(Boolean)
+  }
+  if (typeof entry === "object") {
+    const bucket = []
+    const directKeys = ["anh", "hinhAnh", "image", "imageUrl", "duongDanAnh", "images", "listAnh", "anhChinh", "thumbnail", "src"]
+    for (const key of directKeys) {
+      bucket.push(...pickImageValues(entry[key]))
+    }
+    return bucket
+  }
+  return []
+}
+
+const fallbackImageFor = (id, code = "") => {
+  const numericId = Number(id)
+  if (Number.isFinite(numericId) && numericId > 0) {
+    return fallbackImages[(numericId - 1) % fallbackImages.length]
+  }
+
+  const codeNumber = Number(String(code || "").replace(/\D+/g, ""))
+  if (Number.isFinite(codeNumber) && codeNumber > 0) {
+    return fallbackImages[(codeNumber - 1) % fallbackImages.length]
+  }
+
+  return fallbackImages[0]
+}
+
+const normalizeBackendProduct = (item) => {
+  const variants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
+  const id = resolveProductId(item)
+  const code = String(item?.maSanPham || item?.ma || "")
+  const category = String(item?.danhMuc?.tenDanhMuc || item?.loai?.tenLoai || "Thời trang nam")
+  const variantPrices = variants.map((variant) => Number(variant?.giaBan || 0)).filter((n) => n > 0)
+  const variantOriginalPrices = variants.map((variant) => Number(variant?.giaNhap || 0)).filter((n) => n > 0)
+  const overrideImages = getProductImageOverride({ id, maSanPham: code })
+
+  const images = overrideImages.length ? overrideImages : [...new Set(pickImageValues([
+    item?.anh,
+    item?.hinhAnh,
+    item?.images,
+    item?.image,
+    item?.listAnh,
+    item?.anhChinh,
+    variants
+  ]))]
+
+  const colors = [...new Set(
+    variants
+      .map((variant) => String(variant?.mauSac?.tenMau || "").trim())
+      .filter(Boolean)
+  )].map((name) => ({ name, hex: colorHexByName(name) }))
+
+  const sizes = [...new Set(
+    variants
+      .map((variant) => String(variant?.kichThuoc?.tenKichThuoc || "").trim())
+      .filter(Boolean)
+  )]
+
+  const price = variantPrices.length
+    ? Math.min(...variantPrices)
+    : Number(item?.giaBan || item?.gia || 0)
+
+  const originalPrice = variantOriginalPrices.length
+    ? Math.max(...variantOriginalPrices)
+    : Number(item?.giaGoc || item?.giaNiemYet || 0)
+
+  const descriptionText = String(item?.moTa || "").trim()
+
+  return {
+    id,
+    raw: item,
+    name: String(item?.tenSanPham || item?.name || "Sản phẩm"),
+    category,
+    price,
+    originalPrice,
+    sku: code,
+    badge: String(item?.trangThai || "").toLowerCase().includes("ngung") ? "Hết hàng" : "Còn hàng",
+    badgeTone: String(item?.trangThai || "").toLowerCase().includes("ngung") ? "dark" : "red",
+    images: images.length ? images : [fallbackImageFor(id, code)],
+    colors,
+    sizes,
+    material: "Chất liệu theo biến thể",
+    fit: String(item?.loai?.tenLoai || "Form tiêu chuẩn"),
+    bullets: [
+      "Sản phẩm được đồng bộ trực tiếp từ dữ liệu hệ thống.",
+      "Màu sắc và kích thước hiển thị theo biến thể hiện có.",
+      "Giá bán được lấy theo biến thể thấp nhất đang khả dụng."
+    ],
+    description: {
+      intro: descriptionText || "Sản phẩm đang được cập nhật mô tả chi tiết.",
+      material: "Thông tin chất liệu được xác định theo từng biến thể của sản phẩm.",
+      design: "Thiết kế và thông số chi tiết phụ thuộc dữ liệu quản trị đã nhập.",
+      fit: "Form hiển thị theo loại sản phẩm trong hệ thống."
+    }
+  }
+}
+
+const EMPTY_PRODUCT = {
+  id: 0,
+  raw: null,
+  name: "Không tìm thấy sản phẩm",
+  category: "Sản phẩm",
+  price: 0,
+  originalPrice: 0,
+  sku: "",
+  badge: "Không khả dụng",
+  badgeTone: "dark",
+  images: [fallbackImages[0]],
+  colors: [],
+  sizes: [],
+  material: "Đang cập nhật",
+  fit: "Đang cập nhật",
+  bullets: [],
+  description: {
+    intro: "Sản phẩm này không tồn tại hoặc đã bị ẩn khỏi hệ thống.",
+    material: "",
+    design: "",
+    fit: ""
+  }
+}
+
+const productCatalog = computed(() => {
+  return backendProducts.value
+    .map(normalizeBackendProduct)
+    .filter((item) => Number(item.id) > 0)
+})
+
 const currentProduct = computed(() => {
-  return PRODUCTS.find((item) => Number(item.id) === Number(route.params.id)) || PRODUCTS[0]
+  const routeId = Number(route.params.id)
+  if (!Number.isFinite(routeId) || routeId <= 0) return EMPTY_PRODUCT
+  return productCatalog.value.find((item) => Number(item.id) === routeId) || EMPTY_PRODUCT
 })
 
 const createPlaceholderImage = (index) => {
@@ -360,12 +539,8 @@ const displayImages = computed(() => {
     ? currentProduct.value.images.filter(Boolean)
     : []
 
-  const primaryImage = baseImages[0] || createPlaceholderImage(0)
-  const galleryImages = [primaryImage]
-  for (let i = 1; i <= 4; i += 1) {
-    galleryImages.push(createPlaceholderImage(i))
-  }
-  return galleryImages
+  if (baseImages.length) return baseImages
+  return [createPlaceholderImage(0)]
 })
 
 const activeImageIndex = computed(() => {
@@ -390,14 +565,7 @@ const showNextImage = () => {
 }
 
 const matchedBackendProduct = computed(() => {
-  const localProduct = currentProduct.value
-  if (!localProduct) return null
-
-  const byId = backendProducts.value.find((item) => Number(item?.id) === Number(localProduct.id))
-  if (byId) return byId
-
-  const localName = normalizeKeyword(localProduct.name)
-  return backendProducts.value.find((item) => normalizeKeyword(item?.tenSanPham) === localName) || null
+  return currentProduct.value?.raw || null
 })
 
 const displayedProductCode = computed(() => {
@@ -423,6 +591,7 @@ const colorHexByName = (name) => {
   if (normalized.includes("den")) return "#1a1a1a"
   if (normalized.includes("trang") || normalized.includes("kem")) return "#ded7ca"
   if (normalized.includes("nau")) return "#6b412c"
+  if (normalized.includes("hong")) return "#d684a1"
   if (normalized.includes("xam") || normalized.includes("ghi")) return "#7f858f"
   if (normalized.includes("xanh")) return "#2f4f75"
   return "#9ca3af"
@@ -485,8 +654,9 @@ const effectiveOriginalPrice = computed(() => {
 
 const relatedProducts = computed(() => {
   const currentId = currentProduct.value.id
-  const sameCategory = PRODUCTS.filter((item) => item.id !== currentId && item.category === currentProduct.value.category)
-  const otherProducts = PRODUCTS.filter((item) => item.id !== currentId && item.category !== currentProduct.value.category)
+  const source = productCatalog.value
+  const sameCategory = source.filter((item) => item.id !== currentId && item.category === currentProduct.value.category)
+  const otherProducts = source.filter((item) => item.id !== currentId && item.category !== currentProduct.value.category)
   return [...sameCategory, ...otherProducts].slice(0, 5)
 })
 
@@ -505,7 +675,7 @@ const userInitials = computed(() => {
 
 const cartCount = computed(() => {
   cartVersion.value
-  const stored = JSON.parse(localStorage.getItem("cart") || "{}")
+  const stored = readCartObject()
   return Object.values(stored).reduce((sum, value) => sum + Number(value || 0), 0)
 })
 
@@ -670,10 +840,10 @@ const notifyCartUpdated = () => {
 
 const addToCart = () => {
   if (!validateSelection()) return
-  const storedCart = JSON.parse(localStorage.getItem("cart") || "{}")
+  const storedCart = readCartObject()
   const key = String(currentProduct.value.id)
   storedCart[key] = Number(storedCart[key] || 0) + quantity.value
-  localStorage.setItem("cart", JSON.stringify(storedCart))
+  writeCartObject(storedCart)
   refreshCartCount()
   notifyCartUpdated()
   toast.success(`Đã thêm ${quantity.value} sản phẩm vào giỏ hàng`)
@@ -686,7 +856,7 @@ const buyNow = () => {
   } else {
     localStorage.removeItem('checkoutSelectedVoucher')
   }
-  localStorage.setItem("checkoutCart", JSON.stringify([{
+  writeCheckoutCartArray([{
     id: currentProduct.value.id,
     name: currentProduct.value.name,
     price: effectivePrice.value,
@@ -695,16 +865,16 @@ const buyNow = () => {
     color: selectedColor.value,
     spctId: selectedBackendVariant.value?.id || null,
     image: activeImage.value || currentProduct.value.images[0]
-  }]))
+  }])
   router.push("/checkout")
 }
 
 const handleSearch = () => {
   if (!searchQuery.value.trim()) {
-    router.push("/home")
+    router.push("/trang-chu")
     return
   }
-  router.push({ path: "/home", query: { q: searchQuery.value.trim() } })
+  router.push({ path: "/trang-chu", query: { q: searchQuery.value.trim() } })
 }
 
 const closeVoucherDrawer = () => {
@@ -738,17 +908,20 @@ const toggleProfileMenu = (event) => {
 
 const browseCategory = (category) => {
   mobileOpen.value = false
-  router.push({ path: "/home", query: category ? { category } : {} })
+  router.push({ path: "/trang-chu", query: category ? { category } : {} })
 }
 
 const openHomeAnchor = (hash = "") => {
   mobileOpen.value = false
-  router.push(hash ? { path: "/home", hash: `#${hash}` } : "/home")
+  router.push(hash ? { path: "/trang-chu", hash: `#${hash}` } : "/trang-chu")
 }
 
-const goHome = () => router.push("/home")
+const goHome = () => router.push("/trang-chu")
 const openCart = () => router.push("/gio-hang")
-const goToProductDetail = (id) => router.push(`/product/${id}`)
+const goToProductDetail = (id) => {
+  closeQuickPreview()
+  router.push(`/product/${id}`)
+}
 
 const openQuickPreview = (product) => {
   quickPreviewProduct.value = product
@@ -772,10 +945,10 @@ const getQuickPreviewCode = (product) => {
 
 const quickPreviewAddToCart = () => {
   if (!quickPreviewProduct.value?.id) return
-  const storedCart = JSON.parse(localStorage.getItem("cart") || "{}")
+  const storedCart = readCartObject()
   const key = String(quickPreviewProduct.value.id)
   storedCart[key] = Number(storedCart[key] || 0) + quickPreviewQty.value
-  localStorage.setItem("cart", JSON.stringify(storedCart))
+  writeCartObject(storedCart)
   refreshCartCount()
   notifyCartUpdated()
   toast.success(`Đã thêm ${quickPreviewQty.value} sản phẩm vào giỏ hàng`)
@@ -787,7 +960,7 @@ const logout = () => {
   localStorage.removeItem("role")
   localStorage.removeItem("userId")
   localStorage.removeItem("userEmail")
-  router.push("/login")
+  router.push("/auth/customer-login")
 }
 
 const handleDocumentClick = (event) => {
@@ -799,11 +972,20 @@ const handleDocumentClick = (event) => {
 }
 
 watch(() => route.params.id, () => {
-  syncProductState()
   profileOpen.value = false
   mobileOpen.value = false
   closeVoucherDrawer()
+  closeQuickPreview()
+  window.scrollTo({ top: 0, behavior: "auto" })
 })
+
+watch(
+  () => currentProduct.value.id,
+  () => {
+    syncProductState()
+  },
+  { immediate: true }
+)
 
 watch(selectedColor, () => {
   if (!effectiveSizes.value.includes(selectedSize.value)) {
@@ -818,8 +1000,8 @@ watch(effectiveColors, (colors) => {
 })
 
 onMounted(async () => {
-  syncProductState()
   await Promise.all([loadCurrentUser(), loadVouchers(), loadBackendProducts()])
+  syncProductState()
   document.addEventListener("click", handleDocumentClick)
   window.addEventListener("storage", refreshCartCount)
   window.addEventListener(AUTH_CONTEXT_CHANGED_EVENT, loadCurrentUser)
@@ -846,7 +1028,7 @@ onUnmounted(() => {
 
       <section class="pd-main">
         <div class="pd-gallery" :class="{ 'pd-gallery--single': displayImages.length <= 1 }">
-          <div class="pd-gallery__thumbs">
+          <div v-if="displayImages.length > 1" class="pd-gallery__thumbs">
             <button
               v-for="(image, index) in displayImages"
               :key="`${image}-${index}`"
@@ -861,10 +1043,10 @@ onUnmounted(() => {
 
           <div class="pd-gallery__stage">
             <img :src="activeImage || displayImages[0]" :alt="currentProduct.name" />
-            <button type="button" class="pd-gallery__arrow pd-gallery__arrow--left" aria-label="Ảnh trước" @click="showPrevImage">
+            <button v-if="displayImages.length > 1" type="button" class="pd-gallery__arrow pd-gallery__arrow--left" aria-label="Ảnh trước" @click="showPrevImage">
               <ChevronLeft :size="18" />
             </button>
-            <button type="button" class="pd-gallery__arrow pd-gallery__arrow--right" aria-label="Ảnh tiếp theo" @click="showNextImage">
+            <button v-if="displayImages.length > 1" type="button" class="pd-gallery__arrow pd-gallery__arrow--right" aria-label="Ảnh tiếp theo" @click="showNextImage">
               <ChevronRight :size="18" />
             </button>
           </div>
@@ -2710,3 +2892,5 @@ onUnmounted(() => {
   }
 }
 </style>
+
+

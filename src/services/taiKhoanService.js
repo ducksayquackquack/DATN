@@ -1,6 +1,7 @@
 import axios from "axios"
+import { resolveApiOrigin } from "../utils/apiOrigin"
 
-const API = "http://localhost:8080/api/tai-khoan"
+const API = `${resolveApiOrigin()}/api/tai-khoan`
 
 const taiKhoanService = {
   getAll(params = {}) {

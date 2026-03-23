@@ -22,8 +22,40 @@ html,
 body,
 #app {
   min-width: 320px;
+  max-width: 100%;
   min-height: 100%;
   margin: 0;
+  overflow-x: clip;
+}
+
+/* Thin, subtle scrollbar — removes the ugly wide gray bar */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+html::-webkit-scrollbar {
+  width: 6px;
+}
+html::-webkit-scrollbar-track {
+  background: transparent;
+}
+html::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+/* Mobile: hide scrollbar completely for clean demo view */
+@media (max-width: 768px) {
+  html {
+    scrollbar-width: none;
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
 }
 
 body {

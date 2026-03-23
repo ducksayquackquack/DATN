@@ -246,7 +246,7 @@ const logout = () => {
   localStorage.removeItem('role')
   localStorage.removeItem('userId')
   localStorage.removeItem('userEmail')
-  router.push('/login')
+  router.push('/auth/staff-login')
 }
 
 onMounted(loadProfile)

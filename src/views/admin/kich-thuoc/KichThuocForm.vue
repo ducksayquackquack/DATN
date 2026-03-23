@@ -100,13 +100,10 @@ async function save() {
           <div class="field">
             <label>Mã size</label>
             <input
-              class="input"
-              v-model="form.maKichThuoc"
-              placeholder="VD: KT010"
+              class="input auto-code-input"
+              readonly
+              value="Mã tự sinh"
             />
-            <small class="muted">
-              Có thể để BE tự sinh
-            </small>
           </div>
 
           <div class="field">
@@ -166,5 +163,12 @@ async function save() {
 .input:focus {
   outline: none;
   border-color: #6366f1;
+}
+
+.auto-code-input {
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: #cbd5e1;
+  font-weight: 600;
 }
 </style>

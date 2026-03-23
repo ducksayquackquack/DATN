@@ -392,7 +392,7 @@ const submit = async () => {
 
     toastSuccess(success.value)
     setTimeout(() => {
-      router.push('/login')
+      router.push('/auth/customer-login')
     }, 900)
   } catch (e) {
     const apiMessage = extractApiErrorMessage(e)
@@ -419,7 +419,7 @@ const submit = async () => {
       <span class="orb orb-b"></span>
     </div>
 
-    <router-link to="/home" class="auth-brand">
+    <router-link to="/trang-chu" class="auth-brand">
       <div class="brand">
         <span class="brand-wordmark">
           <img :src="logo" alt="D" class="brand-d-icon" />
@@ -507,7 +507,7 @@ const submit = async () => {
 
           <div class="footnote">
             <small class="muted">Đã có tài khoản?</small>
-            <router-link to="/login" class="link register-link">Đăng nhập</router-link>
+            <router-link to="/auth/customer-login" class="link register-link">Đăng nhập</router-link>
           </div>
         </form>
       </div>
@@ -758,3 +758,4 @@ const submit = async () => {
   }
 }
 </style>
+

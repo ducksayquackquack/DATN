@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from "vue"
-import { useRouter } from "vue-router"
+import { useRouter, useRoute } from "vue-router"
 import {
   getAllSanPham,
   deleteSanPham,
@@ -8,14 +8,106 @@ import {
 } from "../../../services/sanPhamService"
 import { Pencil, Trash2 } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel } from "../../../utils/adminStatus"
+import { resolveApiOrigin } from "../../../utils/apiOrigin"
+import { getProductImageOverride } from "../../../utils/productImageOverrides"
+import logo from "../../../assets/img/logo/new logo.png?url"
+import img1 from "../../../assets/img/Jackets/Áo bomber da lộn DirtyWave.jpg?url"
+import img2 from "../../../assets/img/Jackets/Áo bomber dáng lửng.jpg?url"
+import img3 from "../../../assets/img/Jackets/Áo bomber giả da DirtyWave.jpg?url"
+import img4 from "../../../assets/img/Jackets/Áo bomber nhẹ vải cotton DirtyWave.jpg?url"
+import img5 from "../../../assets/img/Jackets/Áo hoodie kéo khoá dáng hộp DirtyWave.jpg?url"
+import img6 from "../../../assets/img/Jackets/Áo hoodie kéo khoá in hình DirtyWave.jpg?url"
+import img7 from "../../../assets/img/Jackets/Áo hoodie kéo khoá Jacket DirtyWave.jpg?url"
+import img8 from "../../../assets/img/Jackets/Áo khoác coach cách nhiệt vải Timberland.jpg?url"
+import img9 from "../../../assets/img/Jackets/Áo khoac coach da ASOS DirtyWave.jpg?url"
+import img10 from "../../../assets/img/Jackets/Áo khoác coach giả da DirtyWave.jpg?url"
+import img11 from "../../../assets/img/Jackets/Áo khoác coach lông cừu DirtyWave.jpg?url"
 
 const router = useRouter()
+const route = useRoute()
 
 const search = ref("")
 const list = ref([])
+const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, "")
+const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11]
+
+const fallbackImageFor = (id, code = "") => {
+  const normalizedId = Number(id)
+  if (Number.isFinite(normalizedId) && normalizedId > 0) {
+    return fallbackImages[(normalizedId - 1) % fallbackImages.length]
+  }
+
+  const digits = String(code || "").replace(/\D+/g, "")
+  const codeNum = Number(digits)
+  if (Number.isFinite(codeNum) && codeNum > 0) {
+    return fallbackImages[(codeNum - 1) % fallbackImages.length]
+  }
+
+  return fallbackImages[0] || logo
+}
+
+const isImageString = (value = "") => {
+  const raw = String(value || "").trim()
+  if (!raw) return false
+  if (/^data:image\//i.test(raw)) return true
+
+  const normalized = raw.replace(/\\/g, "/").split(/[?#]/)[0]
+  if (/\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(normalized)) return true
+  if (normalized.startsWith("/uploads/") || normalized.startsWith("uploads/")) return true
+  return /^https?:\/\//i.test(raw)
+}
+
+const toImageUrl = (value = "") => {
+  const raw = String(value || "").trim()
+  if (!raw) return ""
+  if (/^data:image\//i.test(raw)) return raw
+
+  const normalized = raw.replace(/\\/g, "/")
+  const uploadsMatch = normalized.match(/^.*?\/?(uploads\/.*)$/i)
+  if (uploadsMatch?.[1]) return `${BACKEND_ORIGIN}/${uploadsMatch[1]}`
+  if (/^https?:\/\//i.test(normalized)) return normalized
+  if (normalized.startsWith("/")) return normalized
+  if (normalized.startsWith("uploads/")) return `${BACKEND_ORIGIN}/${normalized}`
+  return normalized.includes("/") ? `/${normalized.replace(/^\/+/, "")}` : normalized
+}
+
+const pickImageValue = (entry) => {
+  if (!entry) return ""
+
+  if (typeof entry === "string") {
+    return isImageString(entry) ? toImageUrl(entry) : ""
+  }
+
+  if (Array.isArray(entry)) {
+    for (const child of entry) {
+      const found = pickImageValue(child)
+      if (found) return found
+    }
+    return ""
+  }
+
+  if (typeof entry === "object") {
+    const keys = ["anh", "hinhAnh", "image", "imageUrl", "images", "listAnh", "anhChinh", "duongDanAnh", "src", "thumbnail"]
+    for (const key of keys) {
+      const found = pickImageValue(entry[key])
+      if (found) return found
+    }
+  }
+
+  return ""
+}
+
+const routeBase = computed(() => {
+  if (route.path.startsWith("/employee/")) return "/employee"
+  return "/admin"
+})
 
 function goToCreate() {
-  router.push("/admin/san-pham/form")
+  router.push(`${routeBase.value}/san-pham/form`)
+}
+
+function goToEdit(id) {
+  router.push(`${routeBase.value}/san-pham/form/${id}`)
 }
 
 function formatCurrency(value) {
@@ -66,6 +158,7 @@ const totalTon =
       ma: item.maSanPham,
       name: item.tenSanPham,
       description: item.moTa,
+      image: getProductImageOverride({ id: item.id, maSanPham: item.maSanPham })[0] || pickImageValue([item, variants]) || fallbackImageFor(item.id, item.maSanPham),
 
       // gia:
       //   firstVariant?.giaBan ??
@@ -193,6 +286,7 @@ async function remove(id) {
         <table class="data-table">
           <thead>
             <tr>
+              <th style="width:96px">Ảnh</th>
               <th style="width:120px">Mã</th>
               <th>Sản phẩm</th>
               <th style="width:140px">Loại</th>
@@ -201,7 +295,7 @@ async function remove(id) {
               <th style="width:170px">Ngày tạo</th>
               <th style="width:170px">Ngày sửa</th>
               <th style="width:140px">Trạng thái</th>
-              <th style="width:160px" class="right">Thao tác</th>
+              <th style="width:160px" class="col-actions">Thao tác</th>
             </tr>
           </thead>
 
@@ -211,6 +305,9 @@ async function remove(id) {
               v-for="item in items"
               :key="item.id"
             >
+              <td>
+                <img class="product-thumb" :src="item.image" :alt="item.name" />
+              </td>
               <td>{{ item.ma }}</td>
 
               <td>
@@ -227,7 +324,7 @@ async function remove(id) {
 
               <td>{{ item.loai }}</td>
 
-              <td class="right">
+              <td class="col-actions">
                 <template v-if="item.gia === null">
                   <span class="muted">-</span>
                 </template>
@@ -264,7 +361,7 @@ async function remove(id) {
 
                   <button
                     class="iconbtn"
-                    @click="router.push(`/admin/san-pham/form/${item.id}`)"
+                    @click="goToEdit(item.id)"
                   >
                     <Pencil size="16" />
                   </button>
@@ -414,6 +511,16 @@ async function remove(id) {
   font-size:12px;
   margin-top:3px;
   color: #94a3b8;
+}
+
+.product-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 1px solid #dbe4f0;
+  background: #f8fafc;
+}
 
 .warn-inline {
   margin-top: 6px;
@@ -426,11 +533,10 @@ async function remove(id) {
   border-radius: 999px;
   padding: 2px 8px;
 }
-}
 
 .actions{
   display:flex;
-  justify-content:flex-end;
+  justify-content:center;
   align-items:center;
   gap:8px;
 }
@@ -475,6 +581,11 @@ async function remove(id) {
 
 .data-table tbody td {
   color: #334155;
+  vertical-align: middle;
+}
+
+.col-actions {
+  text-align: center !important;
 }
 
 .pill.ok {

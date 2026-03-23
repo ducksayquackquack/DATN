@@ -33,8 +33,9 @@
             <label>Mã</label>
             <input
               type="text"
-              placeholder="VD: PTTT03"
-              v-model="form.code"
+              readonly
+              value="Mã tự sinh"
+              class="auto-code-input"
             />
           </div>
 
@@ -132,3 +133,12 @@ async function save() {
   router.push("/admin/phuong-thuc-thanh-toan/list")
 }
 </script>
+
+<style scoped>
+.auto-code-input {
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: #cbd5e1;
+  font-weight: 600;
+}
+</style>

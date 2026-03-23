@@ -23,17 +23,11 @@
             <label class="form-label">
               Mã phiếu <span class="required">*</span>
             </label>
-            <div style="display:flex; gap:8px; align-items:center;">
-              <input 
-                v-model="form.maPhieuGiamGia" 
-                class="form-input" 
-                placeholder="Nhập mã phiếu..."
-                :disabled="isEdit"
-              />
-              <button v-if="!isEdit" type="button" class="btn-secondary" @click="generateVoucherCode().then(code => form.maPhieuGiamGia = code)">
-                Sinh mã
-              </button>
-            </div>
+            <input 
+              value="Mã tự sinh"
+              class="form-input auto-code-input"
+              readonly
+            />
           </div>
 
           <div class="form-group">
@@ -475,6 +469,13 @@ async function save() {
   background: #f3f4f6;
   color: #9ca3af;
   cursor: not-allowed;
+}
+
+.auto-code-input {
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: #cbd5e1;
+  font-weight: 600;
 }
 
 .form-input::placeholder,

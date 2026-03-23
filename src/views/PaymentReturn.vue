@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router"
 import { createBackendCheckoutOrder } from "../services/checkoutOrderService"
 import { useToast } from "../composables/useToast"
 import { appendPaymentFlowTag, PAYMENT_FLOW_TAGS } from "../utils/paymentWorkflow"
+import { clearCartObject, clearCheckoutCartArray } from "../utils/cartStorage"
 
 const route = useRoute()
 const router = useRouter()
@@ -124,8 +125,8 @@ const confirmPayment = async () => {
       })
     )
 
-    localStorage.removeItem("cart")
-    localStorage.removeItem("checkoutCart")
+    clearCartObject()
+    clearCheckoutCartArray()
 
     toast.success(`Đã gửi yêu cầu xác nhận thanh toán. Mã hóa đơn: ${createdCode}`)
   } catch (error) {
@@ -136,7 +137,7 @@ const confirmPayment = async () => {
   }
 }
 
-const goHome = () => router.push("/home")
+const goHome = () => router.push("/trang-chu")
 const goTest = () => router.push("/vnpay-test")
 
 onMounted(() => {
@@ -262,3 +263,5 @@ onMounted(() => {
   cursor: not-allowed;
 }
 </style>
+
+

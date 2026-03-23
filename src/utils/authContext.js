@@ -30,6 +30,25 @@ export const syncAuthStorage = (account, fallbackRole = '') => {
   localStorage.setItem('role', normalizeRole(fallbackRole || account?.vaiTro || ''))
 }
 
+export const clearAuthStorage = () => {
+  if (typeof window === 'undefined') return
+
+  ;[
+    'role',
+    'userId',
+    'userEmail',
+    'userName',
+    'userPhone',
+    'userAddress',
+    'userDiaChiCuThe',
+    'userTinhThanh',
+    'userQuanHuyen',
+    'userPhuongXa',
+    'userGender',
+    'userBirthDate'
+  ].forEach((key) => localStorage.removeItem(key))
+}
+
 export const dispatchAuthContextChanged = () => {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new Event(AUTH_CONTEXT_CHANGED_EVENT))
@@ -40,6 +59,7 @@ export const resolveAccountByRole = async ({ service, expectedRoles, allowFallba
 
   const userId = localStorage.getItem('userId')
   const userEmail = String(localStorage.getItem('userEmail') || '').trim().toLowerCase()
+  const hasStoredIdentity = Boolean(String(userId || '').trim() || userEmail)
 
   if (userId) {
     try {
@@ -68,7 +88,7 @@ export const resolveAccountByRole = async ({ service, expectedRoles, allowFallba
     return matchedByEmail
   }
 
-  if (!allowFallback) return null
+  if (!allowFallback || hasStoredIdentity) return null
 
   const fallback = accounts.find((item) => matchesRole(item?.vaiTro, expectedRoles)) || null
   if (fallback?.id) {

@@ -17,6 +17,58 @@ const activeTab = ref('campaigns') // 'campaigns' or 'vouchers'
 const searchKeyword = ref('')
 const filterStatus = ref('')
 
+const toBoolean = (value) => {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value === 1
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    return normalized === 'true' || normalized === '1' || normalized === 'yes'
+  }
+  return false
+}
+
+const toPggCode = (voucher, index = 0) => {
+  const raw = String(voucher?.maPhieuGiamGia || '').trim().toUpperCase()
+  if (/^PGG\d{3,}$/.test(raw)) return raw
+
+  const idCandidate = Number(
+    voucher?.id
+      ?? voucher?.phieuGiamGiaId
+      ?? voucher?.voucherId
+      ?? (index + 1)
+  )
+
+  if (Number.isFinite(idCandidate) && idCandidate > 0) {
+    return `PGG${String(idCandidate).padStart(3, '0')}`
+  }
+
+  return raw || '-'
+}
+
+const normalizeVoucher = (voucher) => ({
+  ...voucher,
+  id: voucher?.id ?? voucher?.phieuGiamGiaId ?? voucher?.voucherId ?? voucher?.maPhieuGiamGia,
+  maPhieuGiamGia: String(
+    voucher?.maPhieuGiamGia
+      ?? voucher?.maPhieu
+      ?? voucher?.maKhuyenMai
+      ?? voucher?.code
+      ?? ''
+  ).trim(),
+  tenPhieuGiamGia: String(
+    voucher?.tenPhieuGiamGia
+      ?? voucher?.tenKhuyenMai
+      ?? voucher?.tenPhieu
+      ?? voucher?.ten
+      ?? ''
+  ).trim(),
+  loaiPhieuGiamGia: toBoolean(voucher?.loaiPhieuGiamGia ?? voucher?.caNhan ?? voucher?.isPersonal),
+  hinhThucGiam: toBoolean(voucher?.hinhThucGiam ?? voucher?.giamTheoPhanTram ?? voucher?.isPercent),
+  giaTriGiamGia: Number(voucher?.giaTriGiamGia ?? voucher?.giaTriGiam ?? voucher?.mucGiam ?? 0),
+  hoaDonToiThieu: Number(voucher?.hoaDonToiThieu ?? voucher?.donToiThieu ?? voucher?.dieuKienToiThieu ?? 0),
+  soLuongSuDung: Number(voucher?.soLuongSuDung ?? voucher?.soLuong ?? 0)
+})
+
 async function loadData() {
   try {
     const [campaignsRes, vouchersRes] = await Promise.allSettled([
@@ -36,9 +88,10 @@ async function loadData() {
 
     if (vouchersRes.status === 'fulfilled') {
       const data = vouchersRes.value?.data
-      voucherList.value = Array.isArray(data)
+      const rows = Array.isArray(data)
         ? data
         : (Array.isArray(data?.content) ? data.content : [])
+      voucherList.value = rows.map(normalizeVoucher)
     } else {
       voucherList.value = []
       console.error('Error loading vouchers:', vouchersRes.reason)
@@ -159,9 +212,9 @@ const filteredVouchers = computed(() => {
   
   if (searchKeyword.value) {
     const keyword = searchKeyword.value.toLowerCase()
-    filtered = filtered.filter(v => 
-      v.tenPhieuGiamGia?.toLowerCase().includes(keyword) ||
-      v.maPhieuGiamGia?.toLowerCase().includes(keyword)
+    filtered = filtered.filter((v, idx) =>
+      String(v.tenPhieuGiamGia || '').toLowerCase().includes(keyword) ||
+      toPggCode(v, idx).toLowerCase().includes(keyword)
     )
   }
   
@@ -332,10 +385,10 @@ const filteredVouchers = computed(() => {
               </td>
             </tr>
             
-            <tr v-for="(voucher, idx) in filteredVouchers" :key="voucher.id">
+            <tr v-for="(voucher, idx) in filteredVouchers" :key="voucher.id || idx">
               <td class="text-center">{{ idx + 1 }}</td>
-              <td><strong>{{ voucher.maPhieuGiamGia || '-' }}</strong></td>
-              <td>{{ voucher.tenPhieuGiamGia || '-' }}</td>
+              <td><strong>{{ toPggCode(voucher, idx) }}</strong></td>
+              <td>{{ voucher.tenPhieuGiamGia || toPggCode(voucher, idx) }}</td>
               <td>
                 <span class="type-badge" :class="voucher.loaiPhieuGiamGia ? 'personal' : 'public'">
                   {{ voucher.loaiPhieuGiamGia ? 'Cá nhân' : 'Công khai' }}

@@ -1,9 +1,10 @@
 <script setup>
 import { onMounted, onUnmounted } from "vue"
 import CustomerPageLayout from "../../../components/customer/CustomerPageLayout.vue"
-import heroImage from "../../../assets/img/Jackets/Áo khoác coach lông cừu DirtyWave.jpg?url"
-import showcaseImage from "../../../assets/img/Jackets/Áo bomber da lộn DirtyWave.jpg?url"
-import detailImage from "../../../assets/img/Jackets/Áo hoodie kéo khoá Jacket DirtyWave.jpg?url"
+
+const heroImage = "https://images.unsplash.com/photo-1552374196-c4e7ffc6e126?auto=format&fit=crop&w=1800&q=80"
+const showcaseImage = "https://images.unsplash.com/photo-1504593811423-6dd665756598?auto=format&fit=crop&w=1600&q=80"
+const detailImage = "https://images.unsplash.com/photo-1490578474895-699cd4e2cf59?auto=format&fit=crop&w=1600&q=80"
 
 const manifesto = [
   {

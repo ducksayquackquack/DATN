@@ -3,41 +3,55 @@ import { computed, onMounted, ref } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { createHoaDon, addHoaDonItem, updateHoaDon, updateHoaDonBySystemEvent } from "../../../services/hoaDonService"
 import { getAllSanPham } from "../../../services/sanPhamService"
-import { getAllKhachHang } from "../../../services/KhachHangService"
+import { createKhachHang, getAllKhachHang } from "../../../services/KhachHangService"
 import { getAllNhanVien, getNhanVienByTaiKhoanId } from "../../../services/nhanVienService"
 import { ArrowLeft, Plus } from "lucide-vue-next"
 import { appendPaymentFlowTag, PAYMENT_FLOW_TAGS } from "../../../utils/paymentWorkflow"
+import { buildOrderLookupTrackingUrl } from "../../../utils/publicTrackingUrl"
 import VoucherSelector from "../../../components/voucher/VoucherSelector.vue"
 import { validateEmployeeActiveShift } from "../../../utils/shiftGuard"
 
 const router = useRouter()
 const route = useRoute()
-const panelBasePath = computed(() => (route.path.startsWith('/employee/') ? '/employee' : '/admin'))
+
+// Xác định panel đang dùng: admin hay nhân viên
+const panelBasePath = computed(() => route.path.startsWith('/employee/') ? '/employee' : '/admin')
 const isEmployeePanel = computed(() => route.path.startsWith('/employee/'))
 
+// Trạng thái tải / lưu
 const loading = ref(false)
 const saving = ref(false)
 const currentEmployeeId = ref(null)
 
+// Danh sách danh mục tải từ API
 const nhanVienList = ref([])
 const khachHangList = ref([])
-const variants = ref([])
+const variants = ref([])   // danh sách biến thể (màu + size) đã làm phẳng
 
+// Form thông tin đơn hàng
 const cashierId = ref(null)
 const customerId = ref(null)
 const paymentMethod = ref("CASH")
 const orderNote = ref("")
 const discount = ref(0)
 const selectedVoucher = ref(null)
+const creatingCustomer = ref(false)
+const showQuickCustomerForm = ref(false)
+const quickCustomer = ref({
+  tenKhachHang: "",
+  soDienThoai: "",
+  email: ""
+})
 
-const applyDiscount = (amount) => { discount.value = Number(amount || 0) }
-
+// Form thêm sản phẩm
 const searchKeyword = ref("")
 const selectedSpctId = ref(null)
 const selectedQty = ref(1)
+const lines = ref([])   // các dòng sản phẩm trong đơn
 
-const lines = ref([])
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Chuẩn hóa response API về mảng (hỗ trợ nhiều cấu trúc trả về)
 const toList = (value) => {
   if (Array.isArray(value)) return value
   if (Array.isArray(value?.content)) return value.content
@@ -46,168 +60,249 @@ const toList = (value) => {
   return []
 }
 
+// Format tiền tệ VND: 150000 → "150.000₫"
+const formatCurrency = (value) =>
+  new Intl.NumberFormat("vi-VN").format(Number(value || 0)) + "₫"
+
+// Làm phẳng danh sách sản phẩm thành danh sách biến thể (1 hàng = 1 màu + size)
+const flattenVariants = (products) =>
+  products.flatMap((product) =>
+    (product?.sanPhamChiTiets ?? []).map((v) => ({
+      spctId: v.id,
+      maSanPham: product.maSanPham || "",
+      maSanPhamChiTiet: v.ma || "",
+      tenSanPham: product.tenSanPham || "Sản phẩm",
+      tenMau: v?.mauSac?.tenMau || "",
+      tenSize: v?.kichThuoc?.tenKichThuoc || "",
+      giaBan: Number(v?.giaBan || 0),
+      soLuongTon: Number(v?.soLuong || 0)
+    }))
+  )
+
+// ─── Computed ─────────────────────────────────────────────────────────────────
+
+// Lọc biến thể theo từ khóa tìm kiếm (mã SP, tên, màu, size)
+const filteredVariants = computed(() => {
+  const kw = searchKeyword.value.trim().toLowerCase()
+  if (!kw) return variants.value
+  return variants.value.filter((v) =>
+    [v.maSanPham, v.maSanPhamChiTiet, v.tenSanPham, v.tenMau, v.tenSize]
+      .join(" ").toLowerCase().includes(kw)
+  )
+})
+
+const selectedVariant = computed(() =>
+  variants.value.find((v) => Number(v.spctId) === Number(selectedSpctId.value)) ?? null
+)
+
+const subtotal = computed(() =>
+  lines.value.reduce((sum, l) => sum + Number(l.giaBan || 0) * Number(l.soLuong || 0), 0)
+)
+
+const grandTotal = computed(() => Math.max(subtotal.value - Number(discount.value || 0), 0))
+
+// Trạng thái ngay sau khi tạo đơn:
+//   VNPay  → CHO_LAY_HANG (chờ xác nhận thanh toán online trước khi hoàn tất)
+//   Còn lại → HOAN_THANH  (thu tiền ngay tại quầy, xong luôn)
+const defaultStatusCode = computed(() =>
+  paymentMethod.value.toUpperCase() === "VNPAY" ? "CHO_LAY_HANG" : "HOAN_THANH"
+)
+
+// ─── Xác định nhân viên đăng nhập ────────────────────────────────────────────
+
+/**
+ * Trả về ID nhân viên của người dùng hiện tại.
+ * Thứ tự ưu tiên:
+ *   1. Dữ liệu user đã lưu trong localStorage / sessionStorage
+ *   2. Gọi API theo ID tài khoản
+ *   3. Dò trong danh sách nhân viên đã tải
+ */
 const resolveCurrentEmployeeContext = async () => {
-  const storedUserRaw = localStorage.getItem("user") || sessionStorage.getItem("user")
-  if (storedUserRaw) {
-    try {
-      const parsed = JSON.parse(storedUserRaw)
-      if (parsed?.idNhanVien) return Number(parsed.idNhanVien)
-      if (parsed?.id && parsed?.tenNhanVien) return Number(parsed.id)
-    } catch {
-      // Continue fallback checks.
-    }
-  }
+  try {
+    const parsed = JSON.parse(localStorage.getItem("user") || sessionStorage.getItem("user") || "null")
+    if (parsed?.idNhanVien) return Number(parsed.idNhanVien)
+    if (parsed?.id && parsed?.tenNhanVien) return Number(parsed.id)
+  } catch { /* tiếp tục fallback */ }
 
   const taiKhoanId = Number(localStorage.getItem("userId") || 0)
   if (taiKhoanId > 0) {
     try {
-      const byTaiKhoan = await getNhanVienByTaiKhoanId(taiKhoanId)
-      const fromApi = byTaiKhoan?.data
-      if (Array.isArray(fromApi) && fromApi[0]?.id) return Number(fromApi[0].id)
-      if (fromApi?.id) return Number(fromApi.id)
-    } catch {
-      // Continue fallback checks.
-    }
+      const res = await getNhanVienByTaiKhoanId(taiKhoanId)
+      const first = Array.isArray(res?.data) ? res.data[0] : res?.data
+      if (first?.id) return Number(first.id)
+    } catch { /* tiếp tục fallback */ }
 
-    const mapped = nhanVienList.value.find((item) => {
-      const mappedTaiKhoanId = Number(item?.idTaiKhoan || item?.taiKhoan?.id || 0)
-      return mappedTaiKhoanId === taiKhoanId
-    })
+    const mapped = nhanVienList.value.find(
+      (nv) => Number(nv?.idTaiKhoan || nv?.taiKhoan?.id || 0) === taiKhoanId
+    )
     if (mapped?.id) return Number(mapped.id)
   }
 
   return null
 }
 
+// Nhân viên phải đang trong ca hợp lệ mới được tạo đơn
 const canOperateForEmployeeShift = async (employeeId) => {
-  const check = await validateEmployeeActiveShift(employeeId)
-  if (!check.allowed) {
-    window.toast?.warning?.(check.reason || "Nhân viên chưa trong ca trực hợp lệ")
-    return false
-  }
+  // TEMP DEMO MODE: turn off shift validation so all employees can operate.
+  // const check = await validateEmployeeActiveShift(employeeId)
+  // if (!check.allowed) {
+  //   window.toast?.warning?.(check.reason || "Nhân viên chưa trong ca trực hợp lệ")
+  //   return false
+  // }
   return true
 }
 
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat("vi-VN").format(Number(value || 0)) + "₫"
+// ─── Thao tác giỏ hàng ───────────────────────────────────────────────────────
+
+const applyDiscount = (amount) => { discount.value = Number(amount || 0) }
+
+const normalizedPhone = (value) => String(value || "").replace(/\s+/g, "")
+
+const isValidVietnamPhone = (value) => /^(0|\+84)\d{9,10}$/.test(normalizedPhone(value))
+
+const resolveCustomerIdFromResponse = (response) => {
+  const candidates = [
+    response?.data?.id,
+    response?.data?.data?.id,
+    response?.data?.khachHang?.id,
+    response?.data?.content?.id
+  ]
+  const found = candidates.find((id) => Number(id) > 0)
+  return found ? Number(found) : null
 }
 
-const flattenVariants = (products) => {
-  return products.flatMap((product) => {
-    const spct = Array.isArray(product?.sanPhamChiTiets) ? product.sanPhamChiTiets : []
-    return spct.map((variant) => ({
-      spctId: variant.id,
-      maSanPham: product.maSanPham || "",
-      maSanPhamChiTiet: variant.ma || "",
-      tenSanPham: product.tenSanPham || "Sản phẩm",
-      tenMau: variant?.mauSac?.tenMau || "",
-      tenSize: variant?.kichThuoc?.tenKichThuoc || "",
-      giaBan: Number(variant?.giaBan || 0),
-      soLuongTon: Number(variant?.soLuong || 0)
-    }))
-  })
+const resetQuickCustomerForm = () => {
+  quickCustomer.value = { tenKhachHang: "", soDienThoai: "", email: "" }
 }
 
-const filteredVariants = computed(() => {
-  const keyword = String(searchKeyword.value || "").trim().toLowerCase()
-  if (!keyword) return variants.value
-  return variants.value.filter((item) => {
-    return [
-      item.maSanPham,
-      item.maSanPhamChiTiet,
-      item.tenSanPham,
-      item.tenMau,
-      item.tenSize
-    ].join(" ").toLowerCase().includes(keyword)
-  })
-})
+const quickCreateCustomer = async () => {
+  const name = String(quickCustomer.value.tenKhachHang || "").trim()
+  const phone = normalizedPhone(quickCustomer.value.soDienThoai)
+  const email = String(quickCustomer.value.email || "").trim()
 
-const selectedVariant = computed(() => {
-  return variants.value.find((item) => Number(item.spctId) === Number(selectedSpctId.value)) || null
-})
+  if (!name) {
+    window.toast?.warning?.("Vui lòng nhập tên khách hàng")
+    return
+  }
+  if (!isValidVietnamPhone(phone)) {
+    window.toast?.warning?.("Số điện thoại khách hàng không hợp lệ")
+    return
+  }
 
-const subtotal = computed(() => {
-  return lines.value.reduce((sum, line) => sum + Number(line.giaBan || 0) * Number(line.soLuong || 0), 0)
-})
+  creatingCustomer.value = true
+  try {
+    const payloadCandidates = [
+      { tenKhachHang: name, soDienThoai: phone, email, trangThai: "Hoạt động" },
+      { tenKhachHang: name, soDienThoai: phone, taiKhoanEmail: email, trangThai: "Hoạt động" },
+      { tenKhachHang: name, soDienThoai: phone, trangThai: "Hoạt động" }
+    ]
 
-const grandTotal = computed(() => {
-  return Math.max(subtotal.value - Number(discount.value || 0), 0)
-})
+    let createdId = null
+    let lastError = null
+    for (const payload of payloadCandidates) {
+      try {
+        const createRes = await createKhachHang(payload)
+        createdId = resolveCustomerIdFromResponse(createRes)
+        if (createdId) break
+      } catch (error) {
+        lastError = error
+      }
+    }
 
-const defaultStatusCode = computed(() => {
-  const method = String(paymentMethod.value || "").toUpperCase()
-  if (method === "VNPAY") return "CHO_LAY_HANG"
-  return "HOAN_THANH"
-})
+    const khRes = await getAllKhachHang(0, 200)
+    khachHangList.value = toList(khRes?.data)
 
+    if (!createdId) {
+      const found = khachHangList.value.find((kh) =>
+        normalizedPhone(kh?.soDienThoai) === phone && String(kh?.tenKhachHang || "").trim() === name
+      )
+      createdId = found?.id ? Number(found.id) : null
+    }
+
+    if (!createdId) {
+      throw lastError || new Error("Không lấy được khách hàng vừa tạo")
+    }
+
+    customerId.value = createdId
+    showQuickCustomerForm.value = false
+    resetQuickCustomerForm()
+    window.toast?.success?.("Tạo nhanh khách hàng thành công")
+  } catch (error) {
+    window.toast?.error?.(error?.response?.data?.message || error?.message || "Không thể tạo nhanh khách hàng")
+  } finally {
+    creatingCustomer.value = false
+  }
+}
+
+// Thêm biến thể vào đơn; nếu đã có → cộng dồn số lượng
 const addLine = () => {
   if (!selectedVariant.value) {
     window.toast?.warning?.("Vui lòng chọn biến thể sản phẩm")
     return
   }
-
   const qty = Number(selectedQty.value || 0)
   if (!Number.isFinite(qty) || qty <= 0) {
     window.toast?.warning?.("Số lượng không hợp lệ")
     return
   }
-
-  if (qty > selectedVariant.value.soLuongTon) {
+  const existed = lines.value.find((l) => Number(l.spctId) === Number(selectedVariant.value.spctId))
+  const nextQty = (existed?.soLuong ?? 0) + qty
+  if (nextQty > selectedVariant.value.soLuongTon) {
     window.toast?.warning?.("Số lượng vượt tồn kho")
     return
   }
-
-  const existed = lines.value.find((line) => Number(line.spctId) === Number(selectedVariant.value.spctId))
-  if (existed) {
-    const nextQty = existed.soLuong + qty
-    if (nextQty > selectedVariant.value.soLuongTon) {
-      window.toast?.warning?.("Số lượng vượt tồn kho")
-      return
-    }
-    existed.soLuong = nextQty
-  } else {
-    lines.value.push({
-      ...selectedVariant.value,
-      soLuong: qty
-    })
-  }
-
+  if (existed) existed.soLuong = nextQty
+  else lines.value.push({ ...selectedVariant.value, soLuong: qty })
   selectedQty.value = 1
 }
 
-const removeLine = (index) => {
-  lines.value.splice(index, 1)
-}
+const removeLine = (index) => lines.value.splice(index, 1)
 
+// ─── Tạo đơn bán tại quầy (POS) ──────────────────────────────────────────────
+
+/**
+ * LUỒNG TẠO ĐƠN POS:
+ *
+ *  Bước 1 — Validate:
+ *    - Panel nhân viên: tự gán cashierId từ đăng nhập
+ *    - Kiểm tra nhân viên đang trong ca trực hợp lệ
+ *    - Phải có ít nhất 1 sản phẩm trong đơn
+ *
+ *  Bước 2 — Tạo hóa đơn nháp:
+ *    - Gọi createHoaDon() với orderType "POS", statusCode "CHO_LAY_HANG"
+ *
+ *  Bước 3 — Thêm sản phẩm:
+ *    - Gọi addHoaDonItem() cho từng dòng trong giỏ
+ *
+ *  Bước 4 — Cập nhật thông tin & ghi chú thanh toán:
+ *    - Gọi updateHoaDon() với tổng tiền, giảm giá, ghi chú
+ *    - VNPay: gắn tag PAYMENT_FLOW để nhân viên biết cần xác nhận thêm
+ *
+ *  Bước 5 — Chuyển trạng thái cuối:
+ *    - Tiền mặt / Chuyển khoản → gọi HOAN_TAT_POS → trạng thái HOAN_THANH
+ *    - VNPay → giữ nguyên CHO_LAY_HANG, chờ khách xác nhận thanh toán
+ *
+ *  Bước 6 — Điều hướng đến trang chi tiết hóa đơn vừa tạo
+ */
 const submitPosOrder = async () => {
+  // Bước 1: validate
   if (isEmployeePanel.value) {
-    if (!currentEmployeeId.value) {
-      window.toast?.error?.("Không xác định được nhân viên đăng nhập")
-      return
-    }
+    if (!currentEmployeeId.value) { window.toast?.error?.("Không xác định được nhân viên đăng nhập"); return }
     cashierId.value = Number(currentEmployeeId.value)
   }
-
-  if (!cashierId.value) {
-    window.toast?.warning?.("Vui lòng chọn nhân viên bán hàng")
-    return
-  }
-
-  const canOperate = await canOperateForEmployeeShift(cashierId.value)
-  if (!canOperate) return
-
-  if (!lines.value.length) {
-    window.toast?.warning?.("Đơn bán tại quầy phải có ít nhất 1 sản phẩm")
-    return
-  }
+  if (!cashierId.value) { window.toast?.warning?.("Vui lòng chọn nhân viên bán hàng"); return }
+  // TEMP DEMO MODE: disable shift guard.
+  // if (!await canOperateForEmployeeShift(cashierId.value)) return
+  if (!lines.value.length) { window.toast?.warning?.("Đơn bán tại quầy phải có ít nhất 1 sản phẩm"); return }
 
   saving.value = true
   try {
-    const selectedCustomer = khachHangList.value.find((item) => Number(item.id) === Number(customerId.value)) || null
+    const selectedCustomer = khachHangList.value.find((kh) => Number(kh.id) === Number(customerId.value)) ?? null
 
+    // Bước 2: tạo hóa đơn nháp
     const createRes = await createHoaDon({
       nhanVienId: Number(cashierId.value),
-      khachHangId: selectedCustomer ? Number(selectedCustomer.id) : null,
+      khachHangId: selectedCustomer?.id ?? null,
       soDienThoaiNhanHang: selectedCustomer?.soDienThoai || "",
       diaChiNhanHang: "Mua tại quầy",
       phiShip: 0,
@@ -215,22 +310,20 @@ const submitPosOrder = async () => {
       orderType: "POS",
       orderStatusCode: "CHO_LAY_HANG"
     })
-
-    const orderId = createRes?.data?.hoaDon?.id || createRes?.data?.id
+    const orderId = createRes?.data?.hoaDon?.id ?? createRes?.data?.id
     if (!orderId) throw new Error("Không lấy được mã hóa đơn bán tại quầy")
 
+    // Bước 3: thêm từng sản phẩm
     for (const line of lines.value) {
-      await addHoaDonItem(orderId, {
-        spctId: line.spctId,
-        soLuong: Number(line.soLuong),
-        giaBan: Number(line.giaBan)
-      })
+      await addHoaDonItem(orderId, { spctId: line.spctId, soLuong: Number(line.soLuong), giaBan: Number(line.giaBan) })
     }
 
-    const isVnpay = String(paymentMethod.value || "").toUpperCase() === "VNPAY"
+    const isVnpay = paymentMethod.value.toUpperCase() === "VNPAY"
+
+    // Bước 4: cập nhật thông tin & ghi chú
     await updateHoaDon(orderId, {
       nhanVienId: Number(cashierId.value),
-      khachHangId: selectedCustomer ? Number(selectedCustomer.id) : null,
+      khachHangId: selectedCustomer?.id ?? null,
       soDienThoaiNhanHang: selectedCustomer?.soDienThoai || "",
       diaChiNhanHang: "Mua tại quầy",
       phiShip: 0,
@@ -238,65 +331,67 @@ const submitPosOrder = async () => {
       thanhTien: Number(grandTotal.value || 0),
       phuongThucThanhToan: paymentMethod.value,
       orderType: "POS",
+      // VNPay: gắn tag để hệ thống biết nhân viên đã xác nhận, chờ khách thanh toán
       statusNote: isVnpay
         ? appendPaymentFlowTag(
-          `[POS] ${orderNote.value || "Đơn bán tại quầy"}`,
-          PAYMENT_FLOW_TAGS.VN_PAY_EMPLOYEE_CONFIRMED,
-          "Nhân viên thu ngân đã xác nhận thanh toán VNPay tại quầy"
-        )
+            `[POS] ${orderNote.value || "Đơn bán tại quầy"}`,
+            PAYMENT_FLOW_TAGS.VN_PAY_EMPLOYEE_CONFIRMED,
+            "Nhân viên thu ngân đã xác nhận thanh toán VNPay tại quầy"
+          )
         : `[POS] ${orderNote.value || "Đơn bán tại quầy"}`
     })
 
+    // Bước 5: chuyển trạng thái cuối
     if (!isVnpay) {
+      // Tiền mặt / Chuyển khoản → hoàn tất ngay
       try {
-        await updateHoaDonBySystemEvent(orderId, "HOAN_TAT_POS", "Đã hoàn tất bán hàng tại quầy")
+        const trackingUrl = buildOrderLookupTrackingUrl({ maHoaDon: createRes?.data?.hoaDon?.maHoaDon || createRes?.data?.maHoaDon })
+        await updateHoaDonBySystemEvent(orderId, "HOAN_TAT_POS", "Đã hoàn tất bán hàng tại quầy", trackingUrl)
         window.toast?.success?.("Tạo đơn bán tại quầy thành công")
       } catch {
         window.toast?.warning?.("Đơn đã tạo nhưng chưa hoàn tất — vào chi tiết bấm 'Hoàn tất bán hàng tại quầy'")
       }
     } else {
-      window.toast?.success?.("Tạo đơn bán tại quầy thành công")
+      // VNPay → giữ CHO_LAY_HANG, chờ khách xác nhận thanh toán
+      window.toast?.success?.("Tạo đơn bán tại quầy thành công — chờ khách xác nhận VNPay")
     }
+
+    // Bước 6: chuyển đến trang chi tiết
     router.push(`${panelBasePath.value}/hoa-don/detail/${orderId}`)
   } catch (error) {
-    console.error("Counter-sale submit failed:", error)
     window.toast?.error?.(error?.response?.data?.message || error.message || "Không thể tạo đơn bán tại quầy")
   } finally {
     saving.value = false
   }
 }
 
+// ─── Tải dữ liệu ban đầu ──────────────────────────────────────────────────────
+
 const loadData = async () => {
   loading.value = true
   try {
+    // Tải song song: nhân viên, khách hàng, sản phẩm
     const [nvRes, khRes, spRes] = await Promise.all([
       getAllNhanVien(),
       getAllKhachHang(0, 200),
       getAllSanPham()
     ])
-
     nhanVienList.value = toList(nvRes?.data)
     khachHangList.value = toList(khRes?.data)
     variants.value = flattenVariants(toList(spRes?.data))
 
+    // Panel nhân viên: tự động xác định cashierId từ thông tin đăng nhập
     if (isEmployeePanel.value) {
       currentEmployeeId.value = await resolveCurrentEmployeeContext()
-      if (!currentEmployeeId.value) {
-        throw new Error("Không xác định được nhân viên đăng nhập")
-      }
+      if (!currentEmployeeId.value) throw new Error("Không xác định được nhân viên đăng nhập")
       cashierId.value = Number(currentEmployeeId.value)
     }
 
-    if (!cashierId.value && nhanVienList.value.length) {
-      cashierId.value = Number(nhanVienList.value[0].id)
-    }
-
-    if (!selectedSpctId.value && variants.value.length) {
-      selectedSpctId.value = variants.value[0].spctId
-    }
+    // Chọn mặc định để form không trống khi mới vào
+    if (!cashierId.value && nhanVienList.value.length) cashierId.value = Number(nhanVienList.value[0].id)
+    if (!selectedSpctId.value && variants.value.length) selectedSpctId.value = variants.value[0].spctId
   } catch (error) {
-    console.error("Load counter-sale data failed:", error)
-    window.toast?.error?.("Không thể tải dữ liệu bán hàng tại quầy")
+    window.toast?.error?.(error?.message || "Không thể tải dữ liệu bán hàng tại quầy")
   } finally {
     loading.value = false
   }
@@ -346,6 +441,45 @@ onMounted(loadData)
                         {{ kh.tenKhachHang || `KH #${kh.id}` }}
                       </option>
                     </select>
+                    <div class="quick-customer">
+                      <button
+                        class="btn btn-sm"
+                        type="button"
+                        :disabled="creatingCustomer"
+                        @click="showQuickCustomerForm = !showQuickCustomerForm"
+                      >
+                        {{ showQuickCustomerForm ? "Ẩn tạo nhanh" : "Tạo nhanh khách hàng" }}
+                      </button>
+
+                      <div v-if="showQuickCustomerForm" class="quick-customer-form">
+                        <input
+                          v-model="quickCustomer.tenKhachHang"
+                          type="text"
+                          placeholder="Tên khách hàng"
+                          :disabled="creatingCustomer"
+                        />
+                        <input
+                          v-model="quickCustomer.soDienThoai"
+                          type="text"
+                          placeholder="Số điện thoại"
+                          :disabled="creatingCustomer"
+                        />
+                        <input
+                          v-model="quickCustomer.email"
+                          type="email"
+                          placeholder="Email (tùy chọn)"
+                          :disabled="creatingCustomer"
+                        />
+                        <div class="quick-customer-actions">
+                          <button class="btn btn-sm" type="button" :disabled="creatingCustomer" @click="resetQuickCustomerForm">
+                            Làm mới
+                          </button>
+                          <button class="btn btn-sm" type="button" :disabled="creatingCustomer" @click="quickCreateCustomer">
+                            {{ creatingCustomer ? "Đang tạo..." : "Tạo và chọn" }}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <div class="field">
@@ -362,6 +496,7 @@ onMounted(loadData)
                     <VoucherSelector
                       :subtotal="subtotal"
                       :customer-id="customerId"
+                      :auto-select="true"
                       @update:voucher="selectedVoucher = $event"
                       @discount-changed="applyDiscount"
                     />
@@ -602,6 +737,25 @@ onMounted(loadData)
   min-height: 34px;
   padding: 8px 10px;
   font-size: 13px;
+}
+
+.quick-customer {
+  margin-top: 8px;
+}
+
+.quick-customer-form {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.quick-customer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .loading-state {

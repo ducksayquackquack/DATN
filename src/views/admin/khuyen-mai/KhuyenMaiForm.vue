@@ -141,17 +141,11 @@ async function save() {
             <label class="form-label">
               Mã khuyến mãi <span class="required">*</span>
             </label>
-            <div style="display:flex; gap:8px; align-items:center;">
-              <input 
-                v-model="form.maKhuyenMai" 
-                class="form-input" 
-                placeholder="Nhập mã khuyến mãi..."
-                :readonly="!id"
-              />
-              <button v-if="!id" type="button" class="btn-secondary" @click="generateCampaignCode().then(code => form.maKhuyenMai = code)">
-                Sinh mã
-              </button>
-            </div>
+            <input 
+              value="Mã tự sinh"
+              class="form-input auto-code-input"
+              readonly
+            />
           </div>
 
           <div class="form-group">
@@ -191,6 +185,13 @@ async function save() {
 
           <div class="form-group">
             <label class="form-label">
+
+            .auto-code-input {
+              background: #f1f5f9;
+              color: #64748b;
+              border-color: #cbd5e1;
+              font-weight: 600;
+            }
               Trạng thái <span class="required">*</span>
             </label>
             <select 

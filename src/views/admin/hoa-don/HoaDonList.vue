@@ -2,9 +2,12 @@
 import { ref, computed, onMounted, watch } from "vue"
 import { useRouter, useRoute } from "vue-router"
 import { getAllHoaDon, updateHoaDon, updateHoaDonBySystemEvent } from "../../../services/hoaDonService"
+import { getAllNhanVien } from "../../../services/nhanVienService"
+import { getAllLichLamViecFull } from "../../../services/lichLamViecService"
 import { Eye, Plus, Search } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel, normalizeOrderStatusCode } from "../../../utils/adminStatus"
 import { hasPaymentFlowTag, PAYMENT_FLOW_TAGS } from "../../../utils/paymentWorkflow"
+import { buildOrderLookupTrackingUrl } from "../../../utils/publicTrackingUrl"
 import { useToast } from "../../../composables/useToast"
 
 const router = useRouter()
@@ -21,6 +24,8 @@ const currentPage = ref(1)
 const pageSize = ref(10)
 const cancelReasonById = ref({})
 const rowSavingById = ref({})
+const transferTargetById = ref({})
+const activeShiftEmployees = ref([])
 const NOTIFICATION_STORAGE_KEY = "notifications:seen"
 
 const readPageFromQuery = (value) => {
@@ -32,15 +37,26 @@ const loadData = async () => {
   loading.value = true
   apiWarning.value = ""
   try {
-    const res = await getAllHoaDon()
+    const [invoiceRes, nhanVienRes, lichRes] = await Promise.all([
+      getAllHoaDon(),
+      getAllNhanVien(),
+      getAllLichLamViecFull()
+    ])
+
+    const res = invoiceRes
     if (typeof res.data === "string" && /<html|<!doctype/i.test(res.data)) {
       throw new Error("API hoá đơn đang trả về trang đăng nhập thay vì JSON. Hãy restart DATN-API sau khi áp dụng SecurityConfig.")
     }
 
     hoaDons.value = Array.isArray(res.data) ? res.data : (res.data?.content || [])
+    activeShiftEmployees.value = buildActiveShiftEmployees(
+      extractList(nhanVienRes?.data),
+      extractList(lichRes?.data)
+    )
   } catch (error) {
     console.error("Error loading invoices:", error)
     hoaDons.value = []
+    activeShiftEmployees.value = []
     apiWarning.value = error.message || "Không thể tải danh sách hoá đơn"
   } finally {
     loading.value = false
@@ -184,6 +200,107 @@ const viewDetail = (id) => {
 
 const getStatusColor = (status) => getAdminStatusTone(status)
 
+const extractList = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.content)) return payload.content
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.content)) return payload.data.content
+  return []
+}
+
+const normalizeDateKey = (value) => {
+  if (!value) return ""
+  if (Array.isArray(value) && value.length >= 3) {
+    const [y, m, d] = value
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`
+  }
+
+  const raw = String(value).trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+  if (raw.includes("T")) return raw.split("T")[0]
+
+  const match = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (!match) return ""
+  const day = String(match[1]).padStart(2, "0")
+  const month = String(match[2]).padStart(2, "0")
+  return `${match[3]}-${month}-${day}`
+}
+
+const normalizeTime = (value, fallback = "00:00") => {
+  if (!value) return fallback
+  const raw = String(value).trim()
+  if (/^\d{2}:\d{2}$/.test(raw)) return raw
+  if (/^\d{2}:\d{2}:\d{2}$/.test(raw)) return raw.slice(0, 5)
+  return fallback
+}
+
+const toMinutes = (timeValue) => {
+  const normalized = normalizeTime(timeValue)
+  const [hour, minute] = normalized.split(":")
+  return Number(hour) * 60 + Number(minute)
+}
+
+const getDateKey = (date) => {
+  const d = date instanceof Date ? date : new Date(date)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+const getMinutesOfDate = (date) => {
+  const d = date instanceof Date ? date : new Date(date)
+  return d.getHours() * 60 + d.getMinutes()
+}
+
+const resolveOrderEmployeeId = (hoaDon) => {
+  const candidate = hoaDon?.nhanVienId ?? hoaDon?.idNhanVien
+  const numeric = Number(candidate)
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null
+}
+
+const buildActiveShiftEmployees = (nhanVienRows, lichRows, atDate = new Date()) => {
+  const todayKey = getDateKey(atDate)
+  const nowMinutes = getMinutesOfDate(atDate)
+
+  const inProgress = lichRows
+    .filter((item) => normalizeDateKey(item?.ngayLam) === todayKey)
+    .map((item) => ({
+      ...item,
+      gioBatDau: normalizeTime(item?.gioBatDau),
+      gioKetThuc: normalizeTime(item?.gioKetThuc)
+    }))
+    .filter((item) => {
+      const start = toMinutes(item?.gioBatDau)
+      const end = toMinutes(item?.gioKetThuc)
+      return nowMinutes >= start && nowMinutes < end
+    })
+
+  const mapByEmployee = new Map()
+  for (const item of inProgress) {
+    const employeeId = Number(item?.idNhanVien)
+    if (!Number.isFinite(employeeId) || employeeId <= 0) continue
+    if (!mapByEmployee.has(employeeId)) {
+      mapByEmployee.set(employeeId, item)
+    }
+  }
+
+  return Array.from(mapByEmployee.entries())
+    .map(([employeeId, schedule]) => {
+      const employee = nhanVienRows.find((row) => Number(row?.id) === employeeId) || {}
+      const displayName = employee?.tenNhanVien || schedule?.tenNhanVien || `NV #${employeeId}`
+      return {
+        id: employeeId,
+        tenNhanVien: displayName,
+        idCaLam: Number(schedule?.idCaLam || 0),
+        tenCa: schedule?.tenCa || "",
+        gioBatDau: schedule?.gioBatDau || "",
+        gioKetThuc: schedule?.gioKetThuc || ""
+      }
+    })
+    .sort((a, b) => a.tenNhanVien.localeCompare(b.tenNhanVien, "vi"))
+}
+
 const getOrderTypeLabel = (hoaDon) => {
   const explicitCandidates = [
     hoaDon?.orderType,
@@ -239,6 +356,18 @@ const deriveBusinessClosureLabel = (hoaDon) => {
   return "Đang mở"
 }
 
+const canConfirmFromList = (hoaDon) => {
+  const code = normalizeOrderStatusCode(hoaDon?.orderStatusCode, hoaDon?.orderStatusName, hoaDon?.statusNote)
+  const isPos = getOrderTypeLabel(hoaDon) === "Tại quầy"
+  return !isPos && code === "CHO_XAC_NHAN"
+}
+
+const canStartShippingFromList = (hoaDon) => {
+  const code = normalizeOrderStatusCode(hoaDon?.orderStatusCode, hoaDon?.orderStatusName, hoaDon?.statusNote)
+  const isPos = getOrderTypeLabel(hoaDon) === "Tại quầy"
+  return !isPos && code === "CHO_LAY_HANG"
+}
+
 const canCancelFromList = (hoaDon) => {
   const code = normalizeOrderStatusCode(hoaDon?.orderStatusCode, hoaDon?.orderStatusName, hoaDon?.statusNote)
   return code === "CHO_XAC_NHAN" || code === "CHO_LAY_HANG"
@@ -249,6 +378,65 @@ const canCompleteFromList = (hoaDon) => {
   const isPos = getOrderTypeLabel(hoaDon) === "Tại quầy"
   if (isPos) return code === "CHO_LAY_HANG"
   return code === "DANG_GIAO"
+}
+
+const canTransferFromList = (hoaDon) => {
+  const code = normalizeOrderStatusCode(hoaDon?.orderStatusCode, hoaDon?.orderStatusName, hoaDon?.statusNote)
+  const isOnline = getOrderTypeLabel(hoaDon) === "Trực tuyến"
+  if (!isOnline) return false
+  if (!["CHO_XAC_NHAN", "CHO_LAY_HANG", "DANG_GIAO"].includes(code)) return false
+  return getTransferCandidates(hoaDon).length > 0
+}
+
+const getTransferCandidates = (hoaDon) => {
+  const currentEmployeeId = resolveOrderEmployeeId(hoaDon)
+  return activeShiftEmployees.value.filter((item) => Number(item?.id) !== Number(currentEmployeeId))
+}
+
+const getTransferTargetName = (hoaDon) => {
+  const selectedId = Number(transferTargetById.value[hoaDon?.id] || 0)
+  const selected = getTransferCandidates(hoaDon).find((item) => Number(item?.id) === selectedId)
+  return selected?.tenNhanVien || ""
+}
+
+const transferFromList = async (hoaDon) => {
+  if (!hoaDon?.id || !canTransferFromList(hoaDon)) return
+
+  const candidates = getTransferCandidates(hoaDon)
+  const selectedId = Number(transferTargetById.value[hoaDon.id] || candidates[0]?.id || 0)
+  if (!selectedId) {
+    apiWarning.value = `Không tìm thấy nhân viên đang trực để chuyển đơn ${hoaDon.maHoaDon || `#${hoaDon.id}`}`
+    showToast(apiWarning.value, "error")
+    return
+  }
+
+  const target = candidates.find((item) => Number(item?.id) === selectedId)
+  if (!target) {
+    apiWarning.value = "Nhân viên nhận đơn không hợp lệ hoặc đã hết ca."
+    showToast(apiWarning.value, "error")
+    return
+  }
+
+  const fromName = hoaDon?.tenNhanVien || `NV #${resolveOrderEmployeeId(hoaDon) || "?"}`
+  const note = `Chuyển xử lý: ${fromName} -> ${target.tenNhanVien} (${new Date().toLocaleString("vi-VN")})`
+
+  rowSavingById.value[hoaDon.id] = true
+  try {
+    await updateHoaDon(hoaDon.id, {
+      idNhanVien: selectedId,
+      statusNote: note
+    })
+
+    transferTargetById.value[hoaDon.id] = ""
+    await loadData()
+    showToast(`Đã chuyển đơn ${hoaDon.maHoaDon || `#${hoaDon.id}`} cho ${target.tenNhanVien}`, "success")
+  } catch (error) {
+    console.error("Transfer from list failed:", error)
+    apiWarning.value = error?.response?.data?.message || "Không thể chuyển người xử lý hóa đơn"
+    showToast(apiWarning.value, "error")
+  } finally {
+    rowSavingById.value[hoaDon.id] = false
+  }
 }
 
 const getCompleteButtonLabel = (hoaDon) => {
@@ -283,18 +471,66 @@ const cancelFromList = async (hoaDon) => {
   }
 }
 
+const confirmFromList = async (hoaDon) => {
+  if (!hoaDon?.id || !canConfirmFromList(hoaDon)) return
+
+  rowSavingById.value[hoaDon.id] = true
+  try {
+    const trackingUrl = buildOrderLookupTrackingUrl({ maHoaDon: hoaDon.maHoaDon })
+    await updateHoaDonBySystemEvent(
+      hoaDon.id,
+      "XAC_NHAN_DON_HANG",
+      "Nhân viên xác nhận đơn hàng",
+      trackingUrl
+    )
+    await loadData()
+    showToast(`Đã xác nhận đơn ${hoaDon.maHoaDon || `#${hoaDon.id}`}`, "success")
+  } catch (error) {
+    console.error("Confirm from list failed:", error)
+    apiWarning.value = error?.response?.data?.message || "Không thể xác nhận đơn hàng"
+    showToast(apiWarning.value, "error")
+  } finally {
+    rowSavingById.value[hoaDon.id] = false
+  }
+}
+
+const startShippingFromList = async (hoaDon) => {
+  if (!hoaDon?.id || !canStartShippingFromList(hoaDon)) return
+
+  rowSavingById.value[hoaDon.id] = true
+  try {
+    const trackingUrl = buildOrderLookupTrackingUrl({ maHoaDon: hoaDon.maHoaDon })
+    await updateHoaDonBySystemEvent(
+      hoaDon.id,
+      "GIAO_HANG_BAT_DAU",
+      "Đơn hàng đang được giao",
+      trackingUrl
+    )
+    await loadData()
+    showToast(`Đã chuyển đơn ${hoaDon.maHoaDon || `#${hoaDon.id}`} sang đang giao`, "success")
+  } catch (error) {
+    console.error("Start shipping from list failed:", error)
+    apiWarning.value = error?.response?.data?.message || "Không thể chuyển trạng thái sang đang giao"
+    showToast(apiWarning.value, "error")
+  } finally {
+    rowSavingById.value[hoaDon.id] = false
+  }
+}
+
 const completeFromList = async (hoaDon) => {
   if (!hoaDon?.id || !canCompleteFromList(hoaDon)) return
 
   rowSavingById.value[hoaDon.id] = true
   try {
     const isPos = getOrderTypeLabel(hoaDon) === "Tại quầy"
+    const trackingUrl = buildOrderLookupTrackingUrl({ maHoaDon: hoaDon.maHoaDon })
     await updateHoaDonBySystemEvent(
       hoaDon.id,
       isPos ? "HOAN_TAT_POS" : "GIAO_HANG_THANH_CONG",
       isPos
         ? "Nhân viên xác nhận hoàn tất bán hàng tại quầy"
-        : "Giao hàng thành công"
+        : "Giao hàng thành công",
+      trackingUrl
     )
     await loadData()
     showToast(`Đã cập nhật đơn ${hoaDon.maHoaDon || `#${hoaDon.id}`}`, "success")
@@ -345,9 +581,6 @@ const completeFromList = async (hoaDon) => {
           <small class="muted">Theo dõi và quản lý tất cả đơn hàng</small>
         </div>
         <div style="display:flex; gap:8px;">
-          <router-link class="btn" :to="{ path: `${panelBasePath}/hoa-don/pos` }">
-            <span>Bán hàng tại quầy</span>
-          </router-link>
           <router-link class="btn primary" :to="{ path: `${panelBasePath}/hoa-don/detail/create` }">
             <Plus :size="18" />
             <span>Thêm hoá đơn</span>
@@ -380,7 +613,7 @@ const completeFromList = async (hoaDon) => {
               <tr>
                 <th style="width: 80px; text-align: left;">ID</th>
                 <th style="width: 140px; text-transform: none;">Mã hóa đơn</th>
-                <th>Nhân viên</th>
+                <th style="width: 180px;">Nhân viên</th>
                 <th>Khách hàng</th>
                 <th style="width: 100px;">Phí ship</th>
                 <th style="width: 130px; text-align: right;">Thành tiền</th>
@@ -399,7 +632,6 @@ const completeFromList = async (hoaDon) => {
               <tr
                 v-for="hd in paginatedData"
                 :key="hd.id"
-                :class="{ 'order-row-attention': shouldHighlightRow(hd) }"
                 style="border-bottom: 1px solid var(--line);"
               >
                 <td style="font-weight: 600;">{{ hd.id }}</td>
@@ -433,6 +665,26 @@ const completeFromList = async (hoaDon) => {
                     <button class="action-btn" @click="viewDetail(hd.id)" title="Xem chi tiết">
                       <Eye :size="18" />
                       <span>Chi tiết</span>
+                    </button>
+
+                    <button
+                      v-if="canConfirmFromList(hd)"
+                      class="action-btn confirm"
+                      type="button"
+                      :disabled="rowSavingById[hd.id]"
+                      @click="confirmFromList(hd)"
+                    >
+                      <span>{{ rowSavingById[hd.id] ? 'Đang xác nhận' : 'Xác nhận đơn' }}</span>
+                    </button>
+
+                    <button
+                      v-if="canStartShippingFromList(hd)"
+                      class="action-btn shipping"
+                      type="button"
+                      :disabled="rowSavingById[hd.id]"
+                      @click="startShippingFromList(hd)"
+                    >
+                      <span>{{ rowSavingById[hd.id] ? 'Đang cập nhật' : 'Bắt đầu giao hàng' }}</span>
                     </button>
 
                     <button
@@ -539,14 +791,6 @@ const completeFromList = async (hoaDon) => {
   color: var(--text);
 }
 
-.order-row-attention td {
-  background: linear-gradient(90deg, #fff3f3 0%, #fff8f8 100%);
-}
-
-.order-row-attention td:first-child {
-  box-shadow: inset 4px 0 0 #f87171;
-}
-
 .invoice-code-cell {
   display: inline-flex;
   align-items: center;
@@ -581,27 +825,27 @@ const completeFromList = async (hoaDon) => {
 }
 
 .status-success {
-  background: #dcfce7;
-  border-color: #86efac;
-  color: #166534;
+  background: #fff1f2;
+  border-color: #fda4af;
+  color: #b91c1c;
 }
 
 .status-danger {
   background: #fee2e2;
   border-color: #fca5a5;
-  color: #991b1b;
+  color: #b91c1c;
 }
 
 .status-warning {
-  background: #fef3c7;
-  border-color: #fcd34d;
-  color: #92400e;
+  background: #fff1f2;
+  border-color: #fda4af;
+  color: #b91c1c;
 }
 
 .status-neutral {
-  background: #f3f4f6;
-  border-color: #d1d5db;
-  color: #374151;
+  background: #fff5f5;
+  border-color: #fecdd3;
+  color: #9f1239;
 }
 
 .action-btn {
@@ -623,15 +867,37 @@ const completeFromList = async (hoaDon) => {
   color: var(--accent);
 }
 
+.action-btn.confirm {
+  border-color: #fca5a5;
+  background: #fff1f2;
+  color: #b91c1c;
+}
+
+.action-btn.confirm:hover {
+  background: #ffe4e6;
+  color: #991b1b;
+}
+
+.action-btn.shipping {
+  border-color: #fca5a5;
+  background: #fff1f2;
+  color: #b91c1c;
+}
+
+.action-btn.shipping:hover {
+  background: #ffe4e6;
+  color: #991b1b;
+}
+
 .action-btn.complete {
-  border-color: #22c55e;
-  background: #f0fdf4;
-  color: #166534;
+  border-color: #fca5a5;
+  background: #fff1f2;
+  color: #b91c1c;
 }
 
 .action-btn.complete:hover {
-  background: #dcfce7;
-  color: #166534;
+  background: #ffe4e6;
+  color: #991b1b;
 }
 
 .action-stack {
@@ -643,6 +909,43 @@ const completeFromList = async (hoaDon) => {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 6px;
+}
+
+.transfer-inline {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.transfer-select {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  background: white;
+  min-width: 150px;
+  color: #111827;
+}
+
+.transfer-select.is-empty {
+  color: #6b7280;
+}
+
+.transfer-btn {
+  border: 1px solid #fca5a5;
+  background: #fff1f2;
+  color: #b91c1c;
+  border-radius: 6px;
+  font-size: 12px;
+  padding: 6px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.transfer-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .cancel-input {
@@ -671,18 +974,18 @@ const completeFromList = async (hoaDon) => {
   margin: 20px 20px 0;
   padding: 14px 16px;
   border-radius: 14px;
-  border: 1px solid #fdba74;
-  background: #fff7ed;
-  color: #92400e;
+  border: 1px solid #fca5a5;
+  background: #fff1f2;
+  color: #b91c1c;
 }
 
 .payment-warning {
   margin: 14px 20px 0;
   padding: 14px 16px;
   border-radius: 14px;
-  border: 1px solid #f59e0b;
-  background: #fffbeb;
-  color: #92400e;
+  border: 1px solid #fca5a5;
+  background: #fff1f2;
+  color: #b91c1c;
 }
 
 .payment-warning-header {
@@ -716,23 +1019,23 @@ const completeFromList = async (hoaDon) => {
   flex-wrap: wrap;
   gap: 6px;
   padding: 8px 12px;
-  background: #fef3c7;
-  border: 1px solid #fcd34d;
+  background: #fff5f5;
+  border: 1px solid #fecdd3;
   border-radius: 8px;
   text-decoration: none;
-  color: #78350f;
+  color: #9f1239;
   transition: background 0.15s ease;
 }
 
 .payment-warning-link:hover {
-  background: #fde68a;
-  border-color: #f59e0b;
+  background: #ffe4e6;
+  border-color: #fca5a5;
 }
 
 .payment-warning-code {
   font-weight: 700;
   font-size: 13px;
-  color: #b45309;
+  color: #b91c1c;
   font-family: monospace;
 }
 
@@ -743,17 +1046,17 @@ const completeFromList = async (hoaDon) => {
 
 .payment-warning-phone {
   font-size: 13px;
-  color: #92400e;
+  color: #9f1239;
 }
 
 .payment-warning-amount {
   font-size: 13px;
   font-weight: 600;
-  color: #c2410c;
+  color: #b91c1c;
 }
 
 .payment-warning-sep {
-  color: #d97706;
+  color: #f43f5e;
   font-size: 12px;
 }
 
@@ -761,7 +1064,7 @@ const completeFromList = async (hoaDon) => {
   margin-left: auto;
   font-size: 12px;
   font-weight: 600;
-  color: #b45309;
+  color: #b91c1c;
   white-space: nowrap;
   text-decoration: underline;
 }

@@ -14,6 +14,20 @@
         <div class="navgrp">
           <h4>Tổng quan</h4>
 
+          <router-link to="/employee/trang-chu" class="navlink">
+            <span class="left">
+              <span class="material-icons-outlined" style="font-size: 18px;">home</span>
+              Trang chủ
+            </span>
+          </router-link>
+
+          <router-link to="/employee/ban-hang" class="navlink nav-sales">
+            <span class="left">
+              <span class="material-icons-outlined" style="font-size: 18px;">shopping_cart</span>
+              Bán hàng
+            </span>
+          </router-link>
+
           <router-link to="/employee/dashboard" class="navlink">
             <span class="left">
               <BarChart3 :size="18" />
@@ -42,6 +56,13 @@
             </span>
           </router-link>
 
+          <router-link to="/employee/giao-ca-test" class="navlink">
+            <span class="left">
+              <span class="material-icons-outlined" style="font-size: 18px;">swap_horiz</span>
+              Bàn giao ca (Test)
+            </span>
+          </router-link>
+
           <router-link to="/employee/dang-ky-doi-ca" class="navlink">
             <span class="left">
               <span class="material-icons-outlined" style="font-size: 18px;">swap_horiz</span>
@@ -59,8 +80,8 @@
 
       </div>
 
-      <div style="margin-top:14px" class="muted">
-        <small>Ca làm: <b style="color:rgba(238,242,255,.9)">{{ currentShiftName }}</b></small>
+      <div style="margin-top:14px; padding-top:12px; border-top:1px solid #e5e7eb;" class="muted">
+        <small style="color:#6b7280">Ca làm: <b style="color:#dc2626">{{ currentShiftName }}</b></small>
       </div>
     </aside>
 
@@ -88,6 +109,7 @@
 
             <div
               class="avatar-wrapper"
+              :class="{ 'avatar-wrapper--open': openUserMenu }"
               @click.stop="toggleUserMenu"
               @mouseenter="openUserMenu = true"
               @mouseleave="openUserMenu = false"
@@ -104,7 +126,7 @@
               <transition name="menu-pop">
                 <div v-if="openUserMenu" class="dropdown user-dropdown">
                   <button class="dropdown-item" type="button" @click="goToProfile">
-                    Settings
+                    Hồ sơ
                   </button>
                   <button class="dropdown-item logout" type="button" @click="logout">
                     Đăng xuất
@@ -136,7 +158,6 @@ import { BarChart3, FileText, Shirt, Tag, Search, Bell } from "lucide-vue-next"
 import taiKhoanService from '../../services/taiKhoanService'
 import { getAllNhanVien, getNhanVienByTaiKhoanId } from '../../services/nhanVienService'
 import { useNotifications } from '../../composables/useNotifications'
-import { useToast } from '../../composables/useToast'
 import {
   AUTH_CONTEXT_CHANGED_EVENT,
   extractAccountList,
@@ -147,13 +168,14 @@ import "./dashboard.css"
 
 const router = useRouter()
 const route = useRoute()
-const toast = useToast()
+const OPS_TOAST_SHIFT_CLASS = 'ops-toast-shift'
 const openUserMenu = ref(false)
 const userAvatar = ref('')
 const userDisplayName = ref('Nhân viên')
 const userRole = ref('Nhân viên')
 const { unreadCount: notificationCount } = useNotifications('employee')
 const notificationToastShown = ref(false)
+let notificationToastBootstrapTimer = null
 
 const currentTime = ref(new Date())
 
@@ -236,11 +258,48 @@ const handleAuthContextChanged = () => {
 const maybeToastNotifications = (count) => {
   if (notificationToastShown.value || !Number(count)) return
   notificationToastShown.value = true
-  toast.info(`Bạn có ${count} thông báo cần xử lý`)
+  window.toast?.info?.(`Bạn có ${count} thông báo cần xử lý`, 4500)
+}
+
+const startNotificationToastBootstrap = () => {
+  const startedAt = Date.now()
+  if (notificationToastBootstrapTimer) clearInterval(notificationToastBootstrapTimer)
+
+  notificationToastBootstrapTimer = setInterval(() => {
+    const count = Number(notificationCount.value || 0)
+    if (count > 0) {
+      maybeToastNotifications(count)
+      clearInterval(notificationToastBootstrapTimer)
+      notificationToastBootstrapTimer = null
+      return
+    }
+
+    if (Date.now() - startedAt > 7000) {
+      clearInterval(notificationToastBootstrapTimer)
+      notificationToastBootstrapTimer = null
+    }
+  }, 300)
+}
+
+const syncOpsToastOffset = (isOpen) => {
+  const isMobile = window.matchMedia('(max-width: 768px)').matches
+  const topValue = isOpen
+    ? (isMobile ? '146px' : '188px')
+    : (isMobile ? '74px' : '92px')
+  document.body.style.setProperty('--ops-toast-top', topValue)
 }
 
 watch(notificationCount, (count) => {
+  if (!Number(count)) {
+    notificationToastShown.value = false
+    return
+  }
   maybeToastNotifications(count)
+}, { immediate: true })
+
+watch(openUserMenu, (isOpen) => {
+  document.body.classList.toggle(OPS_TOAST_SHIFT_CLASS, Boolean(isOpen))
+  syncOpsToastOffset(Boolean(isOpen))
 })
 
 // Update time every second
@@ -276,11 +335,11 @@ function logout() {
   localStorage.removeItem("role")
   localStorage.removeItem("userId")
   localStorage.removeItem("userEmail")
-  router.push("/login")
+  router.push("/auth/staff-login")
 }
 
 function goHome() {
-  router.push("/home")
+  router.push("/trang-chu")
 }
 
 function goToProfile() {
@@ -306,11 +365,19 @@ onMounted(() => {
   document.addEventListener("click", closeUserMenu)
   window.addEventListener(AUTH_CONTEXT_CHANGED_EVENT, handleAuthContextChanged)
   loadTopbarUser()
+  startNotificationToastBootstrap()
+  syncOpsToastOffset(false)
 })
 
 onUnmounted(() => {
   document.removeEventListener("click", closeUserMenu)
   window.removeEventListener(AUTH_CONTEXT_CHANGED_EVENT, handleAuthContextChanged)
+  document.body.classList.remove(OPS_TOAST_SHIFT_CLASS)
+  document.body.style.removeProperty('--ops-toast-top')
+  if (notificationToastBootstrapTimer) {
+    clearInterval(notificationToastBootstrapTimer)
+    notificationToastBootstrapTimer = null
+  }
 })
 
 watch(() => route.fullPath, () => {
@@ -380,6 +447,8 @@ watch(() => route.fullPath, () => {
   border-radius:12px;
   cursor:pointer;
   transition: all .25s ease;
+  color: #111827;
+  text-decoration: none;
 }
 
 .navlink .left {
@@ -394,13 +463,24 @@ watch(() => route.fullPath, () => {
 }
 
 .navlink:hover {
-  background:rgba(255,255,255,.05);
+  background: #f1f5f9;
   transform: translateX(4px);
 }
 
 .router-link-active {
-  background: rgba(220,38,38,.12);
-  border-color: rgba(220,38,38,.25);
+  background: rgba(220,38,38,.10);
+  border-left: 3px solid #dc2626;
+  color: #dc2626;
+}
+
+/* Bán hàng link */
+.nav-sales {
+  font-weight: inherit;
+}
+.nav-sales.router-link-active {
+  background: rgba(220,38,38,.10);
+  border-left: 3px solid #dc2626;
+  color: #dc2626;
 }
 
 .user-menu {
@@ -420,7 +500,7 @@ watch(() => route.fullPath, () => {
   font-size: 16px;
   font-weight: 600;
   color: #1f2937;
-  font-family: 'Courier New', monospace;
+  font-family: inherit;
 }
 
 .date {
@@ -446,6 +526,10 @@ watch(() => route.fullPath, () => {
   background: white;
   border: 1px solid #e5e7eb;
   transition: all 0.2s;
+}
+
+.avatar-wrapper--open {
+  z-index: 10050;
 }
 
 .avatar-wrapper:hover {
@@ -482,7 +566,7 @@ watch(() => route.fullPath, () => {
   padding: 8px;
   width: 180px;
   box-shadow: 0 10px 25px rgba(0,0,0,.25);
-  z-index: 1000;
+  z-index: 10060;
 }
 
 .dropdown-item {
@@ -570,3 +654,4 @@ watch(() => route.fullPath, () => {
   padding: 0 5px;
 }
 </style>
+

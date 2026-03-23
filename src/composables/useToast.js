@@ -3,6 +3,7 @@ import { ref } from 'vue'
 const toasts = ref([])
 let toastId = 0
 const DEFAULT_TOAST_DURATION = 5000
+const SUCCESS_TOAST_DURATION = 3000
 const DUPLICATE_TOAST_WINDOW_MS = 800
 const recentToasts = new Map()
 
@@ -56,9 +57,14 @@ export function useToast() {
   return {
     toasts,
     showToast,
-    success: (msg) => showToast(msg, 'success'),
-    error: (msg) => showToast(msg, 'error'),
-    warning: (msg) => showToast(msg, 'warning'),
-    info: (msg) => showToast(msg, 'info')
+    success: (msg, durationOrOptions, maybeOptions) => {
+      if (durationOrOptions === undefined) {
+        return showToast(msg, 'success', SUCCESS_TOAST_DURATION, maybeOptions)
+      }
+      return showToast(msg, 'success', durationOrOptions, maybeOptions)
+    },
+    error: (msg, durationOrOptions, maybeOptions) => showToast(msg, 'error', durationOrOptions, maybeOptions),
+    warning: (msg, durationOrOptions, maybeOptions) => showToast(msg, 'warning', durationOrOptions, maybeOptions),
+    info: (msg, durationOrOptions, maybeOptions) => showToast(msg, 'info', durationOrOptions, maybeOptions)
   }
 }
