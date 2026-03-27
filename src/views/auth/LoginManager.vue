@@ -209,6 +209,12 @@ const login = async () => {
 
         <p v-if="error" class="error-text">{{ error }}</p>
 
+        <div class="back-link-row">
+          <router-link to="/auth/customer-login" class="back-customer-link">
+            ← Đăng nhập với tư cách khách hàng
+          </router-link>
+        </div>
+
       </form>
     </div>
   </div>
@@ -225,9 +231,10 @@ const login = async () => {
   place-items: center;
   padding: 24px 16px;
   background:
-    radial-gradient(circle at 14% 20%, rgba(197, 22, 45, 0.14), transparent 45%),
-    radial-gradient(circle at 88% 82%, rgba(15, 23, 42, 0.1), transparent 42%),
-    linear-gradient(150deg, #f8fafc 0%, #eef2ff 52%, #f9fafb 100%);
+    linear-gradient(0deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.16)),
+    linear-gradient(145deg, rgba(60, 0, 0, 0.26) 0%, rgba(60, 0, 0, 0.1) 26%, transparent 26%, transparent 48%, rgba(60, 0, 0, 0.14) 48%, rgba(60, 0, 0, 0.08) 68%, transparent 68%),
+    radial-gradient(circle at 50% 45%, rgba(255, 0, 0, 0.16) 0%, rgba(255, 0, 0, 0) 44%),
+    linear-gradient(145deg, #5a0000 0%, #a80000 22%, #d30000 52%, #930000 78%, #4b0000 100%);
 }
 
 .bg-orb {
@@ -250,7 +257,7 @@ const login = async () => {
   height: 240px;
   right: -80px;
   bottom: 12%;
-  background: rgba(15, 23, 42, 0.14);
+  background: rgba(252, 165, 165, 0.55);
 }
 
 .auth-brand {
@@ -339,7 +346,7 @@ const login = async () => {
   font-size: 1em;
   font-weight: 800;
   letter-spacing: -0.035em;
-  color: #111827;
+  color: #ffffff;
 }
 
 .field {
@@ -399,6 +406,26 @@ input:focus {
   .alt-auth-actions {
     grid-template-columns: 1fr;
   }
+}
+
+.back-link-row {
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+}
+
+.back-customer-link {
+  font-size: 14px;
+  font-weight: 600;
+  color: #c5162d;
+  text-decoration: none;
+  opacity: 0.85;
+  transition: opacity 0.2s;
+}
+
+.back-customer-link:hover {
+  opacity: 1;
+  text-decoration: none;
 }
 </style>
 

@@ -56,17 +56,24 @@
             </span>
           </router-link>
 
-          <router-link to="/employee/giao-ca-test" class="navlink">
+          <!-- <router-link to="/employee/giao-ca-test" class="navlink">
             <span class="left">
               <span class="material-icons-outlined" style="font-size: 18px;">swap_horiz</span>
               Bàn giao ca (Test)
             </span>
-          </router-link>
+          </router-link> -->
 
           <router-link to="/employee/dang-ky-doi-ca" class="navlink">
             <span class="left">
               <span class="material-icons-outlined" style="font-size: 18px;">swap_horiz</span>
               Đăng ký đổi ca
+            </span>
+          </router-link>
+
+          <router-link to="/employee/chat" class="navlink">
+            <span class="left">
+              <MessageSquare :size="18" />
+              Chat khách hàng
             </span>
           </router-link>
 
@@ -154,7 +161,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { BarChart3, FileText, Shirt, Tag, Search, Bell } from "lucide-vue-next"
+import { BarChart3, Bell, FileText, MessageSquare, Search, Shirt, Tag } from "lucide-vue-next"
 import taiKhoanService from '../../services/taiKhoanService'
 import { getAllNhanVien, getNhanVienByTaiKhoanId } from '../../services/nhanVienService'
 import { useNotifications } from '../../composables/useNotifications'
@@ -176,6 +183,7 @@ const userRole = ref('Nhân viên')
 const { unreadCount: notificationCount } = useNotifications('employee')
 const notificationToastShown = ref(false)
 let notificationToastBootstrapTimer = null
+const NOTIFICATION_TOAST_SESSION_KEY = 'ops:notification-toast-shown:employee'
 
 const currentTime = ref(new Date())
 
@@ -255,9 +263,36 @@ const handleAuthContextChanged = () => {
   loadTopbarUser()
 }
 
+const readNotificationToastShownSession = () => {
+  try {
+    return sessionStorage.getItem(NOTIFICATION_TOAST_SESSION_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+const writeNotificationToastShownSession = (value) => {
+  try {
+    if (value) {
+      sessionStorage.setItem(NOTIFICATION_TOAST_SESSION_KEY, '1')
+    } else {
+      sessionStorage.removeItem(NOTIFICATION_TOAST_SESSION_KEY)
+    }
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
 const maybeToastNotifications = (count) => {
-  if (notificationToastShown.value || !Number(count)) return
+  if (!Number(count)) {
+    notificationToastShown.value = false
+    writeNotificationToastShownSession(false)
+    return
+  }
+
+  if (notificationToastShown.value || readNotificationToastShownSession()) return
   notificationToastShown.value = true
+  writeNotificationToastShownSession(true)
   window.toast?.info?.(`Bạn có ${count} thông báo cần xử lý`, 4500)
 }
 
@@ -292,6 +327,7 @@ const syncOpsToastOffset = (isOpen) => {
 watch(notificationCount, (count) => {
   if (!Number(count)) {
     notificationToastShown.value = false
+    writeNotificationToastShownSession(false)
     return
   }
   maybeToastNotifications(count)
@@ -362,6 +398,7 @@ function closeUserMenu(event) {
 }
 
 onMounted(() => {
+  notificationToastShown.value = readNotificationToastShownSession()
   document.addEventListener("click", closeUserMenu)
   window.addEventListener(AUTH_CONTEXT_CHANGED_EVENT, handleAuthContextChanged)
   loadTopbarUser()

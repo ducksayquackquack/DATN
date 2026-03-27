@@ -19,6 +19,7 @@ const password = ref('')
 const error = ref(null)
 const showPassword = ref(false)
 const remember = ref(false)
+const isRouteTransitioning = ref(false)
 const props = defineProps({
   embedded: {
     type: Boolean,
@@ -104,6 +105,26 @@ const resolveUsername = async () => {
 
 const togglePassword = () => {
   showPassword.value = !showPassword.value
+}
+
+const navigateWithTransition = (path) => {
+  if (!path || isRouteTransitioning.value) return
+
+  const safePush = () => {
+    router.push(path).finally(() => {
+      isRouteTransitioning.value = false
+    })
+  }
+
+  const canUseViewTransition = typeof document !== 'undefined' && typeof document.startViewTransition === 'function'
+  if (canUseViewTransition) {
+    isRouteTransitioning.value = true
+    document.startViewTransition(() => safePush())
+    return
+  }
+
+  isRouteTransitioning.value = true
+  window.setTimeout(safePush, 170)
 }
 
 const normalizeRole = (role) => String(role || '').replace('ROLE_', '').trim().toUpperCase()
@@ -276,7 +297,7 @@ const login = async () => {
 </script>
 
 <template>
-  <div class="auth" :class="{ 'auth-embedded': props.embedded }">
+  <div class="auth" :class="{ 'auth-embedded': props.embedded, 'auth-route-transitioning': isRouteTransitioning }">
     <div class="auth-ambient" aria-hidden="true">
       <span class="orb orb-a"></span>
       <span class="orb orb-b"></span>
@@ -374,16 +395,26 @@ const login = async () => {
 
           <div class="footnote">
             <small class="muted">Chưa có tài khoản?</small>
-            <router-link to="/auth/customer-register" class="link">
+            <button
+              type="button"
+              class="link link-nav"
+              :disabled="isRouteTransitioning"
+              @click="navigateWithTransition('/auth/customer-register')"
+            >
               Tạo tài khoản
-            </router-link>
+            </button>
           </div>
 
           <div class="footnote">
             <small class="muted">Nhân viên hoặc quản trị viên?</small>
-            <router-link to="/auth/staff-login" class="link">
+            <button
+              type="button"
+              class="link link-nav"
+              :disabled="isRouteTransitioning"
+              @click="navigateWithTransition('/auth/staff-login')"
+            >
               Đăng nhập nội bộ
-            </router-link>
+            </button>
           </div>
 
         </form>
@@ -403,10 +434,17 @@ const login = async () => {
 .auth {
   position: relative;
   overflow: hidden;
+  transition: opacity 0.2s ease, transform 0.2s ease;
   background:
-    radial-gradient(circle at 12% 18%, rgba(239, 68, 68, 0.2), transparent 44%),
-    radial-gradient(circle at 88% 82%, rgba(14, 116, 144, 0.16), transparent 42%),
-    linear-gradient(145deg, #f8fafc 0%, #eef2ff 45%, #fef2f2 100%);
+    linear-gradient(0deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.16)),
+    linear-gradient(145deg, rgba(60, 0, 0, 0.26) 0%, rgba(60, 0, 0, 0.1) 26%, transparent 26%, transparent 48%, rgba(60, 0, 0, 0.14) 48%, rgba(60, 0, 0, 0.08) 68%, transparent 68%),
+    radial-gradient(circle at 50% 45%, rgba(255, 0, 0, 0.16) 0%, rgba(255, 0, 0, 0) 44%),
+    linear-gradient(145deg, #5a0000 0%, #a80000 22%, #d30000 52%, #930000 78%, #4b0000 100%);
+}
+
+.auth.auth-route-transitioning {
+  opacity: 0.84;
+  transform: translateY(6px);
 }
 
 .auth.auth-embedded {
@@ -450,7 +488,7 @@ const login = async () => {
 .orb-b {
   width: 220px;
   height: 220px;
-  background: #0ea5e9;
+  background: #fca5a5;
   bottom: -90px;
   left: -60px;
   animation-delay: 1.1s;
@@ -531,12 +569,12 @@ const login = async () => {
   font-size: 1em;
   font-weight: 800;
   letter-spacing: -0.035em;
-  color: #111827;
+  color: #ffffff;
   transition: color 0.25s ease;
 }
 
 .brand:hover .brand-rest {
-  color: #c5162d;
+  color: #ffe4e6;
 }
 
 h1 {
@@ -597,7 +635,20 @@ label {
 .link {
   font-size: 15px;
   font-weight: 600;
-  color: #111;
+  color: #c5162d;
+  text-decoration: none;
+}
+
+.link-nav {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.link-nav:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .muted {

@@ -24,6 +24,7 @@ const EmployeeGiaoCaTest = () => import("../views/employee/GiaoCaTest.vue")
 const EmployeeDangKyDoiCa = () => import("../views/employee/DangKyDoiCa.vue")
 const EmployeeProfileView = () => import("../views/employee/ProfileView.vue")
 const EmployeeHome = () => import("../views/employee/EmployeeHome.vue")
+const EmployeeChatPage = () => import("../views/employee/EmployeeChatPage.vue")
 const EmployeeProductList = () => import("../views/employee/san-pham/EmployeeProductList.vue")
 
 const AdminLayout = () => import("../views/admin/AdminLayout/AdminLayout.vue")
@@ -156,6 +157,7 @@ const routes = [
       { path: "giao-ca", component: EmployeeGiaoCa },
       { path: "giao-ca-test", component: EmployeeGiaoCaTest },
       { path: "dang-ky-doi-ca", component: EmployeeDangKyDoiCa },
+      { path: "chat", component: EmployeeChatPage },
 
       /* PROFILE */
 

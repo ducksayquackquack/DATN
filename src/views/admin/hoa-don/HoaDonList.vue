@@ -1066,7 +1066,6 @@ const completeFromList = async (hoaDon) => {
   font-weight: 600;
   color: #b91c1c;
   white-space: nowrap;
-  text-decoration: underline;
 }
 
 @media (max-width: 768px) {

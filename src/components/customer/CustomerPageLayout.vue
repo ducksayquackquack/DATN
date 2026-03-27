@@ -17,14 +17,6 @@ const containerStyle = computed(() => ({
   <div class="customer-page" :style="containerStyle">
     <SiteNav />
 
-    <div class="cp-breadcrumb">
-      <div class="cp-container">
-        <RouterLink class="cp-home-link" to="/trang-chu">Trang chủ</RouterLink>
-        <span>/</span>
-        <strong>{{ breadcrumb }}</strong>
-      </div>
-    </div>
-
     <main class="cp-container cp-main">
       <slot />
     </main>

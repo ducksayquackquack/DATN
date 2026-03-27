@@ -821,9 +821,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-    Arial, sans-serif;
+  font-family: "Be Vietnam Pro", "Segoe UI", Tahoma, sans-serif;
   color: #374151;
 }
 

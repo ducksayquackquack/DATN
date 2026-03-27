@@ -51,6 +51,7 @@ const userRole = ref('Quản trị viên')
 const { unreadCount: notificationCount } = useNotifications('admin')
 const notificationToastShown = ref(false)
 let notificationToastBootstrapTimer = null
+const NOTIFICATION_TOAST_SESSION_KEY = 'ops:notification-toast-shown:admin'
 
 const avatarInitials = computed(() => {
   const name = String(userDisplayName.value || 'AD').trim()
@@ -131,9 +132,36 @@ const handleAuthContextChanged = () => {
   loadTopbarUser()
 }
 
+const readNotificationToastShownSession = () => {
+  try {
+    return sessionStorage.getItem(NOTIFICATION_TOAST_SESSION_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+const writeNotificationToastShownSession = (value) => {
+  try {
+    if (value) {
+      sessionStorage.setItem(NOTIFICATION_TOAST_SESSION_KEY, '1')
+    } else {
+      sessionStorage.removeItem(NOTIFICATION_TOAST_SESSION_KEY)
+    }
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
 const maybeToastNotifications = (count) => {
-  if (notificationToastShown.value || !Number(count)) return
+  if (!Number(count)) {
+    notificationToastShown.value = false
+    writeNotificationToastShownSession(false)
+    return
+  }
+
+  if (notificationToastShown.value || readNotificationToastShownSession()) return
   notificationToastShown.value = true
+  writeNotificationToastShownSession(true)
   window.toast?.info?.(`Bạn có ${count} thông báo cần xử lý`, 4500)
 }
 
@@ -168,6 +196,7 @@ const syncOpsToastOffset = (isOpen) => {
 watch(notificationCount, (count) => {
   if (!Number(count)) {
     notificationToastShown.value = false
+    writeNotificationToastShownSession(false)
     return
   }
   maybeToastNotifications(count)
@@ -228,6 +257,7 @@ function closeUserMenu(event) {
 }
 
 onMounted(() => {
+  notificationToastShown.value = readNotificationToastShownSession()
   document.addEventListener("click", closeUserMenu)
   window.addEventListener(AUTH_CONTEXT_CHANGED_EVENT, handleAuthContextChanged)
   loadTopbarUser()

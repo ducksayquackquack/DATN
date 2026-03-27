@@ -390,7 +390,7 @@ onUnmounted(() => {
 .about-journey-header h2,
 .about-cta h2 {
   margin: 14px 0 0;
-  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+  font-family: "Be Vietnam Pro", "Segoe UI", sans-serif;
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.03;

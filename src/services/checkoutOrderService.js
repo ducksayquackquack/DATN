@@ -59,6 +59,42 @@ const formatAddress = (address) => {
   return parts.join(", ")
 }
 
+const getAddressCompletenessScore = (address = {}) => {
+  const detail = String(address?.diaChiCuThe || "").trim()
+  const ward = String(address?.phuongXa || "").trim()
+  const district = String(address?.quanHuyen || "").trim()
+  const province = String(address?.tinhThanh || "").trim()
+
+  let score = 0
+  if (detail) score += 10
+  if (ward) score += 20
+  if (district) score += 25
+  if (province) score += 30
+
+  const defaultFlag = Boolean(
+    address?.macDinh
+    || address?.laMacDinh
+    || address?.isDefault
+    || address?.defaultAddress
+    || address?.diaChiMacDinh
+  )
+  if (defaultFlag) score += 100
+
+  const statusText = String(address?.trangThai || "").toLowerCase()
+  if (statusText.includes("mặc định") || statusText.includes("mac dinh")) {
+    score += 100
+  }
+
+  return score
+}
+
+const pickPreferredAddress = (addresses = []) => {
+  if (!Array.isArray(addresses) || !addresses.length) return null
+  return addresses
+    .slice()
+    .sort((a, b) => getAddressCompletenessScore(b) - getAddressCompletenessScore(a))[0] || null
+}
+
 const scoreVariantMatch = (item, variant) => {
   const itemTokens = tokenizeName(item.name)
   const productTokens = tokenizeName(variant.productName)
@@ -257,7 +293,16 @@ export async function loadCheckoutContext() {
     }
   }
 
-  const primaryAddress = addresses[0] || null
+  const primaryAddress = pickPreferredAddress(addresses)
+  const localDetail = String(localStorage.getItem("userDiaChiCuThe") || "").trim()
+  const localWard = String(localStorage.getItem("userPhuongXa") || "").trim()
+  const localDistrict = String(localStorage.getItem("userQuanHuyen") || "").trim()
+  const localProvince = String(localStorage.getItem("userTinhThanh") || "").trim()
+  const localAddress = String(localStorage.getItem("userAddress") || "").trim()
+  const mergedLocalAddress = [localDetail, localWard, localDistrict, localProvince]
+    .filter(Boolean)
+    .join(", ")
+
   return {
     account,
     customer,
@@ -265,11 +310,11 @@ export async function loadCheckoutContext() {
     delivery: {
       name: customer?.tenKhachHang || localStorage.getItem("userName") || account?.tenTaiKhoan || toDisplayNameFromEmail(account?.email) || "",
       phone: customer?.soDienThoai || localStorage.getItem("userPhone") || "",
-      address: formatAddress(primaryAddress) || localStorage.getItem("userAddress") || "",
-      diaChiCuThe: String(primaryAddress?.diaChiCuThe || "").trim(),
-      phuongXa: String(primaryAddress?.phuongXa || "").trim(),
-      quanHuyen: String(primaryAddress?.quanHuyen || "").trim(),
-      tinhThanh: String(primaryAddress?.tinhThanh || "").trim()
+      address: formatAddress(primaryAddress) || localAddress || mergedLocalAddress || "",
+      diaChiCuThe: String(primaryAddress?.diaChiCuThe || localDetail || "").trim(),
+      phuongXa: String(primaryAddress?.phuongXa || localWard || "").trim(),
+      quanHuyen: String(primaryAddress?.quanHuyen || localDistrict || "").trim(),
+      tinhThanh: String(primaryAddress?.tinhThanh || localProvince || "").trim()
     }
   }
 }

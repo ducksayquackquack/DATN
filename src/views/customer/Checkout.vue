@@ -1235,7 +1235,7 @@ watch(
   min-height: 100vh;
   background: var(--bg);
   color: #111827;
-  font-family: "Segoe UI", Tahoma, sans-serif;
+  font-family: "Be Vietnam Pro", "Segoe UI", Tahoma, sans-serif;
   display: flex;
   flex-direction: column;
 }

@@ -24,8 +24,8 @@
   gap:10px;
 
   padding:10px 12px;
-  border:1px solid rgba(255,255,255,.10);
-  background: rgba(255,255,255,.03);
+  border:1px solid rgba(0,0,0,.15);
+  background: rgba(248, 250, 252, 0.92);
   border-radius: 999px;
 }
 
@@ -36,13 +36,13 @@
   border:0;
   outline:0;
   background: transparent;
-  color: #eef2ff;          /* hoặc var(--text) nếu anh có */
+  color: #111827;
   font-size:14px;
 }
 
 /* Placeholder giống ô Email */
 .pw input::placeholder{
-  color: rgba(238,242,255,.55);
+  color: rgba(17,24,39,.45);
 }
 
 /* Nút mắt gọn và “ăn” vào khung */
@@ -50,15 +50,15 @@
   width:40px;
   height:40px;
   border-radius: 999px;
-  border:1px solid rgba(255,255,255,.10);
-  background: rgba(255,255,255,.04);
+  border:1px solid rgba(0,0,0,.12);
+  background: rgba(255,255,255,0.7);
   display:grid;
   place-items:center;
   cursor:pointer;
 }
 
 .pw .iconbtn:hover{
-  border-color: rgba(255,204,0,.35);
+  border-color: rgba(197,22,45,.35);
 }
 
 .row{
@@ -78,12 +78,12 @@
 .remember input{width:auto}
 
 .link{
-  color: rgba(238,242,255,.9);
+  color: #c5162d;
   text-decoration:none;
   font-weight:700;
   font-size:13px;
 }
-.link:hover{opacity:.85}
+.link:hover{opacity:.85;text-decoration:none}
 
 .or{
   display:flex;
@@ -94,7 +94,7 @@
 .or span{
   flex:1;
   height:1px;
-  background: rgba(255,255,255,.08);
+  background: rgba(0,0,0,.1);
 }
 
 .footnote{

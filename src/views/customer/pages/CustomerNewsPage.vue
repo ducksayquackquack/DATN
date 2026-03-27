@@ -1,9 +1,9 @@
 <script setup>
 import CustomerPageLayout from "../../../components/customer/CustomerPageLayout.vue"
-import imgHero from "../../../assets/img/Jackets/Áo hoodie kéo khoá in hình DirtyWave.jpg?url"
-import imgSideA from "../../../assets/img/Jackets/Áo bomber dáng lửng.jpg?url"
-import imgSideB from "../../../assets/img/Jackets/Áo khoac coach da ASOS DirtyWave.jpg?url"
-import imgSideC from "../../../assets/img/Jackets/Áo khoác coach giả da DirtyWave.jpg?url"
+import imgHero from "../../../assets/img/Jackets/hoodie/hoodie-in-hinh.jpg?url"
+import imgSideA from "../../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
+import imgSideB from "../../../assets/img/Jackets/coach/coach-da-asos.jpg?url"
+import imgSideC from "../../../assets/img/Jackets/coach/coach-gia-da.jpg?url"
 
 const chips = ["Drop mới", "Phong cách sống", "Chất liệu", "Hậu trường"]
 

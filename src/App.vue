@@ -3,6 +3,7 @@ import { onBeforeUnmount, watchEffect } from "vue"
 import { useRoute } from "vue-router"
 import GlobalToast from "./components/GlobalToast.vue"
 import GlobalConfirmDialog from "./components/GlobalConfirmDialog.vue"
+import DirtyWaveChatbot from "./components/chat/DirtyWaveChatbot.vue"
 import { useToast } from "./composables/useToast"
 import { useConfirm } from "./composables/useConfirm"
 
@@ -66,7 +67,51 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <router-view />
+  <router-view v-slot="{ Component, route: currentRoute }">
+    <div class="app-route-stage">
+      <transition name="app-route">
+        <component :is="Component" :key="currentRoute.matched?.[0]?.path || currentRoute.path" class="app-route-view" />
+      </transition>
+    </div>
+  </router-view>
   <GlobalToast />
   <GlobalConfirmDialog />
+  <DirtyWaveChatbot />
 </template>
+
+<style>
+.app-route-stage {
+  position: relative;
+  min-height: 100vh;
+  isolation: isolate;
+}
+
+.app-route-enter-active,
+.app-route-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.app-route-leave-active {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
+.app-route-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.app-route-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-route-enter-active,
+  .app-route-leave-active {
+    transition: none;
+  }
+}
+</style>

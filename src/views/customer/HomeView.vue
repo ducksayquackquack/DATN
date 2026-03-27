@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { Eye, ShoppingCart } from "lucide-vue-next"
@@ -9,17 +9,27 @@ import CustomerFooter from '../../components/customer/CustomerFooter.vue'
 import { useToast } from '../../composables/useToast'
 import { resolveApiOrigin } from '../../utils/apiOrigin'
 import { getProductImageOverride } from '../../utils/productImageOverrides'
-import img1 from "../../assets/img/Jackets/Áo bomber da lộn DirtyWave.jpg?url"
-import img2 from "../../assets/img/Jackets/Áo bomber dáng lửng.jpg?url"
-import img3 from "../../assets/img/Jackets/Áo bomber giả da DirtyWave.jpg?url"
-import img4 from "../../assets/img/Jackets/Áo bomber nhẹ vải cotton DirtyWave.jpg?url"
-import img5 from "../../assets/img/Jackets/Áo hoodie kéo khoá dáng hộp DirtyWave.jpg?url"
-import img6 from "../../assets/img/Jackets/Áo hoodie kéo khoá in hình DirtyWave.jpg?url"
-import img7 from "../../assets/img/Jackets/Áo hoodie kéo khoá Jacket DirtyWave.jpg?url"
-import img8 from "../../assets/img/Jackets/Áo khoác coach cách nhiệt vải Timberland.jpg?url"
-import img9 from "../../assets/img/Jackets/Áo khoac coach da ASOS DirtyWave.jpg?url"
-import img10 from "../../assets/img/Jackets/Áo khoác coach giả da DirtyWave.jpg?url"
-import img11 from "../../assets/img/Jackets/Áo khoác coach lông cừu DirtyWave.jpg?url"
+import img1 from "../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
+import img2 from "../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
+import img3 from "../../assets/img/Jackets/bomber/bomber-gia-da.jpg?url"
+import img4 from "../../assets/img/Jackets/bomber/bomber-nhe-cotton.jpg?url"
+import img5 from "../../assets/img/Jackets/hoodie/hoodie-dang-hop.jpg?url"
+import img6 from "../../assets/img/Jackets/hoodie/hoodie-in-hinh.jpg?url"
+import img7 from "../../assets/img/Jackets/hoodie/hoodie-keo-khoa.jpg?url"
+import img8 from "../../assets/img/Jackets/coach/coach-cach-nhiet.jpg?url"
+import img9 from "../../assets/img/Jackets/coach/coach-da-asos.jpg?url"
+import img10 from "../../assets/img/Jackets/coach/coach-gia-da.jpg?url"
+import img11 from "../../assets/img/Jackets/coach/coach-long-cuu.jpg?url"
+// New products
+import img12 from "../../assets/img/Jackets/bomber/bomber-astronaut/IMG_4435.PNG?url"
+import img13 from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4437.PNG?url"
+import img14 from "../../assets/img/Jackets/bomber/bomber-windbreaker/IMG_4432.PNG?url"
+import img15 from "../../assets/img/Jackets/coach/coach-leopard/IMG_4445.PNG?url"
+import img16 from "../../assets/img/Jackets/coach/coach-longsleeve/IMG_4442.PNG?url"
+import img17 from "../../assets/img/Jackets/coach/coach-tiger-stripe/IMG_4446.PNG?url"
+import img18 from "../../assets/img/Jackets/hoodie/hoodie-camo/IMG_4450.PNG?url"
+import img19 from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/IMG_4452.PNG?url"
+import img20 from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/IMG_4447.PNG?url"
 import momo from "../../assets/img/payments/momo.png?url"
 import visa from "../../assets/img/payments/visa.png?url"
 import mastercard from "../../assets/img/payments/mastercard.png?url"
@@ -76,6 +86,17 @@ const allProducts = [
   {id:18,name:"Quần Kaki Form Straight",cat:"Kaki/Chino",price:499000,old:599000,tag:"Daily",img:img9},
   {id:19,name:"Quần Tây Minimal DirtyWave",cat:"Quần tây",price:559000,old:null,tag:"Office",img:img10},
   {id:20,name:"Quần Jogger Street",cat:"Jogger",price:399000,old:459000,tag:"Trend",img:img7},
+
+  // NEW PRODUCTS FROM REORGANIZED FOLDERS
+  {id:21,name:"Bomber Astronaut DirtyWave",cat:"Bomber",price:549000,old:699000,tag:"Limited",img:img12},
+  {id:22,name:"Bomber Embroidered Fuzzy",cat:"Bomber",price:599000,old:749000,tag:"New",img:img13},
+  {id:23,name:"Bomber Windbreaker DirtyWave",cat:"Bomber",price:479000,old:599000,tag:"Hot",img:img14},
+  {id:24,name:"Coach Leopard DirtyWave",cat:"Coach",price:849000,old:999000,tag:"Premium",img:img15},
+  {id:25,name:"Coach Longsleeve DirtyWave",cat:"Coach",price:529000,old:649000,tag:"Sale",img:img16},
+  {id:26,name:"Coach Tiger Stripe DirtyWave",cat:"Coach",price:779000,old:899000,tag:"New",img:img17},
+  {id:27,name:"Hoodie Camo DirtyWave",cat:"Hoodie",price:459000,old:559000,tag:"Hot",img:img18},
+  {id:28,name:"Hoodie Zip Boxy DirtyWave",cat:"Hoodie",price:519000,old:629000,tag:"Trending",img:img19},
+  {id:29,name:"Hoodie Zip Silk DirtyWave",cat:"Hoodie",price:679000,old:799000,tag:"Luxury",img:img20},
 ]
 
 const products = ref(allProducts)
@@ -249,8 +270,12 @@ const applyMood = (mood) => {
 }
 
 const filteredBest = computed(() => {
-  if(!activeFilter.value) return products.value
-  return products.value.filter(p => p.cat === activeFilter.value)
+  let productList = products.value
+  // Sort by newest (ID descending) so new products appear first
+  productList = [...productList].sort((a, b) => b.id - a.id)
+  
+  if(!activeFilter.value) return productList
+  return productList.filter(p => p.cat === activeFilter.value)
 })
 
 const toast = msg => {
@@ -329,10 +354,16 @@ const loadHomeBackendProducts = async () => {
     const response = await getAllSanPham()
     homeBackendProducts.value = Array.isArray(response?.data) ? response.data : []
     if (homeBackendProducts.value.length) {
-      products.value = homeBackendProducts.value
+      const backendProductsMapped = homeBackendProducts.value
         .filter((item) => isBackendProductActive(item))
         .map((item, index) => mapBackendProductToHomeCard(item, index))
         .filter((item) => Number.isFinite(item.id) && item.id > 0)
+      
+      // Add static products 12-20 that aren't already in backend
+      const existingIds = new Set(backendProductsMapped.map(p => Number(p.id)))
+      const staticProductsToAdd = allProducts.filter(p => p.id >= 12 && p.id <= 20 && !existingIds.has(p.id))
+      
+      products.value = [...backendProductsMapped, ...staticProductsToAdd]
     }
   } catch {
     homeBackendProducts.value = []
@@ -393,6 +424,19 @@ onUnmounted(() => {
   if (toastTimer) {
     clearTimeout(toastTimer)
     toastTimer = null
+  }
+})
+
+onMounted(() => {
+  // Get customer email from localStorage or auth context
+  try {
+    const authData = localStorage.getItem('authContext')
+    if (authData) {
+      const parsed = JSON.parse(authData)
+      customerEmail.value = parsed.email || ''
+    }
+  } catch (e) {
+    console.log('Could not load customer email')
   }
 })
 
@@ -502,32 +546,26 @@ Xem tất cả →
 <div class="tiles featured-cats">
 
 <a class="tile" @click.prevent="filterBy('Hoodie')">
-  <div class="tile-content">
-    <div>
-      <h3>Hoodie</h3>
-      <span>Street • trẻ trung</span>
-    </div>
-    <img :src="img5" class="cat-img">
+  <img :src="img20" class="cat-img">
+  <div class="tile-text">
+    <h3>Hoodie</h3>
+    <span>Luxury • lộng lẫy</span>
   </div>
 </a>
 
 <a class="tile" @click.prevent="filterBy('Bomber')">
-  <div class="tile-content">
-    <div>
-      <h3>Bomber</h3>
-      <span>Form rộng • cá tính</span>
-    </div>
-    <img :src="img1" class="cat-img">
+  <img :src="img13" class="cat-img">
+  <div class="tile-text">
+    <h3>Bomber</h3>
+    <span>Embroidered • đẳng cấp</span>
   </div>
 </a>
 
 <a class="tile" @click.prevent="filterBy('Coach')">
-  <div class="tile-content">
-    <div>
-      <h3>Coach Jacket</h3>
-      <span>Minimal • dễ phối</span>
-    </div>
-    <img :src="img8" class="cat-img">
+  <img :src="img17" class="cat-img">
+  <div class="tile-text">
+    <h3>Coach Jacket</h3>
+    <span>Tiger Stripe • mạnh mẽ</span>
   </div>
 </a>
 
@@ -829,6 +867,7 @@ Thêm giỏ
   {{ toastMessage }}
 </div>
 
+<transition name="quick-modal-fade">
 <div v-if="selectedProduct" class="quick-modal" @click.self="closeModal">
   <div class="quick-modal-content">
     <button class="quick-close" @click="closeModal">✕</button>
@@ -896,6 +935,7 @@ Thêm giỏ
     </div>
   </div>
 </div>
+</transition>
 </template>
 
 <style scoped>
@@ -939,11 +979,39 @@ header .container {
   width:100%;
 }
 
+/* Portrait category tile: image on top, text below */
+a.tile {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  min-height: 260px !important;
+  text-decoration: none !important;
+  color: inherit !important;
+}
+
+a.tile * {
+  text-decoration: none !important;
+}
+
+a.tile h3, a.tile span {
+  color: inherit !important;
+}
+
 .cat-img{
-  width:70px;
-  height:70px;
+  width:100% !important;
+  height:190px !important;
   object-fit:cover;
-  border-radius:10px;
+  object-position: center 20%;
+  border-radius:0;
+  display:block;
+  flex-shrink: 0;
+}
+
+.tile-text{
+  padding: 14px 16px;
+  flex: 1;
 }
 
 .category-photo{

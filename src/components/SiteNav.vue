@@ -16,17 +16,27 @@ import { resolveApiOrigin } from "../utils/apiOrigin"
 import { getProductImageOverride } from "../utils/productImageOverrides"
 import { readCartObject } from "../utils/cartStorage"
 import logo from "../assets/img/logo/new logo.png?url"
-import img1 from "../assets/img/Jackets/Áo bomber da lộn DirtyWave.jpg?url"
-import img2 from "../assets/img/Jackets/Áo bomber dáng lửng.jpg?url"
-import img3 from "../assets/img/Jackets/Áo bomber giả da DirtyWave.jpg?url"
-import img4 from "../assets/img/Jackets/Áo bomber nhẹ vải cotton DirtyWave.jpg?url"
-import img5 from "../assets/img/Jackets/Áo hoodie kéo khoá dáng hộp DirtyWave.jpg?url"
-import img6 from "../assets/img/Jackets/Áo hoodie kéo khoá in hình DirtyWave.jpg?url"
-import img7 from "../assets/img/Jackets/Áo hoodie kéo khoá Jacket DirtyWave.jpg?url"
-import img8 from "../assets/img/Jackets/Áo khoác coach cách nhiệt vải Timberland.jpg?url"
-import img9 from "../assets/img/Jackets/Áo khoac coach da ASOS DirtyWave.jpg?url"
-import img10 from "../assets/img/Jackets/Áo khoác coach giả da DirtyWave.jpg?url"
-import img11 from "../assets/img/Jackets/Áo khoác coach lông cừu DirtyWave.jpg?url"
+import img1 from "../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
+import img2 from "../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
+import img3 from "../assets/img/Jackets/bomber/bomber-gia-da.jpg?url"
+import img4 from "../assets/img/Jackets/bomber/bomber-nhe-cotton.jpg?url"
+import img5 from "../assets/img/Jackets/hoodie/hoodie-dang-hop.jpg?url"
+import img6 from "../assets/img/Jackets/hoodie/hoodie-in-hinh.jpg?url"
+import img7 from "../assets/img/Jackets/hoodie/hoodie-keo-khoa.jpg?url"
+import img8 from "../assets/img/Jackets/coach/coach-cach-nhiet.jpg?url"
+import img9 from "../assets/img/Jackets/coach/coach-da-asos.jpg?url"
+import img10 from "../assets/img/Jackets/coach/coach-gia-da.jpg?url"
+import img11 from "../assets/img/Jackets/coach/coach-long-cuu.jpg?url"
+// New products
+import img12 from "../assets/img/Jackets/bomber/bomber-astronaut/IMG_4435.PNG?url"
+import img13 from "../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4437.PNG?url"
+import img14 from "../assets/img/Jackets/bomber/bomber-windbreaker/IMG_4432.PNG?url"
+import img15 from "../assets/img/Jackets/coach/coach-leopard/IMG_4445.PNG?url"
+import img16 from "../assets/img/Jackets/coach/coach-longsleeve/IMG_4442.PNG?url"
+import img17 from "../assets/img/Jackets/coach/coach-tiger-stripe/IMG_4446.PNG?url"
+import img18 from "../assets/img/Jackets/hoodie/hoodie-camo/IMG_4450.PNG?url"
+import img19 from "../assets/img/Jackets/hoodie/hoodie-zip-boxy/IMG_4452.PNG?url"
+import img20 from "../assets/img/Jackets/hoodie/hoodie-zip-silk/IMG_4447.PNG?url"
 
 const props = defineProps({
   cartCount: { type: Number, default: null }
@@ -54,7 +64,7 @@ const toNumber = (value) => {
   return Number.isFinite(n) ? n : 0
 }
 
-const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11]
+const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11, img12, img13, img14, img15, img16, img17, img18, img19, img20]
 
 const fallbackImageFor = (id, code = "") => {
   const normalizedId = Number(id)
@@ -418,6 +428,7 @@ const logout = () => {
   localStorage.removeItem("role")
   localStorage.removeItem("userId")
   localStorage.removeItem("userEmail")
+  window.dispatchEvent(new Event("auth-context-changed"))
   router.push("/auth/customer-login")
 }
 
@@ -543,6 +554,7 @@ onUnmounted(() => {
               />
             </form>
 
+            <transition name="sn-pop">
             <div v-if="searchOpen" class="sn-search-dropdown">
               <div class="sn-search-dropdown__meta">
                 <span v-if="searchLoading">Đang tải sản phẩm...</span>
@@ -574,6 +586,7 @@ onUnmounted(() => {
                 Xem toàn bộ kết quả →
               </button>
             </div>
+            </transition>
           </div>
 
           <button class="sn-icon-button sn-hamburger" type="button" aria-label="Mở menu" @click="toggleMobileMenu">
@@ -591,6 +604,7 @@ onUnmounted(() => {
                 <span class="sn-role">{{ userRoleLabel }}</span>
               </span>
             </button>
+            <transition name="sn-pop">
             <div v-if="profileOpen" class="sn-profile-dropdown">
               <template v-if="isLoggedInAsCustomer">
                 <button type="button" class="sn-dropdown-item" @click="openProfilePage">Tài khoản</button>
@@ -603,6 +617,7 @@ onUnmounted(() => {
                 <button type="button" class="sn-dropdown-item" @click="navigateTo('/auth/customer-register')">Tạo tài khoản</button>
               </template>
             </div>
+            </transition>
           </div>
 
           <button class="sn-icon-button sn-notify-icon" type="button" aria-label="Thông báo" @click="openNotificationsPage">
@@ -617,7 +632,8 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div v-show="mobileOpen" class="sn-mobile-menu">
+      <transition name="sn-drawer">
+      <div v-if="mobileOpen" class="sn-mobile-menu">
         <div class="sn-mobile-menu__panel">
           <button type="button" @click="navigateTo('/trang-chu')">Trang chủ</button>
           <button type="button" @click="navigateTo('/san-pham')">Sản phẩm</button>
@@ -625,6 +641,7 @@ onUnmounted(() => {
           <button type="button" @click="navigateTo('/lien-he')">Liên hệ</button>
         </div>
       </div>
+      </transition>
     </div>
   </header>
 </template>
@@ -1257,6 +1274,28 @@ onUnmounted(() => {
   font-weight: 700;
   cursor: pointer;
   font: inherit;
+}
+
+.sn-pop-enter-active,
+.sn-pop-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.sn-pop-enter-from,
+.sn-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.985);
+}
+
+.sn-drawer-enter-active,
+.sn-drawer-leave-active {
+  transition: opacity 0.2s ease, transform 0.22s ease;
+}
+
+.sn-drawer-enter-from,
+.sn-drawer-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 
 /* Responsive */

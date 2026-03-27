@@ -14,17 +14,17 @@ import { getAllMauSac } from "../../../services/mauSacService"
 import { resolveApiOrigin } from "../../../utils/apiOrigin"
 import { clearProductImageOverride, getProductImageConfig, setProductImageConfig } from "../../../utils/productImageOverrides"
 import logo from "../../../assets/img/logo/new logo.png?url"
-import img1 from "../../../assets/img/Jackets/Áo bomber da lộn DirtyWave.jpg?url"
-import img2 from "../../../assets/img/Jackets/Áo bomber dáng lửng.jpg?url"
-import img3 from "../../../assets/img/Jackets/Áo bomber giả da DirtyWave.jpg?url"
-import img4 from "../../../assets/img/Jackets/Áo bomber nhẹ vải cotton DirtyWave.jpg?url"
-import img5 from "../../../assets/img/Jackets/Áo hoodie kéo khoá dáng hộp DirtyWave.jpg?url"
-import img6 from "../../../assets/img/Jackets/Áo hoodie kéo khoá in hình DirtyWave.jpg?url"
-import img7 from "../../../assets/img/Jackets/Áo hoodie kéo khoá Jacket DirtyWave.jpg?url"
-import img8 from "../../../assets/img/Jackets/Áo khoác coach cách nhiệt vải Timberland.jpg?url"
-import img9 from "../../../assets/img/Jackets/Áo khoac coach da ASOS DirtyWave.jpg?url"
-import img10 from "../../../assets/img/Jackets/Áo khoác coach giả da DirtyWave.jpg?url"
-import img11 from "../../../assets/img/Jackets/Áo khoác coach lông cừu DirtyWave.jpg?url"
+import img1 from "../../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
+import img2 from "../../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
+import img3 from "../../../assets/img/Jackets/bomber/bomber-gia-da.jpg?url"
+import img4 from "../../../assets/img/Jackets/bomber/bomber-nhe-cotton.jpg?url"
+import img5 from "../../../assets/img/Jackets/hoodie/hoodie-dang-hop.jpg?url"
+import img6 from "../../../assets/img/Jackets/hoodie/hoodie-in-hinh.jpg?url"
+import img7 from "../../../assets/img/Jackets/hoodie/hoodie-keo-khoa.jpg?url"
+import img8 from "../../../assets/img/Jackets/coach/coach-cach-nhiet.jpg?url"
+import img9 from "../../../assets/img/Jackets/coach/coach-da-asos.jpg?url"
+import img10 from "../../../assets/img/Jackets/coach/coach-gia-da.jpg?url"
+import img11 from "../../../assets/img/Jackets/coach/coach-long-cuu.jpg?url"
 
 const router = useRouter()
 const route = useRoute()
@@ -373,23 +373,35 @@ function toggleSizeSelect(size) {
 }
 
 function generateVariantsAuto() {
-  if (!selectedColors.value.length || !selectedSizes.value.length) {
-    window.toast.warning('Vui lòng chọn ít nhất 1 màu và 1 kích cỡ trước khi tạo biến thể')
+  if (!selectedSizes.value.length) {
+    window.toast.warning('Vui lòng chọn ít nhất 1 kích cỡ trước khi tạo biến thể')
     return
   }
   const existingPairs = new Set(
-    variantRows.value.map((row) => `${Number(row.sizeId)}-${Number(row.colorId)}`)
+    variantRows.value.map((row) => `${Number(row.sizeId)}-${Number(row.colorId) || 0}`)
   )
   let created = 0
-  for (const color of selectedColors.value) {
+
+  if (selectedColors.value.length) {
+    for (const color of selectedColors.value) {
+      for (const size of selectedSizes.value) {
+        const key = `${Number(size.id)}-${Number(color.id)}`
+        if (existingPairs.has(key)) continue
+        existingPairs.add(key)
+        addVariantRow({ sizeId: Number(size.id), colorId: Number(color.id) })
+        created++
+      }
+    }
+  } else {
     for (const size of selectedSizes.value) {
-      const key = `${Number(size.id)}-${Number(color.id)}`
+      const key = `${Number(size.id)}-0`
       if (existingPairs.has(key)) continue
       existingPairs.add(key)
-      addVariantRow({ sizeId: Number(size.id), colorId: Number(color.id) })
+      addVariantRow({ sizeId: Number(size.id), colorId: null })
       created++
     }
   }
+
   if (created) window.toast.success(`Đã tạo ${created} biến thể mới`)
   else window.toast.info('Không có biến thể mới (các tổ hợp đã tồn tại)')
 }
@@ -644,19 +656,18 @@ function validateVariants() {
   const pairSet = new Set()
   for (const row of variantRows.value) {
     const sizeId = Number(row.sizeId)
-    const colorId = Number(row.colorId)
+    const colorId = Number(row.colorId) || 0
     const giaBan = Number(row.giaBan)
     const soLuong = Number(row.soLuong)
 
     if (!Number.isFinite(sizeId) || sizeId <= 0) return "Vui lòng chọn size cho tất cả biến thể"
-    if (!Number.isFinite(colorId) || colorId <= 0) return "Vui lòng chọn màu cho tất cả biến thể"
     if (!Number.isFinite(giaBan) || giaBan <= 0) return "Giá bán biến thể phải lớn hơn 0"
     if (!Number.isFinite(soLuong) || soLuong < 0) return "Tồn kho biến thể không hợp lệ"
 
     const pairKey = `${sizeId}-${colorId}`
     if (pairSet.has(pairKey)) {
       const sizeName = getSizeLabel(sizeId) || sizeId
-      const colorName = getColorLabel(colorId) || colorId
+      const colorName = colorId > 0 ? (getColorLabel(colorId) || colorId) : "không màu"
       return `Biến thể size ${sizeName} / màu ${colorName} đang bị trùng`
     }
     pairSet.add(pairKey)
@@ -971,7 +982,7 @@ async function saveProduct() {
           </div>
 
           <!-- Màu sắc -->
-          <div class="builder-section">
+          <div v-if="colorOptions.length" class="builder-section">
             <div class="builder-label-row">
               <span class="builder-label">Màu sắc</span>
               <span class="builder-count">{{ selectedColors.length }} đã chọn</span>
@@ -1016,13 +1027,13 @@ async function saveProduct() {
             <button
               type="button"
               class="btn primary btn-generate with-icon"
-              :disabled="!selectedColors.length || !selectedSizes.length"
+              :disabled="!selectedSizes.length"
               @click="generateVariantsAuto"
             >
               <span class="material-icons-outlined btn-icon">auto_awesome</span>
               Tạo biến thể tự động
-              <span v-if="selectedColors.length && selectedSizes.length" class="combo-count">
-                ({{ selectedColors.length * selectedSizes.length }} tổ hợp)
+              <span v-if="selectedSizes.length" class="combo-count">
+                ({{ selectedColors.length ? selectedColors.length * selectedSizes.length : selectedSizes.length }} tổ hợp)
               </span>
             </button>
             <button type="button" class="btn btn-generate with-icon" @click="addVariantRow()">

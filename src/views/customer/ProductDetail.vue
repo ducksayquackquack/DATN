@@ -33,26 +33,50 @@ import {
   writeCheckoutCartArray
 } from "../../utils/cartStorage"
 import { resolveApiOrigin } from "../../utils/apiOrigin"
-import { getProductImageOverride } from "../../utils/productImageOverrides"
+import { getProductImageOverride, getProductImageConfig } from "../../utils/productImageOverrides"
 import SiteNav from "../../components/SiteNav.vue"
 import logo from "../../assets/img/logo/new logo.png?url"
-import img1 from "../../assets/img/Jackets/Áo bomber da lộn DirtyWave.jpg?url"
-import img2 from "../../assets/img/Jackets/Áo bomber dáng lửng.jpg?url"
-import img3 from "../../assets/img/Jackets/Áo bomber giả da DirtyWave.jpg?url"
-import img4 from "../../assets/img/Jackets/Áo bomber nhẹ vải cotton DirtyWave.jpg?url"
-import img5 from "../../assets/img/Jackets/Áo hoodie kéo khoá dáng hộp DirtyWave.jpg?url"
-import img6 from "../../assets/img/Jackets/Áo hoodie kéo khoá in hình DirtyWave.jpg?url"
-import img7 from "../../assets/img/Jackets/Áo hoodie kéo khoá Jacket DirtyWave.jpg?url"
-import img8 from "../../assets/img/Jackets/Áo khoác coach cách nhiệt vải Timberland.jpg?url"
-import img9 from "../../assets/img/Jackets/Áo khoac coach da ASOS DirtyWave.jpg?url"
-import img10 from "../../assets/img/Jackets/Áo khoác coach giả da DirtyWave.jpg?url"
-import img11 from "../../assets/img/Jackets/Áo khoác coach lông cừu DirtyWave.jpg?url"
+import img1 from "../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
+import img2 from "../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
+import img3 from "../../assets/img/Jackets/bomber/bomber-gia-da.jpg?url"
+import img4 from "../../assets/img/Jackets/bomber/bomber-nhe-cotton.jpg?url"
+import img5 from "../../assets/img/Jackets/hoodie/hoodie-dang-hop.jpg?url"
+import img6 from "../../assets/img/Jackets/hoodie/hoodie-in-hinh.jpg?url"
+import img7 from "../../assets/img/Jackets/hoodie/hoodie-keo-khoa.jpg?url"
+import img8 from "../../assets/img/Jackets/coach/coach-cach-nhiet.jpg?url"
+import img9 from "../../assets/img/Jackets/coach/coach-da-asos.jpg?url"
+import img10 from "../../assets/img/Jackets/coach/coach-gia-da.jpg?url"
+import img11 from "../../assets/img/Jackets/coach/coach-long-cuu.jpg?url"
+// New products from reorganized folders
+import img12 from "../../assets/img/Jackets/bomber/bomber-astronaut/IMG_4435.PNG?url"
+import img13 from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4437.PNG?url"
+import img14 from "../../assets/img/Jackets/bomber/bomber-windbreaker/IMG_4432.PNG?url"
+import img15 from "../../assets/img/Jackets/coach/coach-leopard/IMG_4445.PNG?url"
+import img16 from "../../assets/img/Jackets/coach/coach-longsleeve/IMG_4442.PNG?url"
+import img17 from "../../assets/img/Jackets/coach/coach-tiger-stripe/IMG_4446.PNG?url"
+import img18 from "../../assets/img/Jackets/hoodie/hoodie-camo/IMG_4450.PNG?url"
+import img19 from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/IMG_4452.PNG?url"
+import img20 from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/IMG_4447.PNG?url"
+// Additional color images
+import img12b from "../../assets/img/Jackets/bomber/bomber-astronaut/IMG_4436.PNG?url"
+import img13b from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4438.PNG?url"
+import img13c from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4439.PNG?url"
+import img13d from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4440.PNG?url"
+import img13e from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4441.PNG?url"
+import img14b from "../../assets/img/Jackets/bomber/bomber-windbreaker/IMG_4433.PNG?url"
+import img14c from "../../assets/img/Jackets/bomber/bomber-windbreaker/IMG_4434.PNG?url"
+import img16b from "../../assets/img/Jackets/coach/coach-longsleeve/IMG_4443.PNG?url"
+import img16c from "../../assets/img/Jackets/coach/coach-longsleeve/IMG_4444.PNG?url"
+import img18b from "../../assets/img/Jackets/hoodie/hoodie-camo/IMG_4451.PNG?url"
+import img19b from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/IMG_4453.PNG?url"
+import img20b from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/IMG_4448.PNG?url"
+import img20c from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/IMG_4449.PNG?url"
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, "")
-const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11]
+const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11, img12, img13, img14, img15, img16, img17, img18, img19, img20]
 
 const PRODUCTS = [
   {
@@ -304,6 +328,213 @@ const PRODUCTS = [
       design: "Cấu trúc tổng thể tối giản để phần chất liệu trở thành điểm nhấn chính của outfit.",
       fit: "Relaxed fit ấm áp, dễ layer với áo len hoặc sweatshirt mỏng."
     }
+  },
+  {
+    id: 12,
+    name: "Bomber Astronaut DirtyWave",
+    category: "Bomber",
+    price: 549000,
+    originalPrice: 699000,
+    sku: "ATID070-12",
+    badge: "Limited",
+    badgeTone: "dark",
+    images: [img12, img12b, img1],
+    colorImages: { "Xanh": img12, "Xám": img12b },
+    colors: [{ name: "Xanh", hex: "#3b82f6" }, { name: "Xám", hex: "#6b7280" }],
+    sizes: ["M", "L", "XL"],
+    material: "Polyester pha cotton",
+    fit: "Regular fit",
+    bullets: ["Thiết kế astronaut độc đáo.", "Chất liệu bền, chống gió nhẹ.", "Phù hợp phong cách streetwear."],
+    description: {
+      intro: "Bomber astronaut với thiết kế độc đáo, mang đậm phong cách streetwear hiện đại.",
+      material: "Chất liệu polyester pha cotton, bền và chống gió nhẹ.",
+      design: "Họa tiết astronaut nổi bật, tạo điểm nhấn cho outfit.",
+      fit: "Regular fit thoải mái, dễ phối đồ."
+    }
+  },
+  {
+    id: 13,
+    name: "Bomber Embroidered Fuzzy DirtyWave",
+    category: "Bomber",
+    price: 599000,
+    originalPrice: 749000,
+    sku: "ATID070-13",
+    badge: "New",
+    badgeTone: "red",
+    images: [img13, img13b, img13c, img13d, img13e],
+    colorImages: { "Be": img13, "Xanh": img13b, "Nâu": img13c, "Đen": img13d, "Xám": img13e },
+    colors: [{ name: "Be", hex: "#f5f5dc" }, { name: "Xanh", hex: "#3b82f6" }, { name: "Nâu", hex: "#8b4513" }, { name: "Đen", hex: "#000000" }, { name: "Xám", hex: "#6b7280" }],
+    sizes: ["S", "M", "L", "XL"],
+    material: "Vải fuzzy thêu họa tiết",
+    fit: "Relaxed fit",
+    bullets: ["Chất liệu fuzzy mềm mại.", "Thêu họa tiết tinh xảo.", "Giữ ấm tốt cho mùa lạnh."],
+    description: {
+      intro: "Bomber fuzzy với họa tiết thêu tinh xảo, mang lại vẻ ngoài sang trọng.",
+      material: "Vải fuzzy cao cấp, mềm mại và giữ ấm tốt.",
+      design: "Họa tiết thêu chi tiết, tạo điểm nhấn độc đáo.",
+      fit: "Relaxed fit rộng rãi, thoải mái."
+    }
+  },
+  {
+    id: 14,
+    name: "Bomber Windbreaker DirtyWave",
+    category: "Bomber",
+    price: 479000,
+    originalPrice: 599000,
+    sku: "ATID070-14",
+    badge: "Hot",
+    badgeTone: "red",
+    images: [img14, img14b, img14c],
+    colorImages: { "Đen": img14, "Xanh": img14b, "Đỏ": img14c },
+    colors: [{ name: "Đen", hex: "#000000" }, { name: "Xanh", hex: "#3b82f6" }, { name: "Đỏ", hex: "#ef4444" }],
+    sizes: ["S", "M", "L", "XL"],
+    material: "Nylon chống gió",
+    fit: "Regular fit",
+    bullets: ["Chống gió, chống nước nhẹ.", "Nhẹ, dễ mang theo.", "Phù hợp hoạt động ngoài trời."],
+    description: {
+      intro: "Windbreaker nhẹ, chống gió tốt, lý tưởng cho các hoạt động ngoài trời.",
+      material: "Nylon cao cấp, chống gió và nước nhẹ.",
+      design: "Thiết kế gọn nhẹ, dễ gấp gọn mang theo.",
+      fit: "Regular fit thoải mái, dễ vận động."
+    }
+  },
+  {
+    id: 15,
+    name: "Coach Leopard DirtyWave",
+    category: "Coach",
+    price: 849000,
+    originalPrice: 999000,
+    sku: "ATID070-15",
+    badge: "Premium",
+    badgeTone: "dark",
+    images: [img15, img8, img10],
+    colorImages: { "Vàng nâu": img15 },
+    colors: [{ name: "Vàng nâu", hex: "#d4a017" }],
+    sizes: ["M", "L", "XL"],
+    material: "Da báo nhân tạo cao cấp",
+    fit: "Regular fit",
+    bullets: ["Họa tiết báo nổi bật.", "Chất liệu cao cấp, bền đẹp.", "Phong cách cá tính, mạnh mẽ."],
+    description: {
+      intro: "Coach jacket với họa tiết báo độc đáo, thể hiện cá tính mạnh mẽ.",
+      material: "Da báo nhân tạo cao cấp, bền và đẹp.",
+      design: "Họa tiết báo ấn tượng, tạo phong cách riêng biệt.",
+      fit: "Regular fit vừa vặn, thoải mái."
+    }
+  },
+  {
+    id: 16,
+    name: "Coach Longsleeve DirtyWave",
+    category: "Coach",
+    price: 529000,
+    originalPrice: 649000,
+    sku: "ATID070-16",
+    badge: "Sale",
+    badgeTone: "red",
+    images: [img16, img16b, img16c],
+    colorImages: { "Xanh": img16, "Đen": img16b, "Trắng": img16c },
+    colors: [{ name: "Xanh", hex: "#000080" }, { name: "Đen", hex: "#000000" }, { name: "Trắng", hex: "#ffffff" }],
+    sizes: ["S", "M", "L", "XL"],
+    material: "Cotton dày",
+    fit: "Regular fit",
+    bullets: ["Tay dài giữ ấm tốt.", "Chất liệu cotton thoáng mát.", "Phù hợp nhiều hoàn cảnh."],
+    description: {
+      intro: "Coach longsleeve với tay dài, giữ ấm tốt cho mùa lạnh.",
+      material: "Cotton dày, thoáng mát và giữ ấm.",
+      design: "Tay dài thiết kế tinh tế, phù hợp layering.",
+      fit: "Regular fit thoải mái, dễ phối đồ."
+    }
+  },
+  {
+    id: 17,
+    name: "Coach Tiger Stripe DirtyWave",
+    category: "Coach",
+    price: 779000,
+    originalPrice: 899000,
+    sku: "ATID070-17",
+    badge: "New",
+    badgeTone: "red",
+    images: [img17, img8, img9],
+    colorImages: { "Cam": img17 },
+    colors: [{ name: "Cam", hex: "#ff8c00" }],
+    sizes: ["M", "L", "XL"],
+    material: "Vải cotton pha",
+    fit: "Relaxed fit",
+    bullets: ["Họa tiết tiger stripe độc đáo.", "Chất liệu bền, dễ bảo quản.", "Phong cách streetwear cá tính."],
+    description: {
+      intro: "Coach jacket với họa tiết tiger stripe, phong cách quân đội cá tính.",
+      material: "Vải cotton pha, bền và dễ bảo quản.",
+      design: "Họa tiết tiger stripe ấn tượng, phong cách riêng biệt.",
+      fit: "Relaxed fit rộng rãi, thoải mái."
+    }
+  },
+  {
+    id: 18,
+    name: "Hoodie Camo DirtyWave",
+    category: "Hoodie",
+    price: 459000,
+    originalPrice: 559000,
+    sku: "ATID070-18",
+    badge: "Hot",
+    badgeTone: "red",
+    images: [img18, img18b, img5],
+    colorImages: { "Xanh": img18, "Nâu": img18b },
+    colors: [{ name: "Xanh", hex: "#4b5320" }, { name: "Nâu", hex: "#8b7355" }],
+    sizes: ["S", "M", "L", "XL"],
+    material: "Cotton pha polyester",
+    fit: "Regular fit",
+    bullets: ["Họa tiết camo cổ điển.", "Dễ phối đồ hàng ngày.", "Chất liệu bền, giữ form."],
+    description: {
+      intro: "Hoodie camo với họa tiết rằn ri cổ điển, dễ phối đồ.",
+      material: "Cotton pha polyester, bền và giữ form tốt.",
+      design: "Họa tiết camo ấn tượng, phù hợp nhiều phong cách.",
+      fit: "Regular fit thoải mái, dễ mặc."
+    }
+  },
+  {
+    id: 19,
+    name: "Hoodie Zip Boxy DirtyWave",
+    category: "Hoodie",
+    price: 519000,
+    originalPrice: 629000,
+    sku: "ATID070-19",
+    badge: "Trending",
+    badgeTone: "dark",
+    images: [img19, img19b, img6],
+    colorImages: { "Đen": img19, "Đỏ": img19b },
+    colors: [{ name: "Đen", hex: "#000000" }, { name: "Đỏ", hex: "#ef4444" }],
+    sizes: ["M", "L", "XL"],
+    material: "Nỉ dày boxy",
+    fit: "Boxy fit",
+    bullets: ["Dáng boxy hiện đại.", "Chất nỉ dày giữ ấm.", "Phong cách streetwear."],
+    description: {
+      intro: "Hoodie zip boxy với dáng rộng hiện đại, phong cách streetwear.",
+      material: "Nỉ dày cao cấp, giữ ấm và form đẹp.",
+      design: "Dáng boxy rộng rãi, tạo phong cách trẻ trung.",
+      fit: "Boxy fit thoải mái, dễ layering."
+    }
+  },
+  {
+    id: 20,
+    name: "Hoodie Zip Silk DirtyWave",
+    category: "Hoodie",
+    price: 679000,
+    originalPrice: 799000,
+    sku: "ATID070-20",
+    badge: "Luxury",
+    badgeTone: "dark",
+    images: [img20, img20b, img20c],
+    colorImages: { "Đen": img20, "Xám": img20b, "Xanh": img20c },
+    colors: [{ name: "Đen", hex: "#000000" }, { name: "Xám", hex: "#6b7280" }, { name: "Xanh", hex: "#191970" }],
+    sizes: ["M", "L", "XL"],
+    material: "Silk blend cao cấp",
+    fit: "Regular fit",
+    bullets: ["Chất liệu silk sang trọng.", "Bề mặt mịn, lên ảnh đẹp.", "Phù hợp dự tiệc, đi chơi."],
+    description: {
+      intro: "Hoodie zip silk với chất liệu cao cấp, sang trọng và mịn màng.",
+      material: "Silk blend mịn màng, bóng đẹp tự nhiên.",
+      design: "Thiết kế tinh tế, sang trọng.",
+      fit: "Regular fit vừa vặn, lịch sự."
+    }
   }
 ]
 
@@ -464,6 +695,15 @@ const normalizeBackendProduct = (item) => {
 
   const descriptionText = String(item?.moTa || "").trim()
 
+  // Add colorImages for static products (12-20)
+  let colorImages = {}
+  if (id >= 12 && id <= 20) {
+    const staticProduct = PRODUCTS.find(p => p.id === id)
+    if (staticProduct?.colorImages) {
+      colorImages = staticProduct.colorImages
+    }
+  }
+
   return {
     id,
     raw: item,
@@ -475,6 +715,7 @@ const normalizeBackendProduct = (item) => {
     badge: String(item?.trangThai || "").toLowerCase().includes("ngung") ? "Hết hàng" : "Còn hàng",
     badgeTone: String(item?.trangThai || "").toLowerCase().includes("ngung") ? "dark" : "red",
     images: images.length ? images : [fallbackImageFor(id, code)],
+    colorImages,
     colors,
     sizes,
     material: "Chất liệu theo biến thể",
@@ -543,6 +784,38 @@ const displayImages = computed(() => {
   return [createPlaceholderImage(0)]
 })
 
+const hasSingleImage = computed(() => displayImages.value.length <= 1)
+
+const colorImageMap = computed(() => {
+  const raw = currentProduct.value?.raw
+  if (!raw) return {}
+
+  const id = resolveProductId(raw)
+  const code = String(raw?.maSanPham || raw?.ma || "")
+  const config = getProductImageConfig({ id, maSanPham: code })
+
+  const map = {}
+  for (const entry of (config.colorImages || [])) {
+    if (entry.colorId && entry.image) {
+      map[entry.colorId] = entry.image
+    }
+  }
+  return map
+})
+
+const colorNameToIdMap = computed(() => {
+  const raw = currentProduct.value?.raw
+  if (!raw) return {}
+  const variants = Array.isArray(raw?.sanPhamChiTiets) ? raw.sanPhamChiTiets : []
+  const map = {}
+  for (const v of variants) {
+    const name = String(v?.mauSac?.tenMau || "").trim()
+    const id = Number(v?.mauSac?.id || 0)
+    if (name && id > 0 && !map[name]) map[name] = id
+  }
+  return map
+})
+
 const activeImageIndex = computed(() => {
   const idx = displayImages.value.findIndex((image) => image === activeImage.value)
   return idx >= 0 ? idx : 0
@@ -598,6 +871,16 @@ const colorHexByName = (name) => {
 }
 
 const effectiveColors = computed(() => {
+  // For static products (12-20), use their defined colors
+  const productId = Number(currentProduct.value.id)
+  if (productId >= 12 && productId <= 20) {
+    return (currentProduct.value.colors || []).map((color) => ({
+      name: color?.name || "",
+      hex: color?.hex || colorHexByName(color?.name)
+    }))
+  }
+  
+  // For backend products, use variant-based colors
   if (backendVariants.value.length) {
     const colorMap = new Map()
     for (const variant of backendVariants.value) {
@@ -714,7 +997,194 @@ const syncProductState = () => {
 const loadBackendProducts = async () => {
   try {
     const response = await getAllSanPham()
-    backendProducts.value = Array.isArray(response?.data) ? response.data : []
+    const backendData = Array.isArray(response?.data) ? response.data : []
+    
+    // Add static products 12-20
+    const staticProducts = [
+      {
+        id: 12,
+        tenSanPham: "Bomber Astronaut DirtyWave",
+        maSanPham: "ATID070-12",
+        anh: img12,
+        danhMuc: { tenDanhMuc: "Bomber" },
+        giaBan: 549000,
+        giaGoc: 699000,
+        sanPhamChiTiets: [
+          { id: 1201, mauSac: { id: 1, tenMau: "Xanh" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 549000 },
+          { id: 1202, mauSac: { id: 1, tenMau: "Xanh" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 549000 },
+          { id: 1203, mauSac: { id: 1, tenMau: "Xanh" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 549000 },
+          { id: 1204, mauSac: { id: 2, tenMau: "Xám" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 549000 },
+          { id: 1205, mauSac: { id: 2, tenMau: "Xám" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 549000 },
+          { id: 1206, mauSac: { id: 2, tenMau: "Xám" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 549000 }
+        ]
+      },
+      {
+        id: 13,
+        tenSanPham: "Bomber Embroidered Fuzzy DirtyWave",
+        maSanPham: "ATID070-13",
+        anh: img13,
+        danhMuc: { tenDanhMuc: "Bomber" },
+        giaBan: 599000,
+        giaGoc: 749000,
+        sanPhamChiTiets: [
+          { id: 1301, mauSac: { id: 3, tenMau: "Be" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 599000 },
+          { id: 1302, mauSac: { id: 3, tenMau: "Be" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 599000 },
+          { id: 1303, mauSac: { id: 3, tenMau: "Be" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 599000 },
+          { id: 1304, mauSac: { id: 3, tenMau: "Be" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 599000 },
+          { id: 1305, mauSac: { id: 4, tenMau: "Xanh" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 599000 },
+          { id: 1306, mauSac: { id: 4, tenMau: "Xanh" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 599000 },
+          { id: 1307, mauSac: { id: 4, tenMau: "Xanh" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 599000 },
+          { id: 1308, mauSac: { id: 4, tenMau: "Xanh" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 599000 },
+          { id: 1309, mauSac: { id: 5, tenMau: "Nâu" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 599000 },
+          { id: 1310, mauSac: { id: 5, tenMau: "Nâu" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 599000 },
+          { id: 1311, mauSac: { id: 5, tenMau: "Nâu" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 599000 },
+          { id: 1312, mauSac: { id: 5, tenMau: "Nâu" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 599000 },
+          { id: 1313, mauSac: { id: 6, tenMau: "Đen" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 599000 },
+          { id: 1314, mauSac: { id: 6, tenMau: "Đen" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 599000 },
+          { id: 1315, mauSac: { id: 6, tenMau: "Đen" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 599000 },
+          { id: 1316, mauSac: { id: 6, tenMau: "Đen" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 599000 },
+          { id: 1317, mauSac: { id: 7, tenMau: "Xám" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 599000 },
+          { id: 1318, mauSac: { id: 7, tenMau: "Xám" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 599000 },
+          { id: 1319, mauSac: { id: 7, tenMau: "Xám" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 599000 },
+          { id: 1320, mauSac: { id: 7, tenMau: "Xám" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 599000 }
+        ]
+      },
+      {
+        id: 14,
+        tenSanPham: "Bomber Windbreaker DirtyWave",
+        maSanPham: "ATID070-14",
+        anh: img14,
+        danhMuc: { tenDanhMuc: "Bomber" },
+        giaBan: 479000,
+        giaGoc: 599000,
+        sanPhamChiTiets: [
+          { id: 1401, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 479000 },
+          { id: 1402, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 479000 },
+          { id: 1403, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 479000 },
+          { id: 1404, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 479000 },
+          { id: 1405, mauSac: { id: 5, tenMau: "Xanh" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 479000 },
+          { id: 1406, mauSac: { id: 5, tenMau: "Xanh" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 479000 },
+          { id: 1407, mauSac: { id: 5, tenMau: "Xanh" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 479000 },
+          { id: 1408, mauSac: { id: 5, tenMau: "Xanh" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 479000 },
+          { id: 1409, mauSac: { id: 8, tenMau: "Đỏ" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 479000 },
+          { id: 1410, mauSac: { id: 8, tenMau: "Đỏ" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 479000 },
+          { id: 1411, mauSac: { id: 8, tenMau: "Đỏ" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 479000 },
+          { id: 1412, mauSac: { id: 8, tenMau: "Đỏ" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 479000 }
+        ]
+      },
+      {
+        id: 15,
+        tenSanPham: "Coach Leopard DirtyWave",
+        maSanPham: "ATID070-15",
+        anh: img15,
+        danhMuc: { tenDanhMuc: "Coach" },
+        giaBan: 849000,
+        giaGoc: 999000,
+        sanPhamChiTiets: [
+          { id: 1501, mauSac: { id: 6, tenMau: "Vàng nâu" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 849000 },
+          { id: 1502, mauSac: { id: 6, tenMau: "Vàng nâu" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 849000 },
+          { id: 1503, mauSac: { id: 6, tenMau: "Vàng nâu" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 849000 }
+        ]
+      },
+      {
+        id: 16,
+        tenSanPham: "Coach Longsleeve DirtyWave",
+        maSanPham: "ATID070-16",
+        anh: img16,
+        danhMuc: { tenDanhMuc: "Coach" },
+        giaBan: 529000,
+        giaGoc: 649000,
+        sanPhamChiTiets: [
+          { id: 1601, mauSac: { id: 1, tenMau: "Xanh" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 529000 },
+          { id: 1602, mauSac: { id: 1, tenMau: "Xanh" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 529000 },
+          { id: 1603, mauSac: { id: 1, tenMau: "Xanh" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 529000 },
+          { id: 1604, mauSac: { id: 1, tenMau: "Xanh" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 529000 },
+          { id: 1605, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 529000 },
+          { id: 1606, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 529000 },
+          { id: 1607, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 529000 },
+          { id: 1608, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 529000 },
+          { id: 1609, mauSac: { id: 7, tenMau: "Trắng" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 529000 },
+          { id: 1610, mauSac: { id: 7, tenMau: "Trắng" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 529000 },
+          { id: 1611, mauSac: { id: 7, tenMau: "Trắng" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 529000 },
+          { id: 1612, mauSac: { id: 7, tenMau: "Trắng" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 529000 }
+        ]
+      },
+      {
+        id: 17,
+        tenSanPham: "Coach Tiger Stripe DirtyWave",
+        maSanPham: "ATID070-17",
+        anh: img17,
+        danhMuc: { tenDanhMuc: "Coach" },
+        giaBan: 779000,
+        giaGoc: 899000,
+        sanPhamChiTiets: [
+          { id: 1701, mauSac: { id: 8, tenMau: "Cam" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 779000 },
+          { id: 1702, mauSac: { id: 8, tenMau: "Cam" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 779000 },
+          { id: 1703, mauSac: { id: 8, tenMau: "Cam" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 779000 }
+        ]
+      },
+      {
+        id: 18,
+        tenSanPham: "Hoodie Camo DirtyWave",
+        maSanPham: "ATID070-18",
+        anh: img18,
+        danhMuc: { tenDanhMuc: "Hoodie" },
+        giaBan: 459000,
+        giaGoc: 559000,
+        sanPhamChiTiets: [
+          { id: 1801, mauSac: { id: 10, tenMau: "Xanh" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 459000 },
+          { id: 1802, mauSac: { id: 10, tenMau: "Xanh" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 459000 },
+          { id: 1803, mauSac: { id: 10, tenMau: "Xanh" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 459000 },
+          { id: 1804, mauSac: { id: 10, tenMau: "Xanh" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 459000 },
+          { id: 1805, mauSac: { id: 11, tenMau: "Nâu" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 459000 },
+          { id: 1806, mauSac: { id: 11, tenMau: "Nâu" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 459000 },
+          { id: 1807, mauSac: { id: 11, tenMau: "Nâu" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 459000 },
+          { id: 1808, mauSac: { id: 11, tenMau: "Nâu" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 459000 }
+        ]
+      },
+      {
+        id: 19,
+        tenSanPham: "Hoodie Zip Boxy DirtyWave",
+        maSanPham: "ATID070-19",
+        anh: img19,
+        danhMuc: { tenDanhMuc: "Hoodie" },
+        giaBan: 519000,
+        giaGoc: 629000,
+        sanPhamChiTiets: [
+          { id: 1901, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 519000 },
+          { id: 1902, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 519000 },
+          { id: 1903, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 519000 },
+          { id: 1904, mauSac: { id: 15, tenMau: "Đỏ" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 519000 },
+          { id: 1905, mauSac: { id: 15, tenMau: "Đỏ" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 519000 },
+          { id: 1906, mauSac: { id: 15, tenMau: "Đỏ" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 519000 }
+        ]
+      },
+      {
+        id: 20,
+        tenSanPham: "Hoodie Zip Silk DirtyWave",
+        maSanPham: "ATID070-20",
+        anh: img20,
+        danhMuc: { tenDanhMuc: "Hoodie" },
+        giaBan: 679000,
+        giaGoc: 799000,
+        sanPhamChiTiets: [
+          { id: 2001, mauSac: { id: 12, tenMau: "Đen" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 679000 },
+          { id: 2002, mauSac: { id: 12, tenMau: "Đen" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 679000 },
+          { id: 2003, mauSac: { id: 12, tenMau: "Đen" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 679000 },
+          { id: 2004, mauSac: { id: 13, tenMau: "Xám" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 679000 },
+          { id: 2005, mauSac: { id: 13, tenMau: "Xám" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 679000 },
+          { id: 2006, mauSac: { id: 13, tenMau: "Xám" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 679000 },
+          { id: 2007, mauSac: { id: 14, tenMau: "Xanh" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 679000 },
+          { id: 2008, mauSac: { id: 14, tenMau: "Xanh" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 679000 },
+          { id: 2009, mauSac: { id: 14, tenMau: "Xanh" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 679000 }
+        ]
+      }
+    ]
+    
+    // Merge backend and static products, avoid duplicates by ID
+    const existingIds = new Set(backendData.map(p => Number(p.id)))
+    const newStaticProducts = staticProducts.filter(p => !existingIds.has(p.id))
+    backendProducts.value = [...backendData, ...newStaticProducts]
   } catch {
     backendProducts.value = []
   }
@@ -987,9 +1457,20 @@ watch(
   { immediate: true }
 )
 
-watch(selectedColor, () => {
+watch(selectedColor, (colorName) => {
   if (!effectiveSizes.value.includes(selectedSize.value)) {
     selectedSize.value = effectiveSizes.value[0] || ""
+  }
+  // For backend products with colorImageMap
+  const colorId = colorNameToIdMap.value[colorName]
+  if (colorId && colorImageMap.value[colorId]) {
+    activeImage.value = colorImageMap.value[colorId]
+    return
+  }
+  // For static products (new products 12-20) with colorImages
+  const staticColorImages = currentProduct.value?.colorImages
+  if (staticColorImages && staticColorImages[colorName]) {
+    activeImage.value = staticColorImages[colorName]
   }
 })
 
@@ -1100,7 +1581,7 @@ onUnmounted(() => {
               </small>
             </div>
 
-            <div class="pd-option-row">
+            <div v-if="effectiveColors.length > 0" class="pd-option-row">
               <span class="pd-label">Màu sắc: <b>{{ selectedColor }}</b></span>
               <div class="pd-colors">
                 <button
@@ -2592,7 +3073,7 @@ onUnmounted(() => {
   background: transparent;
   padding: 0;
   color: #6b7280;
-  text-decoration: underline;
+  text-decoration: none;
   cursor: pointer;
   font-size: 13px;
   text-align: left;
@@ -2641,7 +3122,7 @@ onUnmounted(() => {
 .pd-drawer-overlay {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 150;
   display: flex;
   justify-content: flex-end;
   background: rgba(17, 24, 39, 0.32);

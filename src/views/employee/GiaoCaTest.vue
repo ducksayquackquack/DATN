@@ -949,7 +949,7 @@ onUnmounted(() => {
 .gct-page {
   min-height: 100vh;
   background: #f0f2f5;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: "Be Vietnam Pro", "Segoe UI", Tahoma, sans-serif;
   color: #374151;
   display: flex;
   flex-direction: column;

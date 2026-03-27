@@ -27,6 +27,7 @@ const form = ref({
 const loading = ref(false)
 const error = ref('')
 const success = ref('')
+const isRouteTransitioning = ref(false)
 
 const LOCAL_AUTH_USERS_KEY = 'localAuthUsers'
 const LOCAL_REGISTERED_PROFILES_KEY = 'localRegisteredProfiles'
@@ -410,10 +411,30 @@ const submit = async () => {
     loading.value = false
   }
 }
+
+const navigateWithTransition = (path) => {
+  if (!path || isRouteTransitioning.value) return
+
+  const safePush = () => {
+    router.push(path).finally(() => {
+      isRouteTransitioning.value = false
+    })
+  }
+
+  const canUseViewTransition = typeof document !== 'undefined' && typeof document.startViewTransition === 'function'
+  if (canUseViewTransition) {
+    isRouteTransitioning.value = true
+    document.startViewTransition(() => safePush())
+    return
+  }
+
+  isRouteTransitioning.value = true
+  window.setTimeout(safePush, 170)
+}
 </script>
 
 <template>
-  <div class="auth register-page">
+  <div class="auth register-page" :class="{ 'auth-route-transitioning': isRouteTransitioning }">
     <div class="auth-ambient" aria-hidden="true">
       <span class="orb orb-a"></span>
       <span class="orb orb-b"></span>
@@ -434,6 +455,7 @@ const submit = async () => {
           <h1>Tạo tài khoản</h1>
           <small class="muted">Tạo tài khoản khách hàng để mua sắm</small>
         </div>
+        <span class="pill">Secure</span>
       </div>
 
       <div class="body">
@@ -507,7 +529,14 @@ const submit = async () => {
 
           <div class="footnote">
             <small class="muted">Đã có tài khoản?</small>
-            <router-link to="/auth/customer-login" class="link register-link">Đăng nhập</router-link>
+            <button
+              type="button"
+              class="link register-link"
+              :disabled="isRouteTransitioning"
+              @click="navigateWithTransition('/auth/customer-login')"
+            >
+              Đăng nhập
+            </button>
           </div>
         </form>
       </div>
@@ -521,10 +550,17 @@ const submit = async () => {
 .auth {
   position: relative;
   overflow: hidden;
+  transition: opacity 0.2s ease, transform 0.2s ease;
   background:
-    radial-gradient(circle at 8% 12%, rgba(239, 68, 68, 0.18), transparent 45%),
-    radial-gradient(circle at 88% 84%, rgba(14, 116, 144, 0.16), transparent 42%),
-    linear-gradient(140deg, #f8fafc 0%, #f1f5f9 46%, #fef2f2 100%);
+    linear-gradient(0deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.16)),
+    linear-gradient(145deg, rgba(60, 0, 0, 0.26) 0%, rgba(60, 0, 0, 0.1) 26%, transparent 26%, transparent 48%, rgba(60, 0, 0, 0.14) 48%, rgba(60, 0, 0, 0.08) 68%, transparent 68%),
+    radial-gradient(circle at 50% 45%, rgba(255, 0, 0, 0.16) 0%, rgba(255, 0, 0, 0) 44%),
+    linear-gradient(145deg, #5a0000 0%, #a80000 22%, #d30000 52%, #930000 78%, #4b0000 100%);
+}
+
+.auth.auth-route-transitioning {
+  opacity: 0.84;
+  transform: translateY(6px);
 }
 
 .auth-ambient {
@@ -552,10 +588,27 @@ const submit = async () => {
 .orb-b {
   width: 220px;
   height: 220px;
-  background: #0ea5e9;
+  background: #fca5a5;
   bottom: -90px;
   left: -60px;
   animation-delay: 1.2s;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pill {
+  font-size: 12px;
+  font-weight: 700;
+  color: #111827;
+  background: #e5e7eb;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 6px 10px;
 }
 
 .register-card {
@@ -606,12 +659,12 @@ const submit = async () => {
   font-size: 1em;
   font-weight: 800;
   letter-spacing: -0.035em;
-  color: #111827;
+  color: #ffffff;
   transition: color 0.25s ease;
 }
 
 .brand:hover .brand-rest {
-  color: #c5162d;
+  color: #ffe4e6;
 }
 
 .grid {
@@ -715,12 +768,21 @@ const submit = async () => {
 }
 
 .register-link {
-  color: #0f172a;
+  color: #c5162d;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
   font-weight: 700;
 }
 
 .register-link:hover {
   color: #dc2626;
+}
+
+.register-link:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 @keyframes authCardIn {
