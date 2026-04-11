@@ -5,8 +5,8 @@ const confirmState = ref({
   mode: 'confirm',
   title: '',
   message: '',
-  confirmText: 'Yes',
-  cancelText: 'No',
+  confirmText: 'Có',
+  cancelText: 'Không',
   inputValue: '',
   inputPlaceholder: ''
 })
@@ -38,8 +38,8 @@ const openDialog = (mode, message, options = {}) => {
     resolver = null
   }
 
-  const defaultTitle = mode === 'prompt' ? 'Input Required' : 'Please Confirm'
-  const confirmText = mode === 'confirm' ? 'Yes' : 'OK'
+  const defaultTitle = mode === 'prompt' ? 'Nhập thông tin' : 'Xác nhận'
+  const confirmText = mode === 'confirm' ? 'Có' : 'OK'
 
   confirmState.value = {
     visible: true,
@@ -47,7 +47,7 @@ const openDialog = (mode, message, options = {}) => {
     title: options.title || defaultTitle,
     message: String(message ?? ''),
     confirmText: options.confirmText || confirmText,
-    cancelText: options.cancelText || 'No',
+    cancelText: options.cancelText || 'Không',
     inputValue: options.defaultValue ?? '',
     inputPlaceholder: options.inputPlaceholder || ''
   }

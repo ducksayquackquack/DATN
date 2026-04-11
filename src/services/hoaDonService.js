@@ -3,6 +3,26 @@ import { resolveApiOrigin } from "../utils/apiOrigin"
 
 const API = `${resolveApiOrigin()}/api/hoa-don`
 
+const normalizeHoaDonId = (id) => {
+  const raw = String(id ?? "").trim()
+  if (!raw) return null
+
+  const lowered = raw.toLowerCase()
+  if (["null", "undefined", "nan"].includes(lowered)) return null
+
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0) return null
+  return parsed
+}
+
+const ensureHoaDonId = (id) => {
+  const normalized = normalizeHoaDonId(id)
+  if (!normalized) {
+    throw new Error("ID hóa đơn không hợp lệ")
+  }
+  return normalized
+}
+
 export const getAllHoaDon = () => {
   return axios.get(API)
 }
@@ -12,7 +32,7 @@ export const getHoaDonPage = (params = {}) => {
 }
 
 export const getHoaDonById = (id) => {
-  return axios.get(`${API}/${id}`)
+  return axios.get(`${API}/${ensureHoaDonId(id)}`)
 }
 
 export const lookupHoaDon = (maHoaDon, options = {}) => {
@@ -51,11 +71,11 @@ export const createHoaDon = (data) => {
 }
 
 export const updateHoaDon = (id, data) => {
-  return axios.put(`${API}/${id}`, data)
+  return axios.put(`${API}/${ensureHoaDonId(id)}`, data)
 }
 
 export const updateHoaDonBySystemEvent = (id, eventCode, note = "", trackingUrl = "") => {
-  return axios.post(`${API}/${id}/system-events`, {
+  return axios.post(`${API}/${ensureHoaDonId(id)}/system-events`, {
     eventCode,
     note,
     trackingUrl
@@ -63,15 +83,15 @@ export const updateHoaDonBySystemEvent = (id, eventCode, note = "", trackingUrl 
 }
 
 export const addHoaDonItem = (id, data) => {
-  return axios.post(`${API}/${id}/items`, data)
+  return axios.post(`${API}/${ensureHoaDonId(id)}/items`, data)
 }
 
 export const updateHoaDonItemQty = (id, itemId, data) => {
-  return axios.put(`${API}/${id}/items/${itemId}`, data)
+  return axios.put(`${API}/${ensureHoaDonId(id)}/items/${itemId}`, data)
 }
 
 export const deleteHoaDonItem = (id, itemId) => {
-  return axios.delete(`${API}/${id}/items/${itemId}`)
+  return axios.delete(`${API}/${ensureHoaDonId(id)}/items/${itemId}`)
 }
 
 export const cancelHoaDon = (id, reason = "") => {

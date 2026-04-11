@@ -84,7 +84,7 @@
                   class="iconbtn"
                   :to="`/admin/phuong-thuc-thanh-toan/form/${item.id}`"
                 >
-                  <Pencil size="16" />
+                  <span class="material-icons-outlined">visibility</span>
                 </router-link>
 
                 <button
@@ -119,7 +119,7 @@ import {
   getAllPTTT,
   deletePTTT
 } from "../../../services/ptttService"
-import { Pencil, Trash2 } from "lucide-vue-next"
+import { Trash2 } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel } from "../../../utils/adminStatus"
 
 const search = ref("")
@@ -165,6 +165,8 @@ const filteredList = computed(() => {
 })
 
 async function remove(id) {
+  const ok = await window.confirmDialog?.("Xóa phương thức thanh toán này?") ?? confirm("Xóa phương thức thanh toán này?")
+  if (!ok) return
   await deletePTTT(id)
   loadData()
 }

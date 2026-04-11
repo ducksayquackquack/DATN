@@ -33,9 +33,8 @@
             <label>Mã</label>
             <input
               type="text"
-              readonly
-              value="Mã tự sinh"
-              class="auto-code-input"
+              placeholder="VD: COD, BANK, VNPAY..."
+              v-model="form.code"
             />
           </div>
 
@@ -110,8 +109,7 @@ onMounted(async () => {
 })
 
 async function save() {
-  const action = id ? "update" : "create"
-  const confirmed = await window.confirm(`Do you really wanna change it? (${action} payment method)`)
+  const confirmed = await window.confirmDialog?.(id ? "Bạn có chắc muốn cập nhật phương thức thanh toán này?" : "Bạn có chắc muốn tạo phương thức thanh toán mới?") ?? confirm(id ? "Cập nhật phương thức thanh toán?" : "Tạo phương thức mới?")
   if (!confirmed) return
 
   const payload = {

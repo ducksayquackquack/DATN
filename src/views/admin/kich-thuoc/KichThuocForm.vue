@@ -32,7 +32,6 @@ const form = reactive({
   maKichThuoc: "",
   tenKichThuoc: "",
   trangThai: "Hoạt động",
-  thuTu: "",
   ghiChu: ""
 })
 
@@ -43,21 +42,18 @@ onMounted(async () => {
     form.maKichThuoc = res.data.maKichThuoc || ""
     form.tenKichThuoc = res.data.tenKichThuoc || ""
     form.trangThai = normalizeTrangThai(res.data.trangThai)
-    form.thuTu = res.data.thuTu || ""
     form.ghiChu = res.data.ghiChu || res.data.moTa || ""
   }
 })
 
 async function save() {
-  const action = id ? "update" : "create"
-  const confirmed = await window.confirm(`Do you really wanna change it? (${action} size)`)
+  const confirmed = await window.confirmDialog?.(id ? "Bạn có chắc muốn cập nhật kích thước này?" : "Bạn có chắc muốn tạo kích thước mới?") ?? confirm(id ? "Cập nhật kích thước?" : "Tạo kích thước mới?")
   if (!confirmed) return
 
   const payload = {
     maKichThuoc: form.maKichThuoc,
     tenKichThuoc: form.tenKichThuoc,
     trangThai: mapToBE(form.trangThai),
-    thuTu: form.thuTu,
     ghiChu: form.ghiChu
   }
 
@@ -123,18 +119,8 @@ async function save() {
             </select>
           </div>
 
-          <div class="field">
-            <label>Thứ tự hiển thị</label>
-            <input
-              class="input"
-              type="number"
-              v-model="form.thuTu"
-              placeholder="VD: 1"
-            />
-          </div>
-
           <div class="field" style="grid-column: 1 / -1">
-            <label>Ghi chú</label>
+            <label>Mô tả</label>
             <textarea
               class="input"
               v-model="form.ghiChu"
@@ -155,9 +141,12 @@ async function save() {
   padding: 10px 14px;
   border-radius: 12px;
   border: 1px solid #d8dee9;
-  background: #fff;
+  background-color: #fff;
   font-size: 14px;
   transition: 0.2s ease;
+}
+select.input {
+  padding-right: 34px;
 }
 
 .input:focus {

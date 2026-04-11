@@ -28,15 +28,15 @@ import img9 from "../assets/img/Jackets/coach/coach-da-asos.jpg?url"
 import img10 from "../assets/img/Jackets/coach/coach-gia-da.jpg?url"
 import img11 from "../assets/img/Jackets/coach/coach-long-cuu.jpg?url"
 // New products
-import img12 from "../assets/img/Jackets/bomber/bomber-astronaut/IMG_4435.PNG?url"
-import img13 from "../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4437.PNG?url"
-import img14 from "../assets/img/Jackets/bomber/bomber-windbreaker/IMG_4432.PNG?url"
-import img15 from "../assets/img/Jackets/coach/coach-leopard/IMG_4445.PNG?url"
-import img16 from "../assets/img/Jackets/coach/coach-longsleeve/IMG_4442.PNG?url"
-import img17 from "../assets/img/Jackets/coach/coach-tiger-stripe/IMG_4446.PNG?url"
-import img18 from "../assets/img/Jackets/hoodie/hoodie-camo/IMG_4450.PNG?url"
-import img19 from "../assets/img/Jackets/hoodie/hoodie-zip-boxy/IMG_4452.PNG?url"
-import img20 from "../assets/img/Jackets/hoodie/hoodie-zip-silk/IMG_4447.PNG?url"
+import img12 from "../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-black.PNG?url"
+import img13 from "../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-black.PNG?url"
+import img14 from "../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-black.PNG?url"
+import img15 from "../assets/img/Jackets/coach/coach-leopard/coach-leopard.PNG?url"
+import img16 from "../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-black.PNG?url"
+import img17 from "../assets/img/Jackets/coach/coach-tiger-stripe/coach-tiger-stripe.PNG?url"
+import img18 from "../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-black.PNG?url"
+import img19 from "../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-blue.PNG?url"
+import img20 from "../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-black.PNG?url"
 
 const props = defineProps({
   cartCount: { type: Number, default: null }
@@ -189,7 +189,7 @@ const normalizeSearchProduct = (item) => {
   }
 }
 
-const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(toNumber(value)) + "đ"
+const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(toNumber(value)) + "₫"
 
 const searchMatches = computed(() => {
   const keyword = normalizeKeyword(searchQuery.value)
@@ -657,6 +657,17 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #c5162d 0%, #8f1121 100%);
 }
 
+.sn-topbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.32;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 18px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 18px);
+}
+
 .sn-topbar__inner {
   width: 100%;
   padding: 10px 18px;
@@ -686,10 +697,30 @@ onUnmounted(() => {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(255, 255, 255, 0.96);
-  border-bottom: 1px solid rgba(143, 17, 33, 0.08);
+  background:
+    radial-gradient(circle at 10% 18%, rgba(239, 68, 68, 0.17), transparent 42%),
+    linear-gradient(155deg, #09090d 0%, #17161e 45%, #08080c 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(14px);
-  box-shadow: 0 12px 28px rgba(21, 21, 21, 0.08);
+  box-shadow: 0 12px 28px rgba(8, 10, 20, 0.35);
+  overflow: visible;
+}
+
+.sn-site-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.25;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 16px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px);
+  background-size: auto, 16px 100%;
+}
+
+.sn-site-header__inner {
+  position: relative;
+  z-index: 1;
 }
 
 .sn-site-header__inner {
@@ -726,37 +757,36 @@ onUnmounted(() => {
 }
 
 .sn-brand__d-icon {
-  width: 1.08em;
-  height: 1.08em;
+  width: 1.4em;
+  height: 1.4em;
   object-fit: contain;
   margin-right: -0.04em;
+  margin-top: -0.15em;
   vertical-align: middle;
   filter:
     sepia(1)
-    saturate(14)
+    saturate(20)
     hue-rotate(326deg)
-    brightness(0.98)
-    contrast(1.16)
-    drop-shadow(0 3px 8px rgba(197, 22, 45, 0.22));
+    brightness(1.3)
+    contrast(1.1);
   transition: transform 0.25s ease, filter 0.25s ease;
 }
 
 .sn-brand:hover .sn-brand__d-icon {
-  transform: scale(1.08) rotate(-3deg);
+  transform: scale(1.1) rotate(-3deg);
   filter:
     sepia(1)
-    saturate(15)
+    saturate(22)
     hue-rotate(326deg)
-    brightness(1.03)
-    contrast(1.18)
-    drop-shadow(0 4px 12px rgba(197, 22, 45, 0.3));
+    brightness(1.4)
+    contrast(1.12);
 }
 
 .sn-brand__rest {
   font-size: 1em;
   font-weight: 800;
   letter-spacing: -0.035em;
-  color: #151515;
+  color: #ffffff;
   font-family: "Be Vietnam Pro", "Segoe UI", Tahoma, sans-serif;
   transition: color 0.25s ease;
 }
@@ -774,30 +804,45 @@ onUnmounted(() => {
   overflow: visible;
 }
 
-.sn-menu > a,
-.sn-dropdown > a {
+.sn-site-header .sn-menu > a,
+.sn-site-header .sn-dropdown > a {
   white-space: nowrap;
-  padding: 10px 8px;
+  padding: 10px 12px;
   border-radius: 12px;
-  color: #151515;
+  color: rgba(255, 255, 255, 0.76);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   text-decoration: none;
   border: 0;
   background: transparent;
   cursor: pointer;
   display: inline-block;
+  position: relative;
 }
 
-.sn-menu-link.router-link-active,
-.sn-menu-link.router-link-exact-active {
-  color: #8f1121;
-  background: rgba(197, 22, 45, 0.1);
+.sn-site-header .sn-menu-link.router-link-active,
+.sn-site-header .sn-menu-link.router-link-exact-active {
+  color: #ff6b6b;
+  background: rgba(220, 38, 38, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(255, 107, 107, 0.28);
 }
 
-.sn-menu > a:hover,
-.sn-dropdown > a:hover {
-  background: rgba(197, 22, 45, 0.06);
+.sn-site-header .sn-menu-link.router-link-active::after,
+.sn-site-header .sn-menu-link.router-link-exact-active::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 6px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ff6b6b 0%, #dc2626 100%);
+}
+
+.sn-site-header .sn-menu > a:hover,
+.sn-site-header .sn-dropdown > a:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
 }
 
 .sn-dropdown {
@@ -940,14 +985,14 @@ onUnmounted(() => {
   gap: 10px;
   min-width: 320px;
   padding: 10px 14px;
-  border: 1px solid #e8d8db;
-  background: white;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
   border-radius: 999px;
   box-shadow: none;
 }
 
 .sn-search svg {
-  color: #7b7276;
+  color: rgba(255, 255, 255, 0.68);
   flex-shrink: 0;
 }
 
@@ -962,12 +1007,12 @@ onUnmounted(() => {
   appearance: none;
   -webkit-appearance: none;
   font: inherit;
-  color: #151515;
+  color: #f8fafc;
   font-size: 14px;
 }
 
 .sn-search input::placeholder {
-  color: #9b9094;
+  color: rgba(255, 255, 255, 0.52);
 }
 
 .sn-search-dropdown {
@@ -1096,15 +1141,16 @@ onUnmounted(() => {
   justify-content: center;
   width: 42px;
   height: 42px;
-  border: 1px solid #e8d8db;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 12px;
-  background: white;
-  color: #151515;
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
   cursor: pointer;
 }
 
 .sn-icon-button:hover {
-  border-color: rgba(197, 22, 45, 0.28);
+  border-color: rgba(255, 107, 107, 0.38);
+  background: rgba(220, 38, 38, 0.2);
 }
 
 .sn-hamburger {
@@ -1157,8 +1203,8 @@ onUnmounted(() => {
 }
 
 .sn-user-btn {
-  border: 1px solid #e8d8db;
-  background: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
   border-radius: 12px;
   min-height: 42px;
   padding: 6px 10px;
@@ -1199,12 +1245,12 @@ onUnmounted(() => {
 .sn-name {
   font-size: 13px;
   font-weight: 700;
-  color: #151515;
+  color: #ffffff;
 }
 
 .sn-role {
   font-size: 11px;
-  color: #6f6a6d;
+  color: rgba(255, 255, 255, 0.64);
 }
 
 .sn-profile-dropdown {
@@ -1255,10 +1301,10 @@ onUnmounted(() => {
   display: grid;
   gap: 8px;
   padding: 14px;
-  border: 1px solid rgba(143, 17, 33, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 18px;
-  background: white;
-  box-shadow: 0 8px 20px rgba(143, 17, 33, 0.08);
+  background: #1e1e2d;
+  box-shadow: 0 10px 24px rgba(6, 8, 16, 0.38);
 }
 
 .sn-mobile-menu__panel button {
@@ -1269,11 +1315,16 @@ onUnmounted(() => {
   padding: 0 14px;
   border: 0;
   border-radius: 12px;
-  background: #fdf4f5;
-  color: #8f1121;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.88);
   font-weight: 700;
   cursor: pointer;
   font: inherit;
+}
+
+.sn-mobile-menu__panel button:hover {
+  background: rgba(220, 38, 38, 0.2);
+  color: #ff6b6b;
 }
 
 .sn-pop-enter-active,
@@ -1315,6 +1366,57 @@ onUnmounted(() => {
   .sn-search-dropdown {
     width: min(520px, 92vw);
     left: 0;
+  }
+}
+
+@media (max-width: 1200px) {
+  .sn-site-header__inner {
+    width: min(1260px, calc(100% - 20px));
+  }
+
+  .sn-nav-shell {
+    gap: 12px;
+  }
+
+  .sn-menu {
+    gap: 8px;
+  }
+
+  .sn-site-header .sn-menu > a,
+  .sn-site-header .sn-dropdown > a {
+    padding: 8px 8px;
+    font-size: 13px;
+  }
+
+  .sn-actions {
+    gap: 8px;
+  }
+
+  .sn-search {
+    width: min(280px, 36vw);
+  }
+
+  .sn-identity {
+    max-width: 140px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .sn-menu {
+    display: none;
+  }
+
+  .sn-hamburger {
+    display: inline-flex;
+  }
+
+  .sn-search {
+    width: min(240px, 42vw);
+    min-width: 150px;
+  }
+
+  .sn-identity {
+    display: none;
   }
 }
 

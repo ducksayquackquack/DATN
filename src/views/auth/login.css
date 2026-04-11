@@ -23,10 +23,17 @@
   align-items:center;
   gap:10px;
 
-  padding:10px 12px;
+  min-height: 52px;
+  padding:8px 12px;
   border:1px solid rgba(0,0,0,.15);
   background: rgba(248, 250, 252, 0.92);
   border-radius: 999px;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+
+.pw:focus-within{
+  border-color:#dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
 }
 
 /* Input password bỏ nền trắng */
@@ -37,7 +44,8 @@
   outline:0;
   background: transparent;
   color: #111827;
-  font-size:14px;
+  font-size:16px;
+  padding: 8px 2px;
 }
 
 /* Placeholder giống ô Email */
@@ -47,8 +55,8 @@
 
 /* Nút mắt gọn và “ăn” vào khung */
 .pw .iconbtn{
-  width:40px;
-  height:40px;
+  width:36px;
+  height:36px;
   border-radius: 999px;
   border:1px solid rgba(0,0,0,.12);
   background: rgba(255,255,255,0.7);
@@ -95,6 +103,57 @@
   flex:1;
   height:1px;
   background: rgba(0,0,0,.1);
+}
+
+@media (max-width: 1024px) {
+  .auth {
+    padding: 16px 12px;
+  }
+
+  .auth-card {
+    width: min(680px, 95vw);
+  }
+}
+
+@media (max-width: 768px) {
+  .auth {
+    min-height: 100dvh;
+    padding: 12px 10px;
+  }
+
+  .auth-card {
+    width: min(620px, 100%);
+    border-radius: 16px;
+  }
+
+  .row {
+    align-items: flex-start;
+  }
+
+  .footnote {
+    flex-wrap: wrap;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth {
+    padding: 8px;
+  }
+
+  .auth-card {
+    width: 100%;
+    border-radius: 14px;
+  }
+
+  .pw {
+    min-height: 48px;
+  }
+
+  .pw .iconbtn {
+    width: 34px;
+    height: 34px;
+  }
 }
 
 .footnote{

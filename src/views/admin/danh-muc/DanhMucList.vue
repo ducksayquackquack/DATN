@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from "vue"
 import { useRouter } from "vue-router"
 import { getAllDanhMuc, deleteDanhMuc } from "../../../services/danhMucService"
-import { Pencil, Trash2 } from "lucide-vue-next"
+import { Trash2 } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel } from "../../../utils/adminStatus"
 
 const router = useRouter()
@@ -183,7 +183,7 @@ const remove = async (id) => {
             <td class="action-cell">
               <div class="actions">
                 <button class="iconbtn" @click="goToEdit(dm.id)">
-                  <Pencil size="16"/>
+                  <span class="material-icons-outlined">visibility</span>
                 </button>
 
                 <button class="iconbtn" @click="remove(dm.id)">

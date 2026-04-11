@@ -9,12 +9,13 @@ const recentToasts = new Map()
 
 export function useToast() {
   const showToast = (message, type = 'success', durationOrOptions = DEFAULT_TOAST_DURATION, maybeOptions = {}) => {
-    const duration = typeof durationOrOptions === 'number'
+    const baseDuration = typeof durationOrOptions === 'number'
       ? durationOrOptions
       : DEFAULT_TOAST_DURATION
     const options = typeof durationOrOptions === 'object' && durationOrOptions !== null
       ? durationOrOptions
       : maybeOptions
+    const duration = Number(options?.duration || baseDuration || DEFAULT_TOAST_DURATION)
     const onceKey = String(options?.onceKey || '').trim()
     const duplicateKey = `${type}:${String(message || '').trim()}`
     const now = Date.now()
@@ -40,8 +41,11 @@ export function useToast() {
       id,
       message,
       type,
-      duration,
-      visible: true
+      duration: Math.max(duration, 200),
+      visible: true,
+      variant: String(options?.variant || '').trim(),
+      payload: options?.payload || null,
+      action: options?.action || null
     })
 
     setTimeout(() => {
@@ -54,9 +58,26 @@ export function useToast() {
     return id
   }
 
+  const dismissToast = (id) => {
+    const index = toasts.value.findIndex((t) => t.id === id)
+    if (index > -1) {
+      toasts.value.splice(index, 1)
+    }
+  }
+
+  const cartAdded = (payload = {}, duration = 5000) => {
+    return showToast('Thêm vào giỏ hàng thành công', 'success', {
+      duration,
+      variant: 'cart-add',
+      payload
+    })
+  }
+
   return {
     toasts,
     showToast,
+    dismissToast,
+    cartAdded,
     success: (msg, durationOrOptions, maybeOptions) => {
       if (durationOrOptions === undefined) {
         return showToast(msg, 'success', SUCCESS_TOAST_DURATION, maybeOptions)

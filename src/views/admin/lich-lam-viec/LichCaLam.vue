@@ -96,7 +96,7 @@
               <td class="text-center">
                 <div class="action-buttons">
                   <button class="btn-icon" @click="editShift(shift)" title="Chỉnh sửa">
-                    <span class="material-icons-outlined">edit</span>
+                    <span class="material-icons-outlined">visibility</span>
                   </button>
                   <button class="btn-icon danger" @click="deleteShift(shift)" title="Xóa">
                     <span class="material-icons-outlined">delete</span>
@@ -445,16 +445,19 @@ onMounted(loadShifts)
   padding: 0 12px;
   border: 1px solid #d1d5db;
   border-radius: 10px;
-  background: #fff;
+  background-color: #fff;
   font-size: 14px;
   color: #111827;
+}
+.form-select {
+  padding-right: 34px;
 }
 
 .form-input:focus,
 .form-select:focus {
   outline: none;
-  border-color: #93c5fd;
-  box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.26);
+  border-color: #f87171;
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.2);
 }
 
 .btn-add,

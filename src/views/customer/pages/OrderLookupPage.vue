@@ -36,8 +36,33 @@ const formatDateTime = (value) => {
 
 const formatMoney = (value) => {
   const amount = Number(value)
-  if (!Number.isFinite(amount)) return '0đ'
-  return `${new Intl.NumberFormat('vi-VN').format(amount)}đ`
+  if (!Number.isFinite(amount)) return '0₫'
+  return `${new Intl.NumberFormat('vi-VN').format(amount)}₫`
+}
+
+const normalizeMetaText = (value = '') => {
+  const normalized = String(value || '').trim()
+  if (!normalized) return ''
+  const lowered = normalized.toLowerCase()
+  if (['null', 'undefined', 'n/a', 'na', 'khong ro', 'không rõ', 'chua ro', 'chưa rõ'].includes(lowered)) {
+    return ''
+  }
+  return normalized
+}
+
+const getLookupItemColor = (item = {}) => {
+  return normalizeMetaText(item?.mauSac?.tenMauSac || item?.mauSac?.tenMau || item?.tenMauSac || item?.tenMau || item?.mauSac)
+}
+
+const getLookupItemSize = (item = {}) => {
+  return normalizeMetaText(item?.kichThuoc?.tenKichThuoc || item?.kichThuoc?.tenSize || item?.tenKichThuoc || item?.tenSize || item?.kichThuoc)
+}
+
+const getLookupItemVoucher = (item = {}) => {
+  const code = String(item?.maPhieuGiamGia || item?.voucherCode || item?.maVoucher || item?.phieuGiamGia || item?.voucher?.code || '').trim()
+  const discount = Number(item?.voucherDiscount || item?.giamGiaVoucher || item?.giaTriGiamGia || item?.discount || item?.voucher?.discount || 0)
+  if (!code && !(discount > 0)) return null
+  return { code, discount }
 }
 
 /* ── Main status steps (always shown) ── */
@@ -179,7 +204,7 @@ const traCuu = async () => {
   loi.value = ''
   ketQua.value = null
 
-  const ma = String(maDonHang.value || '').trim()
+  const ma = String(maDonHang.value || '').trim().replace(/^#+/, '')
   if (!ma) {
     loi.value = 'Vui lòng nhập mã đơn hàng.'
     return
@@ -196,7 +221,15 @@ const traCuu = async () => {
       ketQua.value = null
     }
   } catch (error) {
-    loi.value = error?.response?.data?.message || 'Không thể tra cứu đơn hàng lúc này. Vui lòng thử lại sau.'
+    const status = error?.response?.status
+    const backendMsg = error?.response?.data?.message || error?.response?.data?.error || ''
+    if (status === 404 || /khong tim thay|not found/i.test(backendMsg)) {
+      loi.value = 'Không tìm thấy đơn hàng phù hợp. Vui lòng kiểm tra lại mã đơn.'
+    } else if (backendMsg) {
+      loi.value = backendMsg
+    } else {
+      loi.value = 'Không thể tra cứu đơn hàng lúc này. Vui lòng thử lại sau.'
+    }
   } finally {
     dangTraCuu.value = false
   }
@@ -333,7 +366,18 @@ onMounted(() => {
                 </thead>
                 <tbody>
                   <tr v-for="it in ketQua.items" :key="it.id">
-                    <td class="item-name">{{ it.tenSanPham || it.maSanPham || it.maSanPhamChiTiet || `SPCT#${it.spctId}` }}</td>
+                    <td class="item-name">
+                      <div class="item-name-main">{{ it.tenSanPham || it.tenSanPhamChiTiet || it.maSanPham || it.maSanPhamChiTiet || `SPCT#${it.spctId}` }}</div>
+                      <div v-if="getLookupItemColor(it) || getLookupItemSize(it)" class="item-meta-inline">
+                        <template v-if="getLookupItemColor(it)">Màu: {{ getLookupItemColor(it) }}</template>
+                        <template v-if="getLookupItemColor(it) && getLookupItemSize(it)"> • </template>
+                        <template v-if="getLookupItemSize(it)">Size: {{ getLookupItemSize(it) }}</template>
+                      </div>
+                      <div v-if="getLookupItemVoucher(it)" class="item-voucher-inline">
+                        Voucher {{ getLookupItemVoucher(it).code || 'đã áp dụng' }}
+                        <template v-if="getLookupItemVoucher(it).discount > 0"> • -{{ formatMoney(getLookupItemVoucher(it).discount) }}</template>
+                      </div>
+                    </td>
                     <td>{{ it.soLuong }}</td>
                     <td>{{ formatMoney(it.giaBan) }}</td>
                     <td class="item-total">{{ formatMoney(it.thanhTien) }}</td>
@@ -700,6 +744,24 @@ onMounted(() => {
 .item-name {
   font-weight: 600;
   color: #1f2937;
+}
+
+.item-name-main {
+  font-weight: 700;
+}
+
+.item-meta-inline {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.item-voucher-inline {
+  margin-top: 4px;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .item-total {

@@ -5,10 +5,12 @@ import {
   getAllKichThuoc,
   deleteKichThuoc
 } from "../../../services/kichThuocService"
-import { Pencil, Trash2 } from "lucide-vue-next"
+import { Trash2 } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel } from "../../../utils/adminStatus"
+import { useConfirm } from "../../../composables/useConfirm"
 
 const router = useRouter()
+const { askConfirm } = useConfirm()
 const list = ref([])
 
 const searchText = ref("")
@@ -34,6 +36,8 @@ async function loadData() {
 onMounted(loadData)
 
 async function remove(id) {
+  const ok = await askConfirm("Xóa kích thước này?")
+  if (!ok) return
   await deleteKichThuoc(id)
   await loadData()
 }
@@ -107,6 +111,7 @@ const filteredData = computed(() => {
             <tr>
               <th style="width:120px">Mã</th>
               <th>Size</th>
+              <th>Mô tả</th>
               <th style="width:170px" class="center">Ngày tạo</th>
               <th style="width:170px" class="center">Ngày sửa</th>
               <th style="width:180px" class="center">Trạng thái</th>
@@ -119,6 +124,10 @@ const filteredData = computed(() => {
               <td>{{ kt.maKichThuoc }}</td>
 
               <td><b>{{ kt.tenKichThuoc }}</b></td>
+
+              <td>
+                <span class="muted" style="font-size:13px">{{ kt.ghiChu || '-' }}</span>
+              </td>
 
               <td class="center">{{ formatDateTime(kt.ngayTao) }}</td>
 
@@ -139,7 +148,7 @@ const filteredData = computed(() => {
                     class="iconbtn"
                     @click="router.push(`/admin/kich-thuoc/form/${kt.id}`)"
                   >
-                    <Pencil size="16" />
+                    <span class="material-icons-outlined">visibility</span>
                   </button>
 
                   <button
@@ -153,7 +162,7 @@ const filteredData = computed(() => {
             </tr>
 
             <tr v-if="filteredData.length === 0">
-              <td colspan="6" style="text-align:center">
+              <td colspan="7" style="text-align:center">
                 Không có dữ liệu
               </td>
             </tr>

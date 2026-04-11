@@ -23,7 +23,7 @@
           <button class="tc-btn tc-btn-primary" type="button" @click="go('/admin/san-pham/list')">
             <Shirt :size="14" :stroke-width="2.3" /> Quản lý sản phẩm
           </button>
-          <button class="tc-btn tc-btn-outline" type="button" @click="go('/admin/hoa-don/pos')">
+          <button class="tc-btn tc-btn-outline" type="button" @click="go('/admin/ban-hang')">
             <CreditCard :size="14" :stroke-width="2.3" /> Vào màn bán hàng
           </button>
           <button class="tc-btn tc-btn-soft" type="button" @click="syncDashboard" :disabled="loading">
@@ -85,10 +85,10 @@
         <div class="tc-kpi-sub">Theo hóa đơn hiện có</div>
       </article>
 
-      <article class="tc-kpi-card">
+      <article v-if="false" class="tc-kpi-card">
         <div class="tc-kpi-label">Sản phẩm cận tồn</div>
         <div class="tc-kpi-value">{{ lowStockProducts.length }}</div>
-        <div class="tc-kpi-sub">Ngưỡng cảnh báo ≤ 12</div>
+        <div class="tc-kpi-sub">Ngưỡng cảnh báo &lt; 12</div>
       </article>
 
       <article class="tc-kpi-card">
@@ -196,7 +196,7 @@
       </article>
 
       <div class="tc-side-col">
-        <article class="tc-card">
+        <article v-if="false" class="tc-card">
           <div class="tc-card-head">
             <h2>Tồn kho cảnh báo</h2>
             <button class="tc-link-btn" type="button" @click="go('/admin/san-pham/list')">Mở kho</button>
@@ -208,9 +208,11 @@
                 <div class="tc-list-title">{{ item.tenSanPham }}</div>
                 <div class="tc-list-sub">{{ item.maSanPham }}</div>
               </div>
-              <div class="tc-list-tail">{{ item.ton }}</div>
+              <span class="tc-stock-badge" :class="`tc-stock-${item.urgency}`">
+                {{ item.ton === 0 ? 'Hết hàng' : `Còn ${item.ton}` }}
+              </span>
             </div>
-            <div v-if="!lowStockProducts.length" class="tc-empty">Không có sản phẩm cận tồn.</div>
+            <div v-if="!lowStockProducts.length" class="tc-empty">Tất cả sản phẩm đều đủ hàng.</div>
           </div>
         </article>
 
@@ -275,19 +277,35 @@ import {
   ChevronRight
 } from 'lucide-vue-next'
 
-import { getAllHoaDon } from '../../services/hoaDonService'
+import { getAllHoaDon, getHoaDonById } from '../../services/hoaDonService'
 import { getAllSanPham } from '../../services/sanPhamService'
 import { getAllKhuyenMai, getAllVouchers } from '../../services/khuyenMaiService'
 import { getAllNhanVien } from '../../services/nhanVienService'
 import { getAllKhachHang } from '../../services/KhachHangService'
+import { resolveApiOrigin } from '../../utils/apiOrigin'
+import { getProductImageOverride } from '../../utils/productImageOverrides'
 
 import logo from '../../assets/img/logo/new logo.png?url'
-
-// HD jacket product images (no people) from Unsplash
-const jacket1 = 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=1920&q=90&fit=crop&auto=format'
-const jacket2 = 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=1920&q=90&fit=crop&auto=format'
-const jacket3 = 'https://images.unsplash.com/photo-1548126032-079a0fb0099d?w=1920&q=90&fit=crop&auto=format'
-const jacket4 = 'https://images.unsplash.com/photo-1520975916090-3105956dac38?w=1920&q=90&fit=crop&auto=format'
+import img1 from '../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url'
+import img2 from '../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url'
+import img3 from '../../assets/img/Jackets/bomber/bomber-gia-da.jpg?url'
+import img4 from '../../assets/img/Jackets/bomber/bomber-nhe-cotton.jpg?url'
+import img5 from '../../assets/img/Jackets/hoodie/hoodie-dang-hop.jpg?url'
+import img6 from '../../assets/img/Jackets/hoodie/hoodie-in-hinh.jpg?url'
+import img7 from '../../assets/img/Jackets/hoodie/hoodie-keo-khoa.jpg?url'
+import img8 from '../../assets/img/Jackets/coach/coach-cach-nhiet.jpg?url'
+import img9 from '../../assets/img/Jackets/coach/coach-da-asos.jpg?url'
+import img10 from '../../assets/img/Jackets/coach/coach-gia-da.jpg?url'
+import img11 from '../../assets/img/Jackets/coach/coach-long-cuu.jpg?url'
+import img12 from '../../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-black.PNG?url'
+import img13 from '../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-black.PNG?url'
+import img14 from '../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-black.PNG?url'
+import img15 from '../../assets/img/Jackets/coach/coach-leopard/coach-leopard.PNG?url'
+import img16 from '../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-black.PNG?url'
+import img17 from '../../assets/img/Jackets/coach/coach-tiger-stripe/coach-tiger-stripe.PNG?url'
+import img18 from '../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-black.PNG?url'
+import img19 from '../../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-blue.PNG?url'
+import img20 from '../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-black.PNG?url'
 import vnpayLogo from '../../assets/img/payments/vnpay.png?url'
 import visaLogo from '../../assets/img/payments/visa.png?url'
 import momoLogo from '../../assets/img/payments/momo.png?url'
@@ -306,28 +324,54 @@ const campaigns = ref([])
 const vouchers = ref([])
 const employees = ref([])
 const customers = ref([])
+const soldBySpct = ref(new Map())
+const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, '')
+const mappedFallbackByCode = {
+  SP001: img1,
+  SP002: img2,
+  SP003: img3,
+  SP004: img4,
+  SP005: img5,
+  SP006: img6,
+  SP007: img7,
+  SP008: img8,
+  SP009: img9,
+  SP010: img10,
+  SP011: img11,
+  SP012: img12,
+  SP013: img13,
+  SP014: img14,
+  SP015: img15,
+  SP016: img16,
+  SP017: img17,
+  SP018: img18,
+  SP019: img19,
+  SP020: img20
+}
+
+const mappedFallbackByName = {
+  'coach longsleeve dirtywave': img16,
+  'bomber windbreaker dirtywave': img14,
+  'hoodie camo dirtywave': img18,
+  'bomber astronaut dirtywave': img12,
+  'hoodie zip silk dirtywave': img20,
+  'coach tiger stripe dirtywave': img17,
+  'hoodie zip boxy dirtywave': img19,
+  'bomber embroidered fuzzy dirtywave': img13
+}
+
+const featuredPriorityNames = [
+  'coach longsleeve dirtywave',
+  'bomber windbreaker dirtywave',
+  'hoodie camo dirtywave',
+  'bomber astronaut dirtywave',
+  'hoodie zip silk dirtywave',
+  'coach tiger stripe dirtywave',
+  'hoodie zip boxy dirtywave',
+  'bomber embroidered fuzzy dirtywave'
+]
 
 const activeSlide = ref(0)
-const slides = [
-  {
-    kicker: 'Bộ sưu tập',
-    title: 'Jacket Da Lộn Signature',
-    desc: 'Trình bày sản phẩm chủ lực với khung ảnh chuẩn để quản lý chiến dịch theo ngày.',
-    img: jacket1
-  },
-  {
-    kicker: 'Vận hành',
-    title: 'Hoodie Zip Collection',
-    desc: 'Tối ưu section hiển thị để vừa giống tinh thần SevenStrike vừa khớp brand DirtyWave.',
-    img: jacket2
-  },
-  {
-    kicker: 'Hiệu suất',
-    title: 'Coach Jacket Utility',
-    desc: 'Dùng dữ liệu thật từ hóa đơn, sản phẩm, khuyến mãi để điều phối nhanh.',
-    img: jacket3
-  }
-]
 
 const quickLinks = [
   { title: 'Sản phẩm', desc: 'Danh sách, form thêm/sửa', path: '/admin/san-pham/list', icon: Shirt },
@@ -373,10 +417,80 @@ const toNumber = (value) => {
   return Number.isFinite(n) ? n : 0
 }
 
+const normalizeName = (value = '') => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ')
+
 const parseDate = (value) => {
   if (!value) return null
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? null : date
+}
+
+const isImageString = (value = '') => {
+  const raw = String(value || '').trim()
+  if (!raw) return false
+  if (/^data:image\//i.test(raw)) return true
+
+  const normalized = raw.replace(/\\/g, '/').split(/[?#]/)[0]
+  if (normalized.startsWith('/uploads/') || normalized.startsWith('uploads/')) return true
+  if (/\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(normalized)) return true
+  return /^https?:\/\//i.test(raw)
+}
+
+const toImageUrl = (value = '') => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  if (/^data:image\//i.test(raw)) return raw
+
+  const normalized = raw.replace(/\\/g, '/')
+  const uploadsMatch = normalized.match(/^.*?\/?(uploads\/.*)$/i)
+  if (uploadsMatch?.[1]) return `${BACKEND_ORIGIN}/${uploadsMatch[1]}`
+  if (/^https?:\/\//i.test(normalized)) return normalized
+  if (normalized.startsWith('/')) return normalized
+  if (normalized.startsWith('uploads/')) return `${BACKEND_ORIGIN}/${normalized}`
+  return normalized.includes('/') ? `/${normalized.replace(/^\/+/, '')}` : normalized
+}
+
+const pickImageValue = (entry) => {
+  if (!entry) return ''
+
+  if (typeof entry === 'string') {
+    return isImageString(entry) ? toImageUrl(entry) : ''
+  }
+
+  if (Array.isArray(entry)) {
+    for (const child of entry) {
+      const found = pickImageValue(child)
+      if (found) return found
+    }
+    return ''
+  }
+
+  if (typeof entry === 'object') {
+    const keys = ['anh', 'hinhAnh', 'image', 'imageUrl', 'images', 'listAnh', 'anhChinh', 'duongDanAnh', 'src', 'thumbnail']
+    for (const key of keys) {
+      const found = pickImageValue(entry[key])
+      if (found) return found
+    }
+  }
+
+  return ''
+}
+
+const resolveProductImage = (product = {}) => {
+  const override = getProductImageOverride({ id: product?.id, maSanPham: product?.maSanPham })[0]
+  const overrideUrl = toImageUrl(override)
+  if (overrideUrl) return overrideUrl
+
+  const byName = mappedFallbackByName[normalizeName(product?.tenSanPham)]
+  if (byName) return byName
+
+  const directImage = pickImageValue([product, product?.sanPhamChiTiets])
+  if (directImage) return directImage
+
+  const code = String(product?.maSanPham || '').trim().toUpperCase()
+  if (mappedFallbackByCode[code]) return mappedFallbackByCode[code]
+
+  return logo
 }
 
 const formatCurrency = (value) => `${new Intl.NumberFormat('vi-VN').format(toNumber(value))}₫`
@@ -389,13 +503,15 @@ const formatDate = (value) => {
 const invoiceDate = (item) => parseDate(item?.ngayTao || item?.createdAt || item?.ngayDat)
 
 const invoiceTotal = (item) => {
-  return (
+  const gross = (
     toNumber(item?.tongTien) ||
     toNumber(item?.thanhTien) ||
     toNumber(item?.tongTienThanhToan) ||
     toNumber(item?.totalAmount) ||
     0
   )
+  const shipping = toNumber(item?.phiVanChuyen || item?.phiShip || item?.shippingFee || 0)
+  return Math.max(0, gross - shipping)
 }
 
 const invoiceStatus = (item) => {
@@ -420,11 +536,50 @@ const invoicePaymentCode = (item) => {
 }
 
 const productStock = (item) => {
-  const details = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
-  if (details.length) {
-    return details.reduce((sum, row) => sum + toNumber(row?.soLuong), 0)
+  const topLevelStock = Number(item?.soLuong ?? item?.soLuongTon ?? item?.tonKho ?? item?.ton)
+  if (Number.isFinite(topLevelStock)) {
+    return Math.max(0, topLevelStock)
   }
-  return toNumber(item?.soLuong || item?.ton || 0)
+
+  const details =
+    (Array.isArray(item?.sanPhamChiTiets) && item.sanPhamChiTiets)
+    || (Array.isArray(item?.variants) && item.variants)
+    || (Array.isArray(item?.chiTiets) && item.chiTiets)
+    || (Array.isArray(item?.danhSachBienThe) && item.danhSachBienThe)
+    || (Array.isArray(item?.sanPhamChiTietList) && item.sanPhamChiTietList)
+    || []
+  if (details.length) {
+    return details.reduce((sum, row) => {
+      const base = toNumber(row?.soLuong ?? row?.soLuongTon ?? row?.tonKho ?? row?.ton)
+      const spctId = Number(row?.id || 0)
+      const sold = spctId > 0 ? toNumber(soldBySpct.value.get(spctId)) : 0
+      return sum + Math.max(0, base - sold)
+    }, 0)
+  }
+  return 0
+}
+
+const productLowStockValue = (item) => {
+  const details =
+    (Array.isArray(item?.sanPhamChiTiets) && item.sanPhamChiTiets)
+    || (Array.isArray(item?.variants) && item.variants)
+    || (Array.isArray(item?.chiTiets) && item.chiTiets)
+    || (Array.isArray(item?.danhSachBienThe) && item.danhSachBienThe)
+    || (Array.isArray(item?.sanPhamChiTietList) && item.sanPhamChiTietList)
+    || []
+
+  if (details.length) {
+    const minVariantStock = details.reduce((minStock, row) => {
+      const base = toNumber(row?.soLuong ?? row?.soLuongTon ?? row?.tonKho ?? row?.ton)
+      const spctId = Number(row?.id || 0)
+      const sold = spctId > 0 ? toNumber(soldBySpct.value.get(spctId)) : 0
+      const available = Math.max(0, base - sold)
+      return Math.min(minStock, available)
+    }, Number.POSITIVE_INFINITY)
+    return Number.isFinite(minVariantStock) ? minVariantStock : 0
+  }
+
+  return toNumber(item?.soLuong ?? item?.soLuongTon ?? item?.tonKho ?? item?.ton ?? 0)
 }
 
 const isActivePromotion = (item) => {
@@ -491,11 +646,78 @@ const syncDashboard = async () => {
 
   if (failed.length) apiError.value = `Chưa tải được: ${failed.join(', ')}`
 
+  // Compute sold quantities per variant from completed invoices
+  await computeSoldBySpct()
+
   loading.value = false
 }
 
+const shouldCountForStock = (order) => {
+  const statusCode = String(order?.orderStatusCode || '').trim().toUpperCase()
+  const statusText = String(order?.orderStatusName || order?.trangThai || '').toUpperCase()
+  const noteText = String(order?.statusNote || '').toUpperCase()
+  if (statusCode.includes('HUY') || statusText.includes('HUY') || statusText.includes('H\u1ee6Y') || noteText.includes('HUY')) return false
+  return statusCode === 'HOAN_THANH' || statusCode === 'DA_GIAO' || statusText.includes('HOAN_THANH') || statusText.includes('HO\u00c0N TH\u00c0NH') || statusText.includes('DA_GIAO') || statusText.includes('\u0110\u00c3 GIAO')
+}
+
+const computeSoldBySpct = async () => {
+  const map = new Map()
+  const completedInvoices = invoices.value.filter(shouldCountForStock)
+  const idsToFetch = completedInvoices
+    .filter((inv) => {
+      const details = inv?.items || inv?.chiTietHoaDons || inv?.hoaDonChiTiets || inv?.chiTiets
+      return !Array.isArray(details) || details.length === 0
+    })
+    .map((inv) => Number(inv?.id))
+    .filter((id) => Number.isFinite(id) && id > 0)
+
+  // Fetch details for invoices that don't have inline details (batch of 10)
+  const detailResults = []
+  for (let i = 0; i < idsToFetch.length; i += 10) {
+    const batch = idsToFetch.slice(i, i + 10)
+    const results = await Promise.all(batch.map((id) => getHoaDonById(id).catch(() => null)))
+    detailResults.push(...results)
+  }
+  const detailById = new Map()
+  detailResults.forEach((res) => {
+    const data = res?.data
+    if (data?.id) detailById.set(Number(data.id), data)
+  })
+
+  for (const inv of completedInvoices) {
+    let items = inv?.items || inv?.chiTietHoaDons || inv?.hoaDonChiTiets || inv?.chiTiets
+    if (!Array.isArray(items) || items.length === 0) {
+      const enriched = detailById.get(Number(inv?.id))
+      items = enriched?.items || enriched?.chiTietHoaDons || enriched?.hoaDonChiTiets || enriched?.chiTiets || []
+    }
+    if (!Array.isArray(items)) continue
+    for (const item of items) {
+      const spctId = Number(item?.spctId || item?.sanPhamChiTietId || item?.idSanPhamChiTiet || item?.chiTietSanPhamId || item?.sanPhamChiTiet?.id || 0)
+      const qty = Number(item?.soLuong || item?.quantity || item?.soLuongMua || 0)
+      if (spctId > 0 && qty > 0) {
+        map.set(spctId, (map.get(spctId) || 0) + qty)
+      }
+    }
+  }
+  soldBySpct.value = map
+}
+
 const totalRevenue = computed(() => {
-  return invoices.value.reduce((sum, item) => sum + invoiceTotal(item), 0)
+  return invoices.value.reduce((sum, item) => {
+    const status = invoiceStatus(item)
+    // Bỏ qua đơn đã hủy
+    if (status.label === 'Đã hủy') return sum
+    const orderType = String(item?.loaiHoaDon || item?.orderType || '').toUpperCase()
+    const isOnline = orderType.includes('DELIVERY') || orderType.includes('TRUC_TUYEN') || orderType.includes('ONLINE')
+    if (isOnline) {
+      // Đơn trực tuyến: chỉ tính khi đã hoàn thành hoặc thanh toán chuyển khoản
+      const payCode = invoicePaymentCode(item)
+      const isCompleted = status.label === 'Hoàn thành'
+      const isBankPaid = payCode === 'OTHER' || payCode === 'VNPAY' || String(item?.phuongThucThanhToan || '').toUpperCase().includes('BANK')
+      if (!isCompleted && !isBankPaid) return sum
+    }
+    return sum + invoiceTotal(item)
+  }, 0)
 })
 
 const completedOrders = computed(() => invoices.value.filter((item) => invoiceStatus(item).label === 'Hoàn thành').length)
@@ -537,16 +759,20 @@ const recentInvoices = computed(() => {
 })
 
 const lowStockProducts = computed(() => {
-  return products.value
-    .map((item) => ({
-      id: item?.id,
-      maSanPham: item?.maSanPham || `SP-${item?.id || 'N/A'}`,
-      tenSanPham: item?.tenSanPham || 'Sản phẩm chưa đặt tên',
-      ton: productStock(item)
-    }))
-    .filter((item) => item.ton <= 12)
-    .sort((a, b) => a.ton - b.ton)
-    .slice(0, 5)
+  const rows = []
+  for (const item of products.value) {
+    const stock = productStock(item)
+    if (stock < 12) {
+      rows.push({
+        id: item?.id,
+        maSanPham: item?.maSanPham || `SP-${item?.id || 'N/A'}`,
+        tenSanPham: item?.tenSanPham || 'Sản phẩm chưa đặt tên',
+        ton: stock,
+        urgency: stock === 0 ? 'out' : stock <= 5 ? 'critical' : 'low'
+      })
+    }
+  }
+  return rows.sort((a, b) => a.ton - b.ton).slice(0, 8)
 })
 
 const activePromos = computed(() => {
@@ -572,16 +798,63 @@ const activePromos = computed(() => {
 })
 
 const featuredProducts = computed(() => {
-  const fallbackImages = [jacket1, jacket2, jacket3, jacket4]
-  return products.value
-    .slice(0, 4)
+  const normalizedPriority = featuredPriorityNames
+  const selected = []
+  const used = new Set()
+
+  for (const targetName of normalizedPriority) {
+    const index = products.value.findIndex((item, idx) => {
+      if (used.has(idx)) return false
+      const name = normalizeName(item?.tenSanPham)
+      return name === targetName || name.includes(targetName) || targetName.includes(name)
+    })
+
+    if (index !== -1) {
+      selected.push(products.value[index])
+      used.add(index)
+    }
+
+    if (selected.length >= 4) break
+  }
+
+  if (selected.length < 4) {
+    products.value.forEach((item, idx) => {
+      if (selected.length >= 4) return
+      if (used.has(idx)) return
+      selected.push(item)
+      used.add(idx)
+    })
+  }
+
+  return selected
     .map((item, idx) => ({
       id: item?.id || `fallback-${idx}`,
       name: item?.tenSanPham || `Sản phẩm ${idx + 1}`,
-      image: fallbackImages[idx % fallbackImages.length],
+      image: resolveProductImage(item),
       chip: idx % 2 === 0 ? 'Top bán' : 'Khuyến nghị',
       meta: `Tồn kho hiện tại: ${productStock(item)} • Giá từ ${formatCurrency(toNumber(item?.giaBan || item?.gia || 0))}`
     }))
+})
+
+const slides = computed(() => {
+  const source = featuredProducts.value.slice(0, 3)
+  if (!source.length) {
+    return [
+      {
+        kicker: 'Bộ sưu tập',
+        title: 'DirtyWave',
+        desc: 'Dữ liệu sản phẩm sẽ hiển thị sau khi đồng bộ.',
+        img: logo
+      }
+    ]
+  }
+
+  return source.map((item, index) => ({
+    kicker: index === 0 ? 'Bộ sưu tập' : index === 1 ? 'Vận hành' : 'Hiệu suất',
+    title: item.name,
+    desc: item.meta,
+    img: item.image
+  }))
 })
 
 const paymentMix = computed(() => {
@@ -611,7 +884,7 @@ onMounted(async () => {
   }, 1000)
 
   slideTimer = setInterval(() => {
-    activeSlide.value = (activeSlide.value + 1) % slides.length
+    activeSlide.value = (activeSlide.value + 1) % slides.value.length
   }, 4500)
 
   await syncDashboard()
@@ -704,14 +977,14 @@ onUnmounted(() => {
 }
 
 .tc-logo {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 12px;
   object-fit: contain;
-  background: linear-gradient(135deg, #8f1123 0%, #c81f35 100%);
+  background: linear-gradient(135deg, #b91c1c 0%, #ef4444 100%);
   padding: 6px;
-  border: 1px solid rgba(185, 28, 28, 0.5);
-  box-shadow: 0 4px 12px rgba(185, 28, 28, 0.35);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
 }
 
 .tc-brand-kicker {
@@ -1002,7 +1275,7 @@ onUnmounted(() => {
 
 @media (min-width: 1200px) {
   .tc-kpi-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -1487,6 +1760,33 @@ onUnmounted(() => {
   color: #b91c1c;
   min-width: 22px;
   text-align: right;
+}
+
+.tc-stock-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tc-stock-out {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+.tc-stock-critical {
+  background: #fff7ed;
+  color: #9a3412;
+  border: 1px solid #fdba74;
+}
+
+.tc-stock-low {
+  background: #fefce8;
+  color: #854d0e;
+  border: 1px solid #fde047;
 }
 
 .tc-mini-btn {

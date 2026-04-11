@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { FileText, Shirt, Tag, Calendar, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 
-import { getAllHoaDon } from '../../services/hoaDonService'
+import { getAllHoaDon, getHoaDonById } from '../../services/hoaDonService'
 import { getAllSanPham } from '../../services/sanPhamService'
 import { getAllKhuyenMai } from '../../services/khuyenMaiService'
 
@@ -24,6 +24,7 @@ const activeSlide = ref(0)
 const invoices = ref([])
 const products = ref([])
 const campaigns = ref([])
+const soldBySpct = ref(new Map())
 
 const slides = [
   {
@@ -98,7 +99,14 @@ const formatDate = (value) => {
 const formatCurrency = (value) => `${new Intl.NumberFormat('vi-VN').format(toNumber(value))}₫`
 
 const invoiceTotal = (item) => {
-  return toNumber(item?.tongTien) || toNumber(item?.thanhTien) || toNumber(item?.tongTienThanhToan) || 0
+  const gross = (
+    toNumber(item?.tongTien) ||
+    toNumber(item?.thanhTien) ||
+    toNumber(item?.tongTienThanhToan) ||
+    0
+  )
+  const shipping = toNumber(item?.phiVanChuyen || item?.phiShip || item?.shippingFee || 0)
+  return Math.max(0, gross - shipping)
 }
 
 const invoiceStatus = (item) => {
@@ -113,7 +121,12 @@ const invoiceStatus = (item) => {
 const productStock = (item) => {
   const details = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
   if (details.length) {
-    return details.reduce((sum, row) => sum + toNumber(row?.soLuong), 0)
+    return details.reduce((sum, row) => {
+      const base = toNumber(row?.soLuong)
+      const spctId = Number(row?.id || 0)
+      const sold = spctId > 0 ? toNumber(soldBySpct.value.get(spctId)) : 0
+      return sum + Math.max(0, base - sold)
+    }, 0)
   }
   return toNumber(item?.soLuong || item?.ton || 0)
 }
@@ -144,16 +157,20 @@ const pendingOrders = computed(() => {
 })
 
 const lowStockProducts = computed(() => {
-  return products.value
-    .map((item) => ({
-      id: item?.id,
-      maSanPham: item?.maSanPham || `SP-${item?.id || 'N/A'}`,
-      tenSanPham: item?.tenSanPham || 'Sản phẩm',
-      ton: productStock(item)
-    }))
-    .filter((item) => item.ton <= 12)
-    .sort((a, b) => a.ton - b.ton)
-    .slice(0, 6)
+  const rows = []
+  for (const item of products.value) {
+    const stock = productStock(item)
+    if (stock <= 12) {
+      rows.push({
+        id: item?.id,
+        maSanPham: item?.maSanPham || `SP-${item?.id || 'N/A'}`,
+        tenSanPham: item?.tenSanPham || 'Sản phẩm',
+        ton: stock,
+        urgency: stock === 0 ? 'out' : stock <= 5 ? 'critical' : 'low'
+      })
+    }
+  }
+  return rows.sort((a, b) => a.ton - b.ton).slice(0, 8)
 })
 
 const activePromos = computed(() => {
@@ -202,7 +219,56 @@ const syncData = async () => {
   if (sanPhamRes.status === 'fulfilled') products.value = normalizeArray(sanPhamRes.value)
   if (khuyenMaiRes.status === 'fulfilled') campaigns.value = normalizeArray(khuyenMaiRes.value)
 
+  await computeSoldBySpct()
+
   loading.value = false
+}
+
+const shouldCountForStock = (order) => {
+  const raw = String(order?.orderStatusName || order?.trangThai || order?.orderStatusCode || '').toUpperCase()
+  if (raw.includes('HUY') || raw.includes('H\u1ee6Y')) return false
+  return raw.includes('HOAN_THANH') || raw.includes('HO\u00c0N TH\u00c0NH') || raw.includes('DA_GIAO') || raw.includes('\u0110\u00c3 GIAO')
+}
+
+const computeSoldBySpct = async () => {
+  const map = new Map()
+  const completedInvoices = invoices.value.filter(shouldCountForStock)
+  const idsToFetch = completedInvoices
+    .filter((inv) => {
+      const details = inv?.chiTietHoaDons || inv?.hoaDonChiTiets || inv?.chiTiets
+      return !Array.isArray(details) || details.length === 0
+    })
+    .map((inv) => Number(inv?.id))
+    .filter((id) => Number.isFinite(id) && id > 0)
+
+  const detailResults = []
+  for (let i = 0; i < idsToFetch.length; i += 10) {
+    const batch = idsToFetch.slice(i, i + 10)
+    const results = await Promise.all(batch.map((id) => getHoaDonById(id).catch(() => null)))
+    detailResults.push(...results)
+  }
+  const detailById = new Map()
+  detailResults.forEach((res) => {
+    const data = res?.data
+    if (data?.id) detailById.set(Number(data.id), data)
+  })
+
+  for (const inv of completedInvoices) {
+    let items = inv?.chiTietHoaDons || inv?.hoaDonChiTiets || inv?.chiTiets
+    if (!Array.isArray(items) || items.length === 0) {
+      const enriched = detailById.get(Number(inv?.id))
+      items = enriched?.chiTietHoaDons || enriched?.hoaDonChiTiets || enriched?.items || enriched?.chiTiets || []
+    }
+    if (!Array.isArray(items)) continue
+    for (const item of items) {
+      const spctId = Number(item?.spctId || item?.sanPhamChiTietId || item?.idSanPhamChiTiet || item?.chiTietSanPhamId || item?.sanPhamChiTiet?.id || 0)
+      const qty = Number(item?.soLuong || item?.quantity || 0)
+      if (spctId > 0 && qty > 0) {
+        map.set(spctId, (map.get(spctId) || 0) + qty)
+      }
+    }
+  }
+  soldBySpct.value = map
 }
 
 onMounted(async () => {
@@ -373,9 +439,11 @@ onUnmounted(() => {
                 <div class="ew-list-title">{{ item.tenSanPham }}</div>
                 <div class="ew-list-sub">{{ item.maSanPham }}</div>
               </div>
-              <div class="ew-list-tail">{{ item.ton }}</div>
+              <span class="ew-stock-badge" :class="`ew-stock-${item.urgency}`">
+                {{ item.ton === 0 ? 'Hết hàng' : `Còn ${item.ton}` }}
+              </span>
             </div>
-            <div v-if="!lowStockProducts.length" class="ew-empty">Không có sản phẩm cận tồn.</div>
+            <div v-if="!lowStockProducts.length" class="ew-empty">Tất cả sản phẩm đều đủ hàng.</div>
           </div>
         </article>
 
@@ -606,14 +674,14 @@ onUnmounted(() => {
 }
 
 .ew-logo {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 12px;
   object-fit: contain;
-  background: linear-gradient(135deg, #8f1123 0%, #c81f35 100%);
+  background: linear-gradient(135deg, #b91c1c 0%, #ef4444 100%);
   padding: 6px;
-  border: 1px solid rgba(185, 28, 28, 0.5);
-  box-shadow: 0 4px 12px rgba(185, 28, 28, 0.35);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
 }
 
 .ew-brand-kicker {
@@ -1004,6 +1072,33 @@ onUnmounted(() => {
   color: #b91c1c;
   min-width: 22px;
   text-align: right;
+}
+
+.ew-stock-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ew-stock-out {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+.ew-stock-critical {
+  background: #fff7ed;
+  color: #9a3412;
+  border: 1px solid #fdba74;
+}
+
+.ew-stock-low {
+  background: #fefce8;
+  color: #854d0e;
+  border: 1px solid #fde047;
 }
 
 .ew-empty {

@@ -15,6 +15,13 @@
         >
           + Thêm nhân viên
         </router-link>
+        <router-link
+          class="btn"
+          to="/admin/lich-lam-viec/ca-lam"
+          style="margin-left:8px"
+        >
+          Ca làm việc
+        </router-link>
       </div>
 
       <div class="body">
@@ -97,7 +104,7 @@
                     class="iconbtn"
                     :to="`/admin/nhan-vien/form/${item.id}`"
                   >
-                    <Pencil size="16"/>
+                    <span class="material-icons-outlined">visibility</span>
                   </router-link>
 
                   <!-- Just UI icon for now -->
@@ -132,7 +139,7 @@ import {
   getAllNhanVien,
   updateNhanVien
 } from "../../../services/nhanVienService"
-import { Pencil, Key, Check } from "lucide-vue-next"
+import { Key, Check } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel } from "../../../utils/adminStatus"
 
 const router = useRouter()

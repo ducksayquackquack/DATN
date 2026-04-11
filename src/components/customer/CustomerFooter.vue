@@ -91,13 +91,30 @@ const supportTimes = [
 
 <style scoped>
 .cf-footer {
+  position: relative;
+  overflow: hidden;
   margin-top: auto;
-  background: linear-gradient(145deg, #2f343b 0%, #3a3f46 100%) !important;
+  background:
+    radial-gradient(circle at 12% 14%, rgba(239, 68, 68, 0.2), transparent 40%),
+    linear-gradient(165deg, #09090d 0%, #17161e 46%, #07070b 100%) !important;
   color: #e5e7eb !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.cf-footer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.26;
+  background-image:
+    repeating-linear-gradient(60deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 20px),
+    repeating-linear-gradient(-60deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 20px);
 }
 
 .cf-container {
+  position: relative;
+  z-index: 1;
   width: min(1260px, calc(100% - 36px));
   margin: 0 auto;
   padding: 44px 0 18px;

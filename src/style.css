@@ -35,6 +35,10 @@ body,
   overflow-x: clip;
 }
 
+#app {
+  min-height: 100dvh;
+}
+
 /* Thin, subtle scrollbar — removes the ugly wide gray bar */
 html {
   scrollbar-width: thin;
@@ -68,6 +72,24 @@ html::-webkit-scrollbar-thumb {
 body {
   background: #ffffff;
   color: #1f2937;
+}
+
+@media (max-width: 1200px) {
+  html {
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 768px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  html {
+    font-size: 13px;
+  }
 }
 
 a {

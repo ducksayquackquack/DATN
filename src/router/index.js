@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from "vue-router"
 const LoginManager = () => import("../views/auth/LoginManager.vue")
 const CustomerLoginPage = () => import("../views/customer/pages/CustomerLoginPage.vue")
 const Register = () => import("../views/auth/Register.vue")
+const ForgotPassword = () => import("../views/auth/ForgotPassword.vue")
 
 const CustomerHomeView = () => import("../views/customer/HomeView.vue")
 const CustomerProfileView = () => import("../views/customer/ProfileView.vue")
@@ -19,8 +20,8 @@ const PaymentReturn = () => import("../views/PaymentReturn.vue")
 const NotificationsPage = () => import("../views/shared/NotificationsPage.vue")
 
 const EmployeeLayout = () => import("../views/employee/EmployeeLayout.vue")
-const EmployeeGiaoCa = () => import("../views/employee/MoKetCaTest.vue")
-const EmployeeGiaoCaTest = () => import("../views/employee/GiaoCaTest.vue")
+const EmployeeGiaoCa = () => import("../views/employee/GiaoCaTest.vue")
+const EmployeeGiaoCaLegacy = () => import("../views/employee/MoKetCaTest.vue")
 const EmployeeDangKyDoiCa = () => import("../views/employee/DangKyDoiCa.vue")
 const EmployeeProfileView = () => import("../views/employee/ProfileView.vue")
 const EmployeeHome = () => import("../views/employee/EmployeeHome.vue")
@@ -57,6 +58,7 @@ const LoaiForm = () => import("../views/admin/loai/LoaiForm.vue")
 
 const MauSacList = () => import("../views/admin/mau-sac/MauSacList.vue")
 const MauSacForm = () => import("../views/admin/mau-sac/MauSacForm.vue")
+const ThuocTinhPage = () => import("../views/admin/thuoc-tinh/ThuocTinhPage.vue")
 
 const PhuongThucThanhToanList = () => import("../views/admin/phuong-thuc-thanh-toan/PhuongThucThanhToanList.vue")
 const PhuongThucThanhToanForm = () => import("../views/admin/phuong-thuc-thanh-toan/PhuongThucThanhToanForm.vue")
@@ -75,6 +77,7 @@ const routes = [
   { path: "/auth/staff-login", component: LoginManager, alias: ["/dang-nhap", "/admin/login", "/employee/login", "/staff/login"] },
   { path: "/auth/customer-login", component: CustomerLoginPage, alias: ["/client/login", "/khach-hang/dang-nhap"] },
   { path: "/auth/customer-register", component: Register, alias: ["/client/register", "/khach-hang/dang-ky"] },
+  { path: "/auth/forgot-password", component: ForgotPassword, alias: ["/client/quen-mat-khau", "/khach-hang/quen-mat-khau"] },
   { path: "/login", redirect: "/auth/customer-login" },
   { path: "/register", redirect: "/auth/customer-register" },
 
@@ -139,9 +142,10 @@ const routes = [
 
       /* SAN PHAM */
 
-      { path: "san-pham/list", component: EmployeeProductList },
-      { path: "san-pham/form", redirect: "/employee/san-pham/list" },
-      { path: "san-pham/form/:id", redirect: "/employee/san-pham/list" },
+      { path: "san-pham/list", redirect: "/employee/san-pham/bien-the" },
+      { path: "san-pham/list-forgotten", component: EmployeeProductList },
+      { path: "san-pham/form", redirect: "/employee/san-pham/bien-the" },
+      { path: "san-pham/form/:id", redirect: "/employee/san-pham/bien-the" },
       { path: "san-pham/bien-the", component: BienTheSanPham },
 
       /* KHUYEN MAI */
@@ -155,7 +159,7 @@ const routes = [
       /* GIAO CA */
 
       { path: "giao-ca", component: EmployeeGiaoCa },
-      { path: "giao-ca-test", component: EmployeeGiaoCaTest },
+      { path: "giao-ca-test", component: EmployeeGiaoCaLegacy },
       { path: "dang-ky-doi-ca", component: EmployeeDangKyDoiCa },
       { path: "chat", component: EmployeeChatPage },
 
@@ -179,7 +183,8 @@ const routes = [
 
       /* SAN PHAM */
 
-      { path: "san-pham/list", component: AdminProductList },
+      { path: "san-pham/list", redirect: "/admin/san-pham/bien-the" },
+      { path: "san-pham/list-forgotten", component: AdminProductList },
       { path: "san-pham/form", component: AdminProductForm },
       { path: "san-pham/form/:id", component: AdminProductForm },
       { path: "san-pham/bien-the", component: BienTheSanPham },
@@ -233,6 +238,10 @@ const routes = [
       { path: "mau-sac/list", component: MauSacList },
       { path: "mau-sac/form", component: MauSacForm },
       { path: "mau-sac/form/:id", component: MauSacForm },
+
+      /* THUOC TINH */
+
+      { path: "thuoc-tinh", component: ThuocTinhPage },
 
       /* PTTT */
 
@@ -295,6 +304,17 @@ const isAdminRole = (role) => normalizeRole(role) === "ADMIN"
 
 const router = createRouter({
   history: createWebHistory(),
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition
+    if (to.hash) {
+      return {
+        el: to.hash,
+        top: 88,
+        behavior: "smooth"
+      }
+    }
+    return { left: 0, top: 0, behavior: "auto" }
+  },
   routes
 })
 

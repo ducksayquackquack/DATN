@@ -53,19 +53,6 @@
 
           <div class="form-group">
             <label class="form-label">
-              Loại phiếu <span class="required">*</span>
-            </label>
-            <select v-model="form.loaiPhieuGiamGia" class="form-select">
-              <option :value="false">Công khai</option>
-              <option :value="true">Cá nhân</option>
-            </select>
-            <p class="form-hint">
-              Công khai: Áp dụng cho tất cả | Cá nhân: Chỉ cho khách hàng cụ thể
-            </p>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">
               Hình thức giảm <span class="required">*</span>
             </label>
             <select v-model="form.hinhThucGiam" class="form-select">
@@ -97,7 +84,7 @@
               placeholder="0 = không giới hạn"
               :disabled="!form.hinhThucGiam"
             />
-            <p class="form-hint">Chỉ áp dụng cho giảm theo %</p>
+            <p class="form-hint">Voucher %: nhập mức trần | Voucher tiền cố định: tự lấy theo Đơn hàng tối thiểu</p>
           </div>
 
           <div class="form-group">
@@ -172,6 +159,7 @@
 import { reactive, onMounted, computed } from "vue"
 import { useRouter, useRoute } from "vue-router"
 import axios from "axios"
+import { normalizeVoucherData } from "../../../services/khuyenMaiService"
 
 const router = useRouter()
 const route = useRoute()
@@ -188,7 +176,6 @@ const form = reactive({
   maPhieuGiamGia: "",
   tenPhieuGiamGia: "",
   moTa: "",
-  loaiPhieuGiamGia: false, // false = public, true = personal
   hinhThucGiam: true, // true = percentage, false = fixed amount
   giaTriGiamGia: 0,
   soTienGiamToiDa: 0,
@@ -203,13 +190,12 @@ onMounted(async () => {
   if (isEdit.value) {
     try {
       const res = await axios.get(`${API}/${id}`)
-      const data = res.data
+      const data = normalizeVoucherData(res.data)
       
       Object.assign(form, {
         maPhieuGiamGia: data.maPhieuGiamGia || "",
         tenPhieuGiamGia: data.tenPhieuGiamGia || "",
         moTa: data.moTa || "",
-        loaiPhieuGiamGia: data.loaiPhieuGiamGia ?? false,
         hinhThucGiam: data.hinhThucGiam ?? true,
         giaTriGiamGia: data.giaTriGiamGia ?? 0,
         soTienGiamToiDa: data.soTienGiamToiDa ?? 0,
@@ -287,15 +273,19 @@ async function save() {
       return
     }
 
+    const minOrderValue = Number(form.hoaDonToiThieu || 0)
+    const maxDiscountValue = form.hinhThucGiam
+      ? Number(form.soTienGiamToiDa || 0)
+      : minOrderValue
+
     const payload = {
       maPhieuGiamGia: form.maPhieuGiamGia,
       tenPhieuGiamGia: form.tenPhieuGiamGia,
       moTa: form.moTa,
-      loaiPhieuGiamGia: form.loaiPhieuGiamGia,
       hinhThucGiam: form.hinhThucGiam,
       giaTriGiamGia: Number(form.giaTriGiamGia),
-      soTienGiamToiDa: Number(form.soTienGiamToiDa),
-      hoaDonToiThieu: Number(form.hoaDonToiThieu),
+      soTienGiamToiDa: maxDiscountValue,
+      hoaDonToiThieu: minOrderValue,
       soLuongSuDung: Number(form.soLuongSuDung),
       ngayBatDau: form.ngayBatDau + "T00:00:00",
       ngayKetThuc: form.ngayKetThuc + "T23:59:59",
@@ -454,8 +444,11 @@ async function save() {
   color: #111827;
   outline: none;
   transition: all 0.2s;
-  background: white;
+  background-color: white;
   font-family: inherit;
+}
+.form-select {
+  padding-right: 34px;
 }
 
 .form-input:focus,

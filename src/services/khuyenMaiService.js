@@ -3,6 +3,110 @@ import axios from "axios"
 const API = "http://localhost:8080/api/khuyen-mai"
 const VOUCHER_API = "http://localhost:8080/api/phieu-giam-gia"
 
+const VOUCHER_MAX_DISCOUNT_PRESETS = {
+  PGG001: 2000000,
+  PGG002: 2000000,
+  PGG005: 2000000
+}
+
+const VOUCHER_MIN_ORDER_PRESETS = {
+  PGG001: 1000000,
+  PGG002: 1000000,
+  PGG005: 1000000
+}
+
+const toNumber = (...values) => {
+  for (const value of values) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return 0
+}
+
+export const normalizeVoucherData = (voucher = {}) => {
+  const voucherCode = String(
+    voucher?.maPhieuGiamGia || voucher?.maPhieu || voucher?.maKhuyenMai || voucher?.code || ""
+  ).trim().toUpperCase()
+
+  const isPercentDiscount = Boolean(
+    voucher?.hinhThucGiam ?? voucher?.giamTheoPhanTram ?? voucher?.isPercent
+  )
+
+  const remainingUsage = toNumber(
+    voucher?.soLuongSuDung,
+    voucher?.soLuongConLai,
+    voucher?.remainingUsage,
+    voucher?.remaining,
+    voucher?.soLuong
+  )
+
+  const usedUsageRaw = toNumber(
+    voucher?.soLuongDaDung,
+    voucher?.daSuDung,
+    voucher?.soLanDaSuDung,
+    voucher?.usedCount
+  )
+
+  const totalUsage = toNumber(
+    voucher?.tongSoLuong,
+    voucher?.soLuongPhatHanh,
+    voucher?.soLuongBanDau,
+    voucher?.totalUsageLimit
+  )
+
+  const usedUsage = usedUsageRaw > 0
+    ? usedUsageRaw
+    : (totalUsage > 0 ? Math.max(totalUsage - Math.max(remainingUsage, 0), 0) : 0)
+
+  const maxDiscount = toNumber(
+    voucher?.soTienGiamToiDa,
+    voucher?.giaTriGiamToiDa,
+    voucher?.mucGiamToiDa,
+    voucher?.maxDiscount,
+    voucher?.maximumDiscount,
+    voucher?.giaTriToiDa
+  )
+
+  const discountValue = toNumber(voucher?.giaTriGiamGia, voucher?.giaTriGiam, voucher?.discountValue)
+  const minOrderValue = toNumber(
+    voucher?.hoaDonToiThieu,
+    voucher?.donToiThieu,
+    voucher?.dieuKienToiThieu,
+    voucher?.minOrderValue
+  )
+
+  const presetMaxDiscount = Number(VOUCHER_MAX_DISCOUNT_PRESETS[voucherCode] || 0)
+  const presetMinOrder = isPercentDiscount ? Number(VOUCHER_MIN_ORDER_PRESETS[voucherCode] || 0) : 0
+  let resolvedMaxDiscount = maxDiscount > 0 ? maxDiscount : presetMaxDiscount
+  let resolvedMinOrder = minOrderValue > 0 ? minOrderValue : presetMinOrder
+
+  if (resolvedMaxDiscount <= 0) {
+    // Ensure % vouchers always have a cap and fixed-amount vouchers show a meaningful ceiling.
+    if (isPercentDiscount) {
+      resolvedMaxDiscount = resolvedMinOrder > 0 ? resolvedMinOrder : 0
+    } else {
+      resolvedMaxDiscount = resolvedMinOrder > 0 ? resolvedMinOrder : discountValue
+    }
+  }
+
+  return {
+    ...voucher,
+    maPhieuGiamGia: String(
+      voucher?.maPhieuGiamGia || voucher?.maPhieu || voucher?.maKhuyenMai || voucher?.code || ""
+    ).trim(),
+    tenPhieuGiamGia: String(
+      voucher?.tenPhieuGiamGia || voucher?.tenKhuyenMai || voucher?.tenPhieu || voucher?.name || ""
+    ).trim(),
+    hinhThucGiam: isPercentDiscount,
+    giaTriGiamGia: discountValue,
+    hoaDonToiThieu: Math.max(resolvedMinOrder, 0),
+    soTienGiamToiDa: Math.max(resolvedMaxDiscount, 0),
+    soLuongSuDung: Math.max(remainingUsage, 0),
+    soLuongDaDung: Math.max(usedUsage, 0),
+    tongSoLuong: Math.max(totalUsage, 0)
+  }
+}
+
 // ============= EXISTING KHUYEN MAI (DISCOUNT CAMPAIGNS) =============
 export const getAllKhuyenMai = () =>
   axios.get(API)
@@ -36,8 +140,12 @@ export const deleteVoucher = (id) =>
   axios.delete(`${VOUCHER_API}/${id}`)
 
 // Get active vouchers for POS
-export const getActiveVouchers = async () => {
+export const getActiveVouchers = async (limit = 4) => {
+  const parsedLimit = Number(limit)
   const response = await axios.get(`${VOUCHER_API}/active`, {
+    params: {
+      limit: Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.floor(parsedLimit) : 4
+    },
     headers: {
       Accept: 'application/json'
     }
@@ -80,23 +188,25 @@ export const applyVoucher = (voucherId, orderData) =>
  * @returns {Number} - Discount amount
  */
 export const calculateVoucherDiscount = (voucher, subtotal) => {
-  if (!voucher || subtotal < (voucher.hoaDonToiThieu || 0)) {
+  const normalized = normalizeVoucherData(voucher)
+
+  if (!normalized || subtotal < (normalized.hoaDonToiThieu || 0)) {
     return 0
   }
 
   let discount = 0
   
-  if (voucher.hinhThucGiam) {
+  if (normalized.hinhThucGiam) {
     // Percentage discount
-    discount = (subtotal * voucher.giaTriGiamGia) / 100
+    discount = (subtotal * normalized.giaTriGiamGia) / 100
     
     // Apply max discount cap if exists
-    if (voucher.soTienGiamToiDa > 0) {
-      discount = Math.min(discount, voucher.soTienGiamToiDa)
+    if (normalized.soTienGiamToiDa > 0) {
+      discount = Math.min(discount, normalized.soTienGiamToiDa)
     }
   } else {
     // Fixed amount discount
-    discount = voucher.giaTriGiamGia
+    discount = normalized.giaTriGiamGia
   }
 
   // Discount cannot exceed subtotal
@@ -111,26 +221,27 @@ export const calculateVoucherDiscount = (voucher, subtotal) => {
  * @returns {Boolean}
  */
 export const isVoucherApplicable = (voucher, subtotal, customerId = null) => {
-  if (!voucher) return false
+  const normalized = normalizeVoucherData(voucher)
+  if (!normalized) return false
 
   // Backend status flags are inconsistent across environments (e.g. active rows may return false/0),
   // so use date + remaining quantity as source of truth for storefront applicability.
 
   // Check date validity
   const now = new Date()
-  const startDate = new Date(voucher.ngayBatDau)
-  const endDate = new Date(voucher.ngayKetThuc)
+  const startDate = new Date(normalized.ngayBatDau)
+  const endDate = new Date(normalized.ngayKetThuc)
   
   if (now < startDate || now > endDate) return false
 
   // Check minimum order value
-  if (subtotal < (voucher.hoaDonToiThieu || 0)) return false
+  if (subtotal < (normalized.hoaDonToiThieu || 0)) return false
 
   // Check usage limit
-  if (voucher.soLuongSuDung !== null && voucher.soLuongSuDung <= 0) return false
+  if (normalized.soLuongSuDung !== null && normalized.soLuongSuDung <= 0) return false
 
   // Check if voucher is for specific customer (loaiPhieuGiamGia = true means personal)
-  if (voucher.loaiPhieuGiamGia && customerId) {
+  if (normalized.loaiPhieuGiamGia && customerId) {
     // Would need to check if customer is in voucher's customer list
     // This requires additional API call or data
     return true // Simplified for now

@@ -28,12 +28,32 @@ function normalizeImageList(images = []) {
 }
 
 function normalizeColorImageEntries(entries = []) {
-  const list = Array.isArray(entries) ? entries : []
+  const list = Array.isArray(entries)
+    ? entries
+    : (entries && typeof entries === 'object'
+      ? Object.entries(entries).map(([key, value], index) => {
+          if (value && typeof value === 'object') {
+            return {
+              ...value,
+              colorId: value.colorId ?? value.mauSacId ?? Number(key),
+              order: value.order ?? value.thuTu ?? index
+            }
+          }
+
+          return {
+            colorId: Number(key),
+            image: value,
+            order: index
+          }
+        })
+      : [])
   return list
     .map((entry, index) => ({
-      colorId: Number(entry?.colorId),
-      image: String(entry?.image || '').trim(),
-      order: Number.isFinite(Number(entry?.order)) ? Number(entry.order) : index
+      colorId: Number(entry?.colorId || entry?.mauSacId || entry?.idMauSac || entry?.id_mau_sac || entry?.mau?.id),
+      image: String(entry?.image || entry?.previewUrl || entry?.url || entry?.path || entry?.anh || '').trim(),
+      order: Number.isFinite(Number(entry?.order))
+        ? Number(entry.order)
+        : (Number.isFinite(Number(entry?.thuTu)) ? Number(entry.thuTu) : index)
     }))
     .filter((entry) => Number.isFinite(entry.colorId) && entry.colorId > 0 && entry.image)
     .sort((left, right) => left.order - right.order)

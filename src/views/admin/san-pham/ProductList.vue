@@ -1,12 +1,12 @@
 <script setup>
-import { ref, computed, onMounted } from "vue"
+import { ref, computed, onMounted, watch } from "vue"
 import { useRouter, useRoute } from "vue-router"
 import {
   getAllSanPham,
-  deleteSanPham,
   updateSanPham
 } from "../../../services/sanPhamService"
-import { Pencil, Trash2 } from "lucide-vue-next"
+import { getAllHoaDon, getHoaDonById } from "../../../services/hoaDonService"
+import { Eye } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel } from "../../../utils/adminStatus"
 import { resolveApiOrigin } from "../../../utils/apiOrigin"
 import { getProductImageOverride } from "../../../utils/productImageOverrides"
@@ -23,35 +23,186 @@ import img9 from "../../../assets/img/Jackets/coach/coach-da-asos.jpg?url"
 import img10 from "../../../assets/img/Jackets/coach/coach-gia-da.jpg?url"
 import img11 from "../../../assets/img/Jackets/coach/coach-long-cuu.jpg?url"
 // New products
-import img12 from "../../../assets/img/Jackets/bomber/bomber-astronaut/IMG_4435.PNG?url"
-import img13 from "../../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4437.PNG?url"
-import img14 from "../../../assets/img/Jackets/bomber/bomber-windbreaker/IMG_4432.PNG?url"
-import img15 from "../../../assets/img/Jackets/coach/coach-leopard/IMG_4445.PNG?url"
-import img16 from "../../../assets/img/Jackets/coach/coach-longsleeve/IMG_4442.PNG?url"
-import img17 from "../../../assets/img/Jackets/coach/coach-tiger-stripe/IMG_4446.PNG?url"
-import img18 from "../../../assets/img/Jackets/hoodie/hoodie-camo/IMG_4450.PNG?url"
-import img19 from "../../../assets/img/Jackets/hoodie/hoodie-zip-boxy/IMG_4452.PNG?url"
-import img20 from "../../../assets/img/Jackets/hoodie/hoodie-zip-silk/IMG_4447.PNG?url"
+import img12 from "../../../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-black.PNG?url"
+import img13 from "../../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-black.PNG?url"
+import img14 from "../../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-black.PNG?url"
+import img15 from "../../../assets/img/Jackets/coach/coach-leopard/coach-leopard.PNG?url"
+import img16 from "../../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-black.PNG?url"
+import img17 from "../../../assets/img/Jackets/coach/coach-tiger-stripe/coach-tiger-stripe.PNG?url"
+import img18 from "../../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-black.PNG?url"
+import img19 from "../../../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-blue.PNG?url"
+import img20 from "../../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-black.PNG?url"
+import img12b from "../../../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-blue.PNG?url"
+import img16b from "../../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-red.PNG?url"
+import img18b from "../../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-white.PNG?url"
+import img19b from "../../../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-white.PNG?url"
+import img20b from "../../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-gray.PNG?url"
+import img20c from "../../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-red.PNG?url"
 
 const router = useRouter()
 const route = useRoute()
 
 const search = ref("")
+const showActiveOnly = ref(false)
 const list = ref([])
 const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, "")
 const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11, img12, img13, img14, img15, img16, img17, img18, img19, img20]
 
-const fallbackImageFor = (id, code = "") => {
+const mappedFallbackByCodeNum = {
+  1: img1,
+  2: img2,
+  3: img3,
+  4: img4,
+  5: img5,
+  6: img6,
+  7: img7,
+  8: img8,
+  9: img9,
+  10: img10,
+  11: img11,
+  12: img12,
+  13: img13,
+  14: img14,
+  15: img15,
+  16: img16,
+  17: img17,
+  18: img18,
+  19: img19,
+  20: img20
+}
+
+const mappedFallbackByCode = {
+  SP001: img1,   // Bomber da lộn
+  SP002: img2,   // Bomber dáng lửng
+  SP003: img3,   // Bomber da có túi
+  SP004: img4,   // Bomber cotton nhẹ
+  SP005: img5,   // Hoodie dáng hộp
+  SP006: img6,   // Hoodie in hình
+  SP007: img7,   // Hoodie kéo khoá
+  SP008: img8,   // Coach cách nhiệt
+  SP009: img9,   // Coach da trơn
+  SP010: img10,  // Coach giả da
+  SP011: img11,  // Coach lông cừu
+  SP012: img12,  // Bomber Astronaut
+  SP013: img13,  // Bomber Embroidered Fuzzy
+  SP014: img14,  // Bomber Windbreaker
+  SP015: img15,  // Coach Leopard
+  SP016: img16,  // Coach Longsleeve
+  SP017: img17,  // Coach Tiger Stripe
+  SP018: img18,  // Hoodie Camo
+  SP019: img19,  // Hoodie Zip Boxy
+  SP020: img20,  // Hoodie Zip Silk
+  "ATID070-12": img12,
+  "ATID070-13": img13,
+  "ATID070-14": img14,
+  "ATID070-15": img15,
+  "ATID070-16": img16,
+  "ATID070-17": img17,
+  "ATID070-18": img18,
+  "ATID070-19": img19,
+  "ATID070-20": img20
+}
+
+const mappedFallbackByName = [
+  { keywords: ["bomber", "da", "lon"], image: img1 },
+  { keywords: ["bomber", "dang", "lung"], image: img2 },
+  { keywords: ["bomber", "gia", "da"], image: img3 },
+  { keywords: ["bomber", "cotton"], image: img4 },
+  { keywords: ["hoodie", "dang", "hop"], image: img5 },
+  { keywords: ["hoodie", "in", "hinh"], image: img6 },
+  { keywords: ["hoodie", "keo", "khoa"], image: img7 },
+  { keywords: ["coach", "cach", "nhiet"], image: img8 },
+  { keywords: ["coach", "da", "asos"], image: img9 },
+  { keywords: ["coach", "gia", "da"], image: img10 },
+  { keywords: ["coach", "long", "cuu"], image: img11 },
+  { keywords: ["astronaut"], image: img12 },
+  { keywords: ["embroidered", "fuzzy"], image: img13 },
+  { keywords: ["windbreaker"], image: img14 },
+  { keywords: ["leopard"], image: img15 },
+  { keywords: ["longsleeve"], image: img16 },
+  { keywords: ["tiger", "stripe"], image: img17 },
+  { keywords: ["camo"], image: img18 },
+  { keywords: ["zip", "boxy"], image: img19 },
+  { keywords: ["zip", "silk"], image: img20 }
+]
+
+const normalizeProductKey = (value = "") =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+
+const getMappedFallbackByName = (name = "") => {
+  const normalized = normalizeProductKey(name)
+  if (!normalized) return ""
+
+  const found = mappedFallbackByName.find((rule) =>
+    rule.keywords.every((keyword) => normalized.includes(keyword))
+  )
+  return found?.image || ""
+}
+
+const normalizeSearchText = (value = "") =>
+  normalizeProductKey(value)
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+const stripTrailingBrandTokenForImage = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/[\s_-]*(dirty\s*wave|dirtywave)$/i, "")
+    .trim()
+
+const fallbackIndexByName = (name = "") => {
+  const normalized = normalizeSearchText(stripTrailingBrandTokenForImage(name))
+  if (!normalized) return -1
+
+  let hash = 0
+  for (let i = 0; i < normalized.length; i += 1) {
+    hash = ((hash << 5) - hash + normalized.charCodeAt(i)) | 0
+  }
+  return Math.abs(hash) % fallbackImages.length
+}
+
+const fallbackImageFor = (id, code = "", name = "") => {
+  const normalizedCode = String(code || "").trim().toUpperCase()
+  const allowCuratedCodeMap = /^ATID070-\d+$/i.test(normalizedCode) || /^SP\d+$/i.test(normalizedCode)
+
+  if (mappedFallbackByCode[normalizedCode]) {
+    return mappedFallbackByCode[normalizedCode]
+  }
+
+  if (allowCuratedCodeMap) {
+    const codeDigits = String(normalizedCode).replace(/\D+/g, "")
+    const codeNum = Number(codeDigits)
+    if (Number.isFinite(codeNum) && codeNum > 0 && mappedFallbackByCodeNum[codeNum]) {
+      return mappedFallbackByCodeNum[codeNum]
+    }
+  }
+
+  const mappedByName = getMappedFallbackByName(name)
+  if (mappedByName) return mappedByName
+
   const normalizedId = Number(id)
   if (Number.isFinite(normalizedId) && normalizedId > 0) {
+    if (allowCuratedCodeMap && mappedFallbackByCodeNum[normalizedId]) return mappedFallbackByCodeNum[normalizedId]
+    const nameIndex = fallbackIndexByName(name)
+    if (nameIndex >= 0) return fallbackImages[nameIndex] || logo
     return fallbackImages[(normalizedId - 1) % fallbackImages.length]
   }
 
   const digits = String(code || "").replace(/\D+/g, "")
   const codeNum = Number(digits)
   if (Number.isFinite(codeNum) && codeNum > 0) {
+    if (allowCuratedCodeMap && mappedFallbackByCodeNum[codeNum]) return mappedFallbackByCodeNum[codeNum]
+    const nameIndex = fallbackIndexByName(name)
+    if (nameIndex >= 0) return fallbackImages[nameIndex] || logo
     return fallbackImages[(codeNum - 1) % fallbackImages.length]
   }
+
+  const nameIndex = fallbackIndexByName(name)
+  if (nameIndex >= 0) return fallbackImages[nameIndex] || logo
 
   return fallbackImages[0] || logo
 }
@@ -112,6 +263,76 @@ const routeBase = computed(() => {
   return "/admin"
 })
 
+const toList = (value) => {
+  if (Array.isArray(value)) return value
+  if (Array.isArray(value?.content)) return value.content
+  if (Array.isArray(value?.items)) return value.items
+  if (Array.isArray(value?.data)) return value.data
+  if (Array.isArray(value?.data?.content)) return value.data.content
+  if (Array.isArray(value?.data?.items)) return value.data.items
+  if (Array.isArray(value?.result)) return value.result
+  if (Array.isArray(value?.result?.content)) return value.result.content
+  return []
+}
+
+const normalizeStatusText = (value = "") =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+
+const shouldCountOrderForStock = (detail = {}) => {
+  const order = detail?.hoaDon || detail || {}
+  const statusCode = String(order?.orderStatusCode || detail?.orderStatusCode || "").trim().toUpperCase()
+  const fulfillmentCode = String(order?.fulfillmentStatusCode || detail?.fulfillmentStatusCode || "").trim().toUpperCase()
+  const statusText = normalizeStatusText(order?.orderStatusName || order?.trangThai || order?.status || "")
+  const noteText = normalizeStatusText(order?.statusNote || detail?.statusNote || "")
+
+  if (statusCode.includes("HUY") || statusText.includes("huy") || noteText.includes("huy") || statusText.includes("cancel")) {
+    return false
+  }
+
+  const isFinalOrder = detail?.finalOrder === true || String(order?.businessClosureStatus || "").toUpperCase() === "CLOSED"
+  return isFinalOrder || statusCode === "HOAN_THANH" || fulfillmentCode === "DELIVERED" || statusText.includes("hoan thanh")
+}
+
+async function loadSoldQtyBySpct() {
+  try {
+    const hoaDonRes = await getAllHoaDon()
+    const hoaDons = toList(hoaDonRes?.data)
+    const orderIds = hoaDons
+      .map((order) => Number(order?.id))
+      .filter((orderId) => Number.isFinite(orderId) && orderId > 0)
+
+    if (!orderIds.length) return new Map()
+
+    const detailResponses = await Promise.all(
+      orderIds.map((orderId) => getHoaDonById(orderId).catch(() => null))
+    )
+
+    const soldBySpct = new Map()
+
+    for (const detailRes of detailResponses) {
+      const detail = detailRes?.data
+      if (!detail || !shouldCountOrderForStock(detail)) continue
+
+      const items = toList(detail?.items || detail?.hoaDonChiTiets || detail?.chiTietHoaDons || detail?.chiTiets)
+      for (const item of items) {
+        const spctId = Number(item?.spctId || item?.sanPhamChiTietId || item?.idSanPhamChiTiet || item?.chiTietSanPhamId || 0)
+        const qty = Number(item?.soLuong || item?.quantity || item?.soLuongMua || 0)
+        if (!Number.isFinite(spctId) || spctId <= 0 || !Number.isFinite(qty) || qty <= 0) continue
+        soldBySpct.set(spctId, Number(soldBySpct.get(spctId) || 0) + qty)
+      }
+    }
+
+    return soldBySpct
+  } catch {
+    return new Map()
+  }
+}
+
 function goToCreate() {
   router.push(`${routeBase.value}/san-pham/form`)
 }
@@ -131,19 +352,167 @@ function formatDateTime(value) {
   return date.toLocaleString("vi-VN")
 }
 
+function stripTrailingBrandToken(value = "") {
+  return String(value || "")
+    .trim()
+    .replace(/[\s_-]*(dirty\s*wave|dirtywave)$/i, "")
+    .trim()
+}
+
+function normalizeProductFamilyKey(name = "") {
+  return stripTrailingBrandToken(name)
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(core|flame)\b/g, " ")
+    .replace(/\b(xanh navy|xanh duong|xanh la)\b$/g, " ")
+    .replace(/\b(den|do|xanh|xam|trang|nau|be|cam|vang|black|red|blue|navy|green|gray|grey|white|brown|beige|orange|yellow)\b$/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function normalizeColorKey(value = "") {
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+
+  if (normalized === "xanh navy" || normalized === "navy") return "xanh duong"
+  return normalized
+}
+
+function isUploadedImagePath(value = "") {
+  return /(?:^|\/)uploads\//i.test(String(value || "").replace(/\\/g, "/"))
+}
+
+function hasCoreOrFlameToken(name = "") {
+  return /\b(core|flame)\b/i.test(String(name || ""))
+}
+
+function variantStockValue(variant = {}) {
+  return Number(variant?.soLuong ?? variant?.soLuongTon ?? variant?.tonKho ?? variant?.ton ?? 0)
+}
+
+function variantAvailableStockForList(variant = {}, soldBySpct = new Map()) {
+  const baseStock = variantStockValue(variant)
+  const spctId = Number(variant?.id || variant?.spctId || variant?.sanPhamChiTietId || 0)
+  if (!Number.isFinite(spctId) || spctId <= 0) return baseStock
+  const soldQty = Number(soldBySpct.get(spctId) || 0)
+  return Math.max(0, baseStock - soldQty)
+}
+
+function variantIdentityKeyForList(variant = {}) {
+  const colorKey = normalizeColorKey(
+    variant?.mauSac?.tenMau ||
+    variant?.mauSac?.tenMauSac ||
+    variant?.mauSac?.name ||
+    ""
+  )
+  const sizeKey = normalizeColorKey(
+    variant?.kichThuoc?.tenKichThuoc ||
+    variant?.kichThuoc?.name ||
+    variant?.tenKichThuoc ||
+    variant?.size ||
+    ""
+  )
+  const priceKey = Number(variant?.giaBan ?? variant?.gia ?? 0)
+
+  if (colorKey || sizeKey || priceKey > 0) {
+    return `c:${colorKey}|s:${sizeKey}|p:${priceKey}`
+  }
+
+  const codeKey = String(variant?.ma || variant?.maSanPhamChiTiet || "").trim().toUpperCase()
+  if (codeKey) return `code:${codeKey}`
+
+  const idKey = Number(variant?.id || variant?.spctId || variant?.sanPhamChiTietId || 0)
+  if (Number.isFinite(idKey) && idKey > 0) return `id:${idKey}`
+
+  return ""
+}
+
+function toVariantList(product = {}) {
+  if (Array.isArray(product?.sanPhamChiTiets)) return product.sanPhamChiTiets
+  if (Array.isArray(product?.variants)) return product.variants
+  if (Array.isArray(product?.chiTiets)) return product.chiTiets
+  if (Array.isArray(product?.danhSachBienThe)) return product.danhSachBienThe
+  return []
+}
+
+function mergeProductsForList(products = []) {
+  const grouped = new Map()
+
+  for (const product of (Array.isArray(products) ? products : [])) {
+    const productId = Number(product?.id || 0)
+    const code = String(product?.maSanPham || product?.ma || "").trim().toUpperCase()
+    const familyKey = (productId > 0) ? `id:${productId}` : (code ? `code:${code}` : (normalizeProductFamilyKey(product?.tenSanPham || "") || `rand:${Math.random()}`))
+    if (!grouped.has(familyKey)) grouped.set(familyKey, [])
+    grouped.get(familyKey).push(product)
+  }
+
+  const merged = []
+
+  for (const familyProducts of grouped.values()) {
+    const ranked = [...familyProducts].sort((left, right) => {
+      const leftPenalty = hasCoreOrFlameToken(left?.tenSanPham) ? 1 : 0
+      const rightPenalty = hasCoreOrFlameToken(right?.tenSanPham) ? 1 : 0
+      if (leftPenalty !== rightPenalty) return leftPenalty - rightPenalty
+
+      const leftVariantCount = toVariantList(left).length
+      const rightVariantCount = toVariantList(right).length
+      if (leftVariantCount !== rightVariantCount) return rightVariantCount - leftVariantCount
+
+      const leftId = Number(left?.id)
+      const rightId = Number(right?.id)
+      const normalizedLeftId = Number.isFinite(leftId) && leftId > 0 ? leftId : Number.MAX_SAFE_INTEGER
+      const normalizedRightId = Number.isFinite(rightId) && rightId > 0 ? rightId : Number.MAX_SAFE_INTEGER
+      return normalizedLeftId - normalizedRightId
+    })
+
+    const canonicalProduct = ranked[0] || familyProducts[0]
+    const variantsByIdentity = new Map()
+
+    for (const product of ranked) {
+      for (const variant of toVariantList(product)) {
+        const identityKey = variantIdentityKeyForList(variant) || `id:${Number(variant?.id || 0)}`
+        if (!variantsByIdentity.has(identityKey)) {
+          variantsByIdentity.set(identityKey, variant)
+        }
+      }
+    }
+
+    merged.push({
+      ...canonicalProduct,
+      sanPhamChiTiets: [...variantsByIdentity.values()]
+    })
+  }
+
+  return merged
+}
+
 async function loadData() {
-  const res = await getAllSanPham()
+  const [res, soldBySpct] = await Promise.all([getAllSanPham(), loadSoldQtyBySpct()])
 
-  console.log(res.data)
+  const rawProducts = toList(res?.data)
+  const mergedProducts = mergeProductsForList(rawProducts)
 
-  list.value = res.data.map(item => {
-    const variants = item.sanPhamChiTiets || []
+  list.value = mergedProducts.map(item => {
+    const variants = toVariantList(item)
     const hasVariants = variants.length > 0
+    const catalogImage = fallbackImageFor(item.id, item.maSanPham, item.tenSanPham)
+    const directImage = pickImageValue([item, variants])
+    const preferredDirectImage = isUploadedImagePath(directImage) ? directImage : ""
 
-const totalTon =
-  hasVariants
-    ? variants.reduce((sum, v) => sum + (v.soLuong || 0), 0)
-    : item.soLuong ?? 0
+    const totalTon =
+      hasVariants
+        ? variants.reduce((sum, v) => sum + variantAvailableStockForList(v, soldBySpct), 0)
+        : Number(item?.soLuong ?? item?.soLuongTon ?? item?.tonKho ?? item?.ton ?? 0)
     const firstVariant = variants.length > 0 ? variants[0] : null
 
     const loaiName =
@@ -168,7 +537,12 @@ const totalTon =
       ma: item.maSanPham,
       name: item.tenSanPham,
       description: item.moTa,
-      image: getProductImageOverride({ id: item.id, maSanPham: item.maSanPham })[0] || pickImageValue([item, variants]) || fallbackImageFor(item.id, item.maSanPham),
+      image:
+        getProductImageOverride({ id: item.id, maSanPham: item.maSanPham })[0] ||
+        preferredDirectImage ||
+        directImage ||
+        catalogImage ||
+        fallbackImageFor(item.id, item.maSanPham, item.tenSanPham),
 
       // gia:
       //   firstVariant?.giaBan ??
@@ -194,12 +568,22 @@ const totalTon =
 
 onMounted(loadData)
 
-const filteredList = computed(() =>
-  list.value.filter(item =>
-    item.ma?.toLowerCase().includes(search.value.toLowerCase()) ||
-    item.name?.toLowerCase().includes(search.value.toLowerCase())
+const searchedList = computed(() => {
+  const keyword = search.value.trim().toLowerCase()
+  if (!keyword) return list.value
+  return list.value.filter((item) =>
+    String(item.ma || "").toLowerCase().includes(keyword) ||
+    String(item.name || "").toLowerCase().includes(keyword)
   )
-)
+})
+
+const filteredList = computed(() => {
+  if (!showActiveOnly.value) return searchedList.value
+  return searchedList.value.filter((item) => isProductActive(item.status))
+})
+
+const categoryPageSize = 5
+const currentPageByType = ref({})
 
 const groupedProducts = computed(() => {
   const groups = {}
@@ -217,39 +601,106 @@ const groupedProducts = computed(() => {
   return groups
 })
 
-async function remove(id) {
-  const target = list.value.find((item) => Number(item.id) === Number(id))
-  if (!target) return
-
-  const hideConfirmed = await window.confirmDialog("Ẩn sản phẩm này khỏi danh sách bán? (Khuyến nghị)")
-  if (hideConfirmed) {
-    try {
-      await updateSanPham(id, {
-        tenSanPham: target.name,
-        moTa: target.description,
-        trangThai: "Ngừng hoạt động"
-      })
-      window.toast.success("Đã ẩn sản phẩm")
-      await loadData()
-    } catch (err) {
-      console.error("Hide failed:", err)
-      window.toast.error("Không thể ẩn sản phẩm")
+const pagedGroupedProducts = computed(() => {
+  return Object.entries(groupedProducts.value).map(([type, items]) => {
+    const totalPages = Math.max(1, Math.ceil(items.length / categoryPageSize))
+    const requested = Number(currentPageByType.value[type] || 1)
+    const currentPage = Math.min(Math.max(1, requested), totalPages)
+    const start = (currentPage - 1) * categoryPageSize
+    return {
+      type,
+      items: items.slice(start, start + categoryPageSize),
+      totalItems: items.length,
+      totalPages,
+      currentPage
     }
-    return
-  }
+  })
+})
 
-  const deleteConfirmed = await window.confirmDialog("Bạn muốn xóa vĩnh viễn sản phẩm này?")
-  if (!deleteConfirmed) return
-
-  try {
-    await deleteSanPham(id)
-    window.toast.success("Đã xóa vĩnh viễn sản phẩm")
-    await loadData()
-  } catch (err) {
-    console.error("Delete failed:", err)
-    window.toast.error("Không thể xoá sản phẩm")
+function goToCategoryPage(type, page) {
+  const groupItems = groupedProducts.value[type] || []
+  const totalPages = Math.max(1, Math.ceil(groupItems.length / categoryPageSize))
+  if (page < 1 || page > totalPages) return
+  currentPageByType.value = {
+    ...currentPageByType.value,
+    [type]: page
   }
 }
+
+watch(() => searchedList.value.length, () => {
+  currentPageByType.value = {}
+})
+
+function isProductActive(status) {
+  const normalized = String(status || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+  return !normalized.includes("ngung") && !normalized.includes("inactive")
+}
+
+async function toggleProductStatus(item) {
+  const target = list.value.find((row) => Number(row.id) === Number(item?.id))
+  if (!target) return
+
+  const nextStatus = isProductActive(target.status) ? "Ngừng hoạt động" : "Hoạt động"
+  try {
+    const raw = target.raw && typeof target.raw === "object" ? target.raw : {}
+    const payloadCandidates = [
+      {
+        ...raw,
+        id: Number(target.id),
+        maSanPham: raw?.maSanPham || target.ma,
+        tenSanPham: raw?.tenSanPham || target.name,
+        moTa: raw?.moTa ?? target.description ?? "",
+        trangThai: nextStatus,
+        sanPhamChiTiets: Array.isArray(raw?.sanPhamChiTiets) ? raw.sanPhamChiTiets : []
+      },
+      {
+        ...raw,
+        id: Number(target.id),
+        maSanPham: raw?.maSanPham || target.ma,
+        tenSanPham: raw?.tenSanPham || target.name,
+        moTa: raw?.moTa ?? target.description ?? "",
+        trangThai: nextStatus
+      },
+      {
+        tenSanPham: raw?.tenSanPham || target.name,
+        maSanPham: raw?.maSanPham || target.ma,
+        moTa: raw?.moTa ?? target.description ?? "",
+        trangThai: nextStatus
+      }
+    ]
+
+    let updated = false
+    let lastError = null
+    for (const payload of payloadCandidates) {
+      try {
+        await updateSanPham(target.id, payload)
+        updated = true
+        break
+      } catch (error) {
+        lastError = error
+      }
+    }
+
+    if (!updated) {
+      throw lastError || new Error("Không thể cập nhật trạng thái sản phẩm")
+    }
+
+    if (target.raw && typeof target.raw === "object") {
+      target.raw.trangThai = nextStatus
+    }
+    target.status = normalizeAdminStatusLabel(nextStatus)
+    window.toast?.success?.(nextStatus === "Hoạt động" ? "Đã bật sản phẩm" : "Đã tắt sản phẩm")
+  } catch (err) {
+    console.error("Toggle status failed:", err)
+    window.toast?.error?.("Không thể cập nhật trạng thái sản phẩm")
+  }
+}
+
 </script>
 
 <template>
@@ -278,19 +729,24 @@ async function remove(id) {
             type="text"
             placeholder="Tìm theo mã / tên..."
           />
+          <label class="active-only-toggle">
+            <input v-model="showActiveOnly" type="checkbox" />
+            <span>Chỉ hiện sản phẩm đang hoạt động</span>
+          </label>
         </div>
       </div>
 
       <!-- CATEGORY FRAMES -->
 
       <div
-        v-for="(items, type) in groupedProducts"
-        :key="type"
+        v-for="group in pagedGroupedProducts"
+        :key="group.type"
         class="category-frame"
       >
 
         <div class="category-header">
-          {{ type }}
+          {{ group.type }}
+          <span class="category-count">({{ group.totalItems }} sản phẩm)</span>
         </div>
 
         <table class="data-table">
@@ -312,7 +768,7 @@ async function remove(id) {
           <tbody>
 
             <tr
-              v-for="item in items"
+              v-for="item in group.items"
               :key="item.id"
             >
               <td>
@@ -372,16 +828,19 @@ async function remove(id) {
                   <button
                     class="iconbtn"
                     @click="goToEdit(item.id)"
+                    title="Xem chi tiết"
                   >
-                    <Pencil size="16" />
+                    <Eye size="16" />
                   </button>
-                <button
-                  class="iconbtn"
-                  @click="remove(item.id)"
-                  title="Xoá sản phẩm"
-                >
-                  <Trash2 size="16" />
-                </button>
+                  <button
+                    type="button"
+                    class="switch-btn"
+                    :class="{ active: isProductActive(item.status) }"
+                    :title="isProductActive(item.status) ? 'Đang bật - bấm để tắt' : 'Đang tắt - bấm để bật'"
+                    @click="toggleProductStatus(item)"
+                  >
+                    <span class="switch-thumb"></span>
+                  </button>
                 </div>
 
               </td>
@@ -389,6 +848,25 @@ async function remove(id) {
 
           </tbody>
         </table>
+
+        <div v-if="group.totalPages > 1" class="category-pagination">
+          <button
+            type="button"
+            :disabled="group.currentPage <= 1"
+            @click="goToCategoryPage(group.type, group.currentPage - 1)"
+          >&laquo;</button>
+          <button
+            v-for="p in group.totalPages"
+            :key="`${group.type}-${p}`"
+            :class="{ active: p === group.currentPage }"
+            @click="goToCategoryPage(group.type, p)"
+          >{{ p }}</button>
+          <button
+            type="button"
+            :disabled="group.currentPage >= group.totalPages"
+            @click="goToCategoryPage(group.type, group.currentPage + 1)"
+          >&raquo;</button>
+        </div>
 
       </div>
 
@@ -401,7 +879,7 @@ async function remove(id) {
 
       <div class="pagination">
         <div>
-          Hiển thị {{ filteredList.length }} sản phẩm
+          Hiển thị {{ filteredList.length }} sản phẩm, mỗi loại {{ categoryPageSize }} sản phẩm/trang
         </div>
       </div>
 
@@ -478,6 +956,50 @@ async function remove(id) {
 
 .toolbar {
   margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.active-only-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.active-only-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: #dc2626;
+}
+
+.btn-open-variant {
+  height: 40px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #fff;
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.btn-open-variant:hover {
+  border-color: #c5162d;
+  color: #c5162d;
 }
 
 .search-input {
@@ -515,6 +1037,16 @@ async function remove(id) {
   font-weight:700;
   font-size:15px;
   color: #334155;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.category-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
 }
 
 .product-desc{
@@ -548,7 +1080,7 @@ async function remove(id) {
   display:flex;
   justify-content:center;
   align-items:center;
-  gap:8px;
+  gap:14px;
 }
 
 .iconbtn{
@@ -566,6 +1098,44 @@ async function remove(id) {
 
 .iconbtn:hover{
   background:#f1f5f9;
+}
+
+.switch-btn {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  background: #dc2626;
+  cursor: pointer;
+  transition: background-color .2s ease;
+  align-self: center;
+}
+
+.switch-btn.active {
+  background: #b91c1c;
+  border-color: #f87171;
+}
+
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform .2s ease;
+}
+
+.switch-btn.active .switch-thumb {
+  transform: translateX(20px);
+}
+
+.textbtn {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .data-table {
@@ -633,6 +1203,59 @@ async function remove(id) {
 .pagination {
   color: #64748b;
   font-size: 13px;
+}
+
+.ap-pagination {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.category-pagination {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin: 10px 0 12px;
+}
+.category-pagination button {
+  min-width: 34px;
+  height: 34px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+.category-pagination button.active {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
+}
+.category-pagination button:disabled {
+  opacity: .4;
+  cursor: default;
+}
+.ap-pagination button {
+  min-width: 34px;
+  height: 34px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+.ap-pagination button.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+.ap-pagination button:disabled {
+  opacity: .4;
+  cursor: default;
 }
 
 @media (max-width: 1024px) {

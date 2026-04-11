@@ -107,6 +107,15 @@ const togglePassword = () => {
   showPassword.value = !showPassword.value
 }
 
+const handleForgotPassword = () => {
+  navigateWithTransition('/auth/forgot-password')
+}
+
+const handleSocialLogin = (provider) => {
+  const name = provider === 'google' ? 'Google' : 'Facebook'
+  toastWarning(`Đăng nhập bằng ${name} đang được tích hợp. Vui lòng dùng email/số điện thoại để đăng nhập.`)
+}
+
 const navigateWithTransition = (path) => {
   if (!path || isRouteTransitioning.value) return
 
@@ -318,7 +327,6 @@ const login = async () => {
           <h1>Đăng nhập</h1>
           <small class="muted">Nhập thông tin để tiếp tục</small>
         </div>
-        <span class="pill">Secure</span>
       </div>
 
       <div class="body">
@@ -364,7 +372,7 @@ const login = async () => {
                 <span>Ghi nhớ đăng nhập</span>
               </label>
 
-              <a class="link" href="#" @click.prevent>
+              <a class="link" href="#" @click.prevent="handleForgotPassword">
                 Quên mật khẩu?
               </a>
             </div>
@@ -385,10 +393,10 @@ const login = async () => {
           </div>
 
           <div class="grid cols2">
-            <button class="btn" type="button">
+            <button class="btn" type="button" @click="handleSocialLogin('google')">
               G • Google
             </button>
-            <button class="btn" type="button">
+            <button class="btn" type="button" @click="handleSocialLogin('facebook')">
               f • Facebook
             </button>
           </div>
@@ -540,29 +548,28 @@ const login = async () => {
 }
 
 .brand-d-icon {
-  width: 1.06em;
-  height: 1.06em;
+  width: 1.4em;
+  height: 1.4em;
   object-fit: contain;
   margin-right: -0.04em;
+  margin-top: -0.15em;
   filter:
     sepia(1)
-    saturate(14)
+    saturate(20)
     hue-rotate(326deg)
-    brightness(0.98)
-    contrast(1.16)
-    drop-shadow(0 3px 8px rgba(197, 22, 45, 0.22));
+    brightness(1.3)
+    contrast(1.1);
   transition: transform 0.25s ease, filter 0.25s ease;
 }
 
 .brand:hover .brand-d-icon {
-  transform: scale(1.08) rotate(-3deg);
+  transform: scale(1.1) rotate(-3deg);
   filter:
     sepia(1)
-    saturate(15)
+    saturate(22)
     hue-rotate(326deg)
-    brightness(1.03)
-    contrast(1.18)
-    drop-shadow(0 4px 12px rgba(197, 22, 45, 0.3));
+    brightness(1.4)
+    contrast(1.12);
 }
 
 .brand-rest {
@@ -586,8 +593,7 @@ label {
   font-weight: 600;
 }
 
-.field input,
-.pw input {
+.field > input {
   font-size: 16px;
   padding: 14px 18px;
   border-radius: 999px;
@@ -598,11 +604,18 @@ label {
 }
 
 .pw {
-  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 12px;
+  border: 1px solid rgba(0,0,0,.15);
+  background: rgba(248, 250, 252, 0.92);
+  border-radius: 999px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.field input:focus,
-.pw input:focus {
+.field > input:focus {
   outline: none;
   border-color: #dc2626;
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
@@ -610,19 +623,33 @@ label {
 }
 
 .pw input {
-  padding-right: 50px;
+  flex: 1;
+  width: 100%;
+  border: 0 !important;
+  outline: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+  color: #111827;
+  font-size: 16px;
+  padding: 8px 2px;
+}
+
+.pw:focus-within {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
 }
 
 .iconbtn {
-  position: absolute;
-  right: 14px;
-  background: none;
-  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.7);
   cursor: pointer;
   color: #111;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
 }
 
 .remember {
@@ -703,8 +730,50 @@ label {
 }
 
 @media (max-width: 760px) {
+  .auth {
+    padding: 14px 10px 20px;
+  }
+
+  .auth-card {
+    width: min(100%, 720px);
+    padding: 16px 12px 20px;
+    border-radius: 18px;
+  }
+
+  .head h1 {
+    font-size: 24px;
+  }
+
+  .field input,
+  .pw input {
+    font-size: 15px;
+    padding: 12px 14px;
+  }
+
+  .btn {
+    min-height: 44px;
+  }
+
+  .row {
+    flex-wrap: wrap;
+  }
+
   .brand-wordmark {
     font-size: 40px;
+  }
+}
+
+@media (max-width: 480px) {
+  .brand-wordmark {
+    font-size: 34px;
+  }
+
+  .head h1 {
+    font-size: 22px;
+  }
+
+  .grid.cols2 {
+    grid-template-columns: 1fr;
   }
 }
 </style>

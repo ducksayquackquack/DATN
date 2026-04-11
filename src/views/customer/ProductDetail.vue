@@ -18,6 +18,7 @@ import {
   Ruler
 } from "lucide-vue-next"
 import { getAllSanPham } from "../../services/sanPhamService"
+import { applyCampaignPriceToVariants, getProductCampaignInfo } from "../../services/campaignPricingService"
 import taiKhoanService from "../../services/taiKhoanService"
 import { getKhachHangByTaiKhoanId } from "../../services/KhachHangService"
 import { calculateVoucherDiscount, getActiveVouchers, getAllVouchers, isVoucherApplicable } from "../../services/khuyenMaiService"
@@ -29,11 +30,14 @@ import {
 } from "../../utils/authContext"
 import {
   readCartObject,
+  readCartVariantsObject,
   writeCartObject,
+  writeCartVariantsObject,
   writeCheckoutCartArray
 } from "../../utils/cartStorage"
 import { resolveApiOrigin } from "../../utils/apiOrigin"
 import { getProductImageOverride, getProductImageConfig } from "../../utils/productImageOverrides"
+import { fallbackImageForVariant } from "../../utils/productImageFallback"
 import SiteNav from "../../components/SiteNav.vue"
 import logo from "../../assets/img/logo/new logo.png?url"
 import img1 from "../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
@@ -48,29 +52,29 @@ import img9 from "../../assets/img/Jackets/coach/coach-da-asos.jpg?url"
 import img10 from "../../assets/img/Jackets/coach/coach-gia-da.jpg?url"
 import img11 from "../../assets/img/Jackets/coach/coach-long-cuu.jpg?url"
 // New products from reorganized folders
-import img12 from "../../assets/img/Jackets/bomber/bomber-astronaut/IMG_4435.PNG?url"
-import img13 from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4437.PNG?url"
-import img14 from "../../assets/img/Jackets/bomber/bomber-windbreaker/IMG_4432.PNG?url"
-import img15 from "../../assets/img/Jackets/coach/coach-leopard/IMG_4445.PNG?url"
-import img16 from "../../assets/img/Jackets/coach/coach-longsleeve/IMG_4442.PNG?url"
-import img17 from "../../assets/img/Jackets/coach/coach-tiger-stripe/IMG_4446.PNG?url"
-import img18 from "../../assets/img/Jackets/hoodie/hoodie-camo/IMG_4450.PNG?url"
-import img19 from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/IMG_4452.PNG?url"
-import img20 from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/IMG_4447.PNG?url"
+import img12 from "../../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-black.PNG?url"
+import img13 from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-black.PNG?url"
+import img14 from "../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-black.PNG?url"
+import img15 from "../../assets/img/Jackets/coach/coach-leopard/coach-leopard.PNG?url"
+import img16 from "../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-black.PNG?url"
+import img17 from "../../assets/img/Jackets/coach/coach-tiger-stripe/coach-tiger-stripe.PNG?url"
+import img18 from "../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-black.PNG?url"
+import img19 from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-blue.PNG?url"
+import img20 from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-black.PNG?url"
 // Additional color images
-import img12b from "../../assets/img/Jackets/bomber/bomber-astronaut/IMG_4436.PNG?url"
-import img13b from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4438.PNG?url"
-import img13c from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4439.PNG?url"
-import img13d from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4440.PNG?url"
-import img13e from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4441.PNG?url"
-import img14b from "../../assets/img/Jackets/bomber/bomber-windbreaker/IMG_4433.PNG?url"
-import img14c from "../../assets/img/Jackets/bomber/bomber-windbreaker/IMG_4434.PNG?url"
-import img16b from "../../assets/img/Jackets/coach/coach-longsleeve/IMG_4443.PNG?url"
-import img16c from "../../assets/img/Jackets/coach/coach-longsleeve/IMG_4444.PNG?url"
-import img18b from "../../assets/img/Jackets/hoodie/hoodie-camo/IMG_4451.PNG?url"
-import img19b from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/IMG_4453.PNG?url"
-import img20b from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/IMG_4448.PNG?url"
-import img20c from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/IMG_4449.PNG?url"
+import img12b from "../../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-blue.PNG?url"
+import img13b from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-green.PNG?url"
+import img13c from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-brown.PNG?url"
+import img13d from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-red.PNG?url"
+import img13e from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-white.PNG?url"
+import img14b from "../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-blue.PNG?url"
+import img14c from "../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-green.PNG?url"
+import img16b from "../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-red.PNG?url"
+import img16c from "../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-white.PNG?url"
+import img18b from "../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-white.PNG?url"
+import img19b from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-white.PNG?url"
+import img20b from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-gray.PNG?url"
+import img20c from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-red.PNG?url"
 
 const route = useRoute()
 const router = useRouter()
@@ -78,488 +82,68 @@ const toast = useToast()
 const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, "")
 const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11, img12, img13, img14, img15, img16, img17, img18, img19, img20]
 
-const PRODUCTS = [
-  {
-    id: 1,
-    name: "Áo Bomber Da Lộn DirtyWave",
-    category: "Bomber",
-    price: 649000,
-    originalPrice: 799000,
-    sku: "ATID070-01",
-    badge: "Còn hàng",
-    badgeTone: "red",
-    images: [img1, img3, img4, img2],
-    colors: [{ name: "Đen than", hex: "#1f1b1b" }, { name: "Nâu cacao", hex: "#6b412c" }, { name: "Rêu", hex: "#4a5845" }],
-    sizes: ["S", "M", "L", "XL"],
-    material: "Da lộn xử lý mềm bề mặt",
-    fit: "Bomber regular fit",
-    bullets: [
-      "Chất liệu mềm tay, bề mặt lì và giữ phom tốt.",
-      "Bo cổ, bo tay và bo gấu dệt chắc để outfit gọn hơn.",
-      "Phối đẹp với denim tối màu, quần straight hoặc cargo."
-    ],
-    description: {
-      intro: "DirtyWave tập trung vào phom gọn, dứt khoát và cảm giác mặc thật. Thiết kế này ưu tiên độ sắc của outfit nhưng vẫn đủ dễ mặc hằng ngày.",
-      material: "Bề mặt da lộn mềm, lì, cho cảm giác chạm tay tốt và lên ảnh có chiều sâu. Kết cấu vừa đủ dày để giữ form ổn định khi mặc riêng hoặc layer.",
-      design: "Khoá kéo kim loại tông tối, vai xuôi vừa phải và tỉ lệ thân áo cân bằng giúp tổng thể trông cao, gọn và rõ nét hơn.",
-      fit: "Regular fit theo tinh thần streetwear tinh gọn: vừa đủ rộng để thoải mái nhưng không làm outfit bị nặng nề."
-    }
-  },
-  {
-    id: 2,
-    name: "Áo Bomber Dáng Lửng",
-    category: "Bomber",
-    price: 399000,
-    originalPrice: 0,
-    sku: "ATID070-02",
-    badge: "Còn hàng",
-    badgeTone: "red",
-    images: [img2, img1, img4, img3],
-    colors: [{ name: "Kem khói", hex: "#d4cbbf" }, { name: "Đen", hex: "#1b1b1b" }],
-    sizes: ["S", "M", "L"],
-    material: "Cotton pha đứng phom",
-    fit: "Cropped bomber fit",
-    bullets: [
-      "Phom lửng giúp tổng thể gọn và cao hơn.",
-      "Bề mặt vải ít nhăn, dễ phối với quần cạp cao.",
-      "Phù hợp cả outfit đi làm sáng tạo lẫn đi chơi."
-    ],
-    description: {
-      intro: "Thiết kế bomber lửng dành cho người muốn outfit sắc, gọn và hiện đại hơn so với các phom truyền thống.",
-      material: "Chất vải dày vừa, mặt vải sạch và ít nhăn, giữ được cảm giác chỉn chu trong quá trình sử dụng.",
-      design: "Chiều dài thân áo được cắt ngắn hợp lý để giữ tỉ lệ outfit cân đối. Vai xuôi nhẹ giúp phần thân trên mềm hơn khi phối đồ.",
-      fit: "Phom cropped nhưng không quá ôm, vẫn giữ đủ độ thoải mái để mặc nhiều giờ liên tục."
-    }
-  },
-  {
-    id: 3,
-    name: "Áo Bomber Giả Da DirtyWave",
-    category: "Bomber",
-    price: 329000,
-    originalPrice: 389000,
-    sku: "ATID070-03",
-    badge: "Bán chạy",
-    badgeTone: "dark",
-    images: [img3, img1, img10, img4],
-    colors: [{ name: "Đen bóng mờ", hex: "#171717" }, { name: "Nâu espresso", hex: "#4d3329" }],
-    sizes: ["M", "L", "XL"],
-    material: "Giả da mềm dễ chăm sóc",
-    fit: "Regular fit",
-    bullets: ["Nhẹ, dễ mặc hơn các mẫu da cứng.", "Giữ thần thái mạnh nhưng không quá nặng.", "Hợp với sneaker, boots và quần suông."],
-    description: {
-      intro: "Một lựa chọn dễ tiếp cận hơn cho outfit da, tập trung vào khả năng mặc thường xuyên và độ linh hoạt.",
-      material: "Chất giả da mềm, bề mặt mịn và ít bắt bụi, giúp việc chăm sóc đơn giản hơn.",
-      design: "Cấu trúc cổ, thân và tay giữ tinh thần bomber rõ ràng nhưng được xử lý gọn để không bị thô.",
-      fit: "Regular fit vừa đủ thoải mái, phù hợp nhiều dáng người và nhiều kiểu phối đồ."
-    }
-  },
-  {
-    id: 4,
-    name: "Áo Bomber Cotton DirtyWave",
-    category: "Bomber",
-    price: 459000,
-    originalPrice: 0,
-    sku: "ATID070-04",
-    badge: "Mới",
-    badgeTone: "red",
-    images: [img4, img1, img2, img7],
-    colors: [{ name: "Xám khói", hex: "#757575" }, { name: "Đen", hex: "#101010" }],
-    sizes: ["S", "M", "L", "XL"],
-    material: "Cotton đanh bề mặt",
-    fit: "Relaxed fit",
-    bullets: ["Nhẹ, thoáng và dễ mặc hằng ngày.", "Tinh thần tối giản, ít chi tiết thừa.", "Phù hợp thời tiết chuyển mùa."],
-    description: {
-      intro: "Bomber cotton cho người cần một lớp áo ngoài đơn giản nhưng vẫn gọn và có điểm nhấn về chất liệu.",
-      material: "Cotton có độ đứng vừa phải, bề mặt sạch và ít xù sau quá trình sử dụng thông thường.",
-      design: "Thiết kế tối giản, kiểm soát tốt tỉ lệ ở phần thân và tay áo để luôn giữ cảm giác gọn.",
-      fit: "Relaxed fit dễ phối với áo thun, sweater mỏng hoặc hoodie nhẹ."
-    }
-  },
-  {
-    id: 5,
-    name: "Hoodie Zip Dáng Hộp DirtyWave",
-    category: "Hoodie",
-    price: 499000,
-    originalPrice: 599000,
-    sku: "ATID070-05",
-    badge: "Còn hàng",
-    badgeTone: "red",
-    images: [img5, img6, img7, img4],
-    colors: [{ name: "Đen mực", hex: "#0c0c0c" }, { name: "Ghi xám", hex: "#919191" }, { name: "Kem tro", hex: "#d7cec1" }],
-    sizes: ["M", "L", "XL"],
-    material: "Nỉ dày boxy",
-    fit: "Boxy fit",
-    bullets: ["Dáng hộp rõ, hợp layering.", "Khoá kéo lớn tạo điểm nhấn mạnh.", "Mũ hai lớp giữ dáng tốt."],
-    description: {
-      intro: "Một mẫu hoodie zip đóng vai trò layer chính trong outfit, hướng đến cảm giác dày, nặng tay và giàu khối.",
-      material: "Vải nỉ dày, mặt ngoài lì và phần trong êm, giữ được form đẹp khi kéo khoá hoặc mở hờ.",
-      design: "Đầu kéo lớn, vai hạ và tỉ lệ boxy tạo nên tinh thần streetwear rõ nét.",
-      fit: "Boxy fit dành cho set đồ cần nhiều lớp hoặc silhouette rõ ràng."
-    }
-  },
-  {
-    id: 6,
-    name: "Hoodie Zip In Hình DirtyWave",
-    category: "Hoodie",
-    price: 699000,
-    originalPrice: 0,
-    sku: "ATID070-06",
-    badge: "Mới",
-    badgeTone: "red",
-    images: [img6, img5, img7, img4],
-    colors: [{ name: "Đen graphic", hex: "#131313" }, { name: "Tro sáng", hex: "#b6b6b2" }],
-    sizes: ["M", "L", "XL"],
-    material: "Nỉ compact in kỹ thuật số",
-    fit: "Relaxed zip fit",
-    bullets: ["Mặt in sắc, độ bền cao.", "Thân áo dày vừa, hợp mặc độc lập.", "Dễ phối với denim tối và quần suông."],
-    description: {
-      intro: "Mẫu hoodie tập trung vào đồ hoạ mặt trước nhưng vẫn giữ tinh thần mặc dễ của DirtyWave.",
-      material: "Vải nỉ compact cho cảm giác chắc tay, bề mặt mịn và lên form ổn định.",
-      design: "Đồ hoạ được xử lý gọn, không làm tổng thể quá nặng nhưng vẫn đủ tạo điểm nhìn.",
-      fit: "Relaxed fit thoải mái, phù hợp layering nhẹ và mặc hằng ngày."
-    }
-  },
-  {
-    id: 7,
-    name: "Hoodie Zip Jacket DirtyWave",
-    category: "Hoodie",
-    price: 559000,
-    originalPrice: 0,
-    sku: "ATID070-07",
-    badge: "Bán chạy",
-    badgeTone: "dark",
-    images: [img7, img5, img6, img4],
-    colors: [{ name: "Than đậm", hex: "#171b22" }, { name: "Xám băng", hex: "#9ba0a6" }],
-    sizes: ["M", "L", "XL"],
-    material: "Nỉ dệt dày giữ phom",
-    fit: "Regular zip fit",
-    bullets: ["Khoá kéo chắc tay, vận hành mượt.", "Dáng cân bằng giữa boxy và regular.", "Phù hợp set đồ streetwear gọn."],
-    description: {
-      intro: "Thiết kế zip hoodie thiên về sự cân bằng, dễ mặc và hợp nhiều hoàn cảnh sử dụng hơn.",
-      material: "Chất nỉ dày vừa, phần mặt vải sạch và giữ được sự ổn định sau nhiều lần mặc.",
-      design: "Thân áo, mũ và tay áo được cân tỉ lệ để tổng thể luôn gọn thay vì bị nặng phần trên.",
-      fit: "Regular fit hơi rộng nhẹ, đủ thoải mái nhưng không làm outfit bị phồng."
-    }
-  },
-  {
-    id: 8,
-    name: "Áo Khoác Coach Cách Nhiệt Timberland",
-    category: "Coach",
-    price: 799000,
-    originalPrice: 899000,
-    sku: "ATID070-08",
-    badge: "Drop mới",
-    badgeTone: "red",
-    images: [img8, img9, img10, img11],
-    colors: [{ name: "Nâu đất", hex: "#5b4838" }, { name: "Đen đá", hex: "#181818" }],
-    sizes: ["M", "L", "XL"],
-    material: "Vải chống gió có lớp lót nhẹ",
-    fit: "Coach fit",
-    bullets: ["Giữ nhiệt nhẹ cho thời tiết chuyển mùa.", "Cổ áo sắc, phần thân gọn.", "Dễ phối cùng tee và denim."],
-    description: {
-      intro: "Một mẫu coach jacket phục vụ các set đồ cần độ sắc và tính ứng dụng cao.",
-      material: "Lớp ngoài chống gió nhẹ, trong có lót mỏng giúp mặc ổn hơn vào buổi tối hoặc phòng lạnh.",
-      design: "Cấu trúc coach cổ điển được tinh giản, giữ cảm giác sạch và hiện đại hơn.",
-      fit: "Coach fit với độ rộng vừa phải để mặc thoải mái cùng nhiều lớp cơ bản."
-    }
-  },
-  {
-    id: 9,
-    name: "Áo Khoác Coach Da ASOS DirtyWave",
-    category: "Coach",
-    price: 899000,
-    originalPrice: 0,
-    sku: "ATID070-09",
-    badge: "Premium",
-    badgeTone: "dark",
-    images: [img9, img10, img8, img11],
-    colors: [{ name: "Nâu rượu", hex: "#5a3527" }, { name: "Đen trầm", hex: "#111111" }],
-    sizes: ["L", "XL"],
-    material: "Bề mặt da xử lý lì",
-    fit: "Structured coach fit",
-    bullets: ["Bề mặt da lì, lên ảnh tốt.", "Giữ được thần thái coach jacket nhưng sang hơn.", "Hợp boots, loafer và denim đậm."],
-    description: {
-      intro: "Thiết kế coach da dành cho outfit cần độ chín và độ sâu chất liệu rõ rệt.",
-      material: "Bề mặt da xử lý lì, hạn chế bóng và cho cảm giác cao cấp hơn khi nhìn gần.",
-      design: "Thân áo sạch chi tiết, tập trung vào phom vai và độ rơi của bề mặt da.",
-      fit: "Structured fit đứng phom rõ, phù hợp người thích silhouette sắc nét."
-    }
-  },
-  {
-    id: 10,
-    name: "Áo Khoác Coach Giả Da DirtyWave",
-    category: "Coach",
-    price: 699000,
-    originalPrice: 0,
-    sku: "ATID070-10",
-    badge: "Xu hướng",
-    badgeTone: "red",
-    images: [img10, img9, img8, img11],
-    colors: [{ name: "Đen than", hex: "#151515" }, { name: "Nâu chocolate", hex: "#55352a" }],
-    sizes: ["M", "L", "XL"],
-    material: "Giả da mềm ít nhăn",
-    fit: "Relaxed coach fit",
-    bullets: ["Nhẹ hơn da thật, dễ mặc lâu.", "Phù hợp outfit đi làm sáng tạo.", "Giữ tinh thần mạnh nhưng không quá nặng."],
-    description: {
-      intro: "Coach giả da là lựa chọn dễ tiếp cận khi cần outfit có chất mạnh mà vẫn linh hoạt.",
-      material: "Giả da mềm, ít nhăn và dễ bảo quản hơn trong điều kiện sử dụng hằng ngày.",
-      design: "Đường cắt gọn, giữ tinh thần coach với cảm giác hiện đại và dễ phối hơn.",
-      fit: "Relaxed fit cho phép mặc cùng hoodie mỏng hoặc tee dày mà vẫn thoải mái."
-    }
-  },
-  {
-    id: 11,
-    name: "Áo Khoác Coach Lông Cừu DirtyWave",
-    category: "Coach",
-    price: 399000,
-    originalPrice: 559000,
-    sku: "ATID070-11",
-    badge: "Giá tốt",
-    badgeTone: "red",
-    images: [img11, img8, img9, img10],
-    colors: [{ name: "Kem cát", hex: "#d6cebf" }, { name: "Nâu đậm", hex: "#5a4336" }],
-    sizes: ["S", "M", "L"],
-    material: "Lông cừu nhân tạo mềm",
-    fit: "Warm relaxed fit",
-    bullets: ["Giữ ấm ổn trong ngày lạnh nhẹ.", "Bề mặt nổi khối tạo điểm nhìn mạnh.", "Phối đẹp với quần đen và boot."],
-    description: {
-      intro: "Một mẫu coach jacket thiên về chất liệu và cảm giác ấm, dành cho những set đồ có texture rõ.",
-      material: "Bề mặt lông cừu nhân tạo mềm, tạo chiều sâu thị giác và cảm giác mặc êm hơn.",
-      design: "Cấu trúc tổng thể tối giản để phần chất liệu trở thành điểm nhấn chính của outfit.",
-      fit: "Relaxed fit ấm áp, dễ layer với áo len hoặc sweatshirt mỏng."
-    }
-  },
-  {
-    id: 12,
-    name: "Bomber Astronaut DirtyWave",
-    category: "Bomber",
-    price: 549000,
-    originalPrice: 699000,
-    sku: "ATID070-12",
-    badge: "Limited",
-    badgeTone: "dark",
-    images: [img12, img12b, img1],
-    colorImages: { "Xanh": img12, "Xám": img12b },
-    colors: [{ name: "Xanh", hex: "#3b82f6" }, { name: "Xám", hex: "#6b7280" }],
-    sizes: ["M", "L", "XL"],
-    material: "Polyester pha cotton",
-    fit: "Regular fit",
-    bullets: ["Thiết kế astronaut độc đáo.", "Chất liệu bền, chống gió nhẹ.", "Phù hợp phong cách streetwear."],
-    description: {
-      intro: "Bomber astronaut với thiết kế độc đáo, mang đậm phong cách streetwear hiện đại.",
-      material: "Chất liệu polyester pha cotton, bền và chống gió nhẹ.",
-      design: "Họa tiết astronaut nổi bật, tạo điểm nhấn cho outfit.",
-      fit: "Regular fit thoải mái, dễ phối đồ."
-    }
-  },
-  {
-    id: 13,
-    name: "Bomber Embroidered Fuzzy DirtyWave",
-    category: "Bomber",
-    price: 599000,
-    originalPrice: 749000,
-    sku: "ATID070-13",
-    badge: "New",
-    badgeTone: "red",
-    images: [img13, img13b, img13c, img13d, img13e],
-    colorImages: { "Be": img13, "Xanh": img13b, "Nâu": img13c, "Đen": img13d, "Xám": img13e },
-    colors: [{ name: "Be", hex: "#f5f5dc" }, { name: "Xanh", hex: "#3b82f6" }, { name: "Nâu", hex: "#8b4513" }, { name: "Đen", hex: "#000000" }, { name: "Xám", hex: "#6b7280" }],
-    sizes: ["S", "M", "L", "XL"],
-    material: "Vải fuzzy thêu họa tiết",
-    fit: "Relaxed fit",
-    bullets: ["Chất liệu fuzzy mềm mại.", "Thêu họa tiết tinh xảo.", "Giữ ấm tốt cho mùa lạnh."],
-    description: {
-      intro: "Bomber fuzzy với họa tiết thêu tinh xảo, mang lại vẻ ngoài sang trọng.",
-      material: "Vải fuzzy cao cấp, mềm mại và giữ ấm tốt.",
-      design: "Họa tiết thêu chi tiết, tạo điểm nhấn độc đáo.",
-      fit: "Relaxed fit rộng rãi, thoải mái."
-    }
-  },
-  {
-    id: 14,
-    name: "Bomber Windbreaker DirtyWave",
-    category: "Bomber",
-    price: 479000,
-    originalPrice: 599000,
-    sku: "ATID070-14",
-    badge: "Hot",
-    badgeTone: "red",
-    images: [img14, img14b, img14c],
-    colorImages: { "Đen": img14, "Xanh": img14b, "Đỏ": img14c },
-    colors: [{ name: "Đen", hex: "#000000" }, { name: "Xanh", hex: "#3b82f6" }, { name: "Đỏ", hex: "#ef4444" }],
-    sizes: ["S", "M", "L", "XL"],
-    material: "Nylon chống gió",
-    fit: "Regular fit",
-    bullets: ["Chống gió, chống nước nhẹ.", "Nhẹ, dễ mang theo.", "Phù hợp hoạt động ngoài trời."],
-    description: {
-      intro: "Windbreaker nhẹ, chống gió tốt, lý tưởng cho các hoạt động ngoài trời.",
-      material: "Nylon cao cấp, chống gió và nước nhẹ.",
-      design: "Thiết kế gọn nhẹ, dễ gấp gọn mang theo.",
-      fit: "Regular fit thoải mái, dễ vận động."
-    }
-  },
-  {
-    id: 15,
-    name: "Coach Leopard DirtyWave",
-    category: "Coach",
-    price: 849000,
-    originalPrice: 999000,
-    sku: "ATID070-15",
-    badge: "Premium",
-    badgeTone: "dark",
-    images: [img15, img8, img10],
-    colorImages: { "Vàng nâu": img15 },
-    colors: [{ name: "Vàng nâu", hex: "#d4a017" }],
-    sizes: ["M", "L", "XL"],
-    material: "Da báo nhân tạo cao cấp",
-    fit: "Regular fit",
-    bullets: ["Họa tiết báo nổi bật.", "Chất liệu cao cấp, bền đẹp.", "Phong cách cá tính, mạnh mẽ."],
-    description: {
-      intro: "Coach jacket với họa tiết báo độc đáo, thể hiện cá tính mạnh mẽ.",
-      material: "Da báo nhân tạo cao cấp, bền và đẹp.",
-      design: "Họa tiết báo ấn tượng, tạo phong cách riêng biệt.",
-      fit: "Regular fit vừa vặn, thoải mái."
-    }
-  },
-  {
-    id: 16,
-    name: "Coach Longsleeve DirtyWave",
-    category: "Coach",
-    price: 529000,
-    originalPrice: 649000,
-    sku: "ATID070-16",
-    badge: "Sale",
-    badgeTone: "red",
-    images: [img16, img16b, img16c],
-    colorImages: { "Xanh": img16, "Đen": img16b, "Trắng": img16c },
-    colors: [{ name: "Xanh", hex: "#000080" }, { name: "Đen", hex: "#000000" }, { name: "Trắng", hex: "#ffffff" }],
-    sizes: ["S", "M", "L", "XL"],
-    material: "Cotton dày",
-    fit: "Regular fit",
-    bullets: ["Tay dài giữ ấm tốt.", "Chất liệu cotton thoáng mát.", "Phù hợp nhiều hoàn cảnh."],
-    description: {
-      intro: "Coach longsleeve với tay dài, giữ ấm tốt cho mùa lạnh.",
-      material: "Cotton dày, thoáng mát và giữ ấm.",
-      design: "Tay dài thiết kế tinh tế, phù hợp layering.",
-      fit: "Regular fit thoải mái, dễ phối đồ."
-    }
-  },
-  {
-    id: 17,
-    name: "Coach Tiger Stripe DirtyWave",
-    category: "Coach",
-    price: 779000,
-    originalPrice: 899000,
-    sku: "ATID070-17",
-    badge: "New",
-    badgeTone: "red",
-    images: [img17, img8, img9],
-    colorImages: { "Cam": img17 },
-    colors: [{ name: "Cam", hex: "#ff8c00" }],
-    sizes: ["M", "L", "XL"],
-    material: "Vải cotton pha",
-    fit: "Relaxed fit",
-    bullets: ["Họa tiết tiger stripe độc đáo.", "Chất liệu bền, dễ bảo quản.", "Phong cách streetwear cá tính."],
-    description: {
-      intro: "Coach jacket với họa tiết tiger stripe, phong cách quân đội cá tính.",
-      material: "Vải cotton pha, bền và dễ bảo quản.",
-      design: "Họa tiết tiger stripe ấn tượng, phong cách riêng biệt.",
-      fit: "Relaxed fit rộng rãi, thoải mái."
-    }
-  },
-  {
-    id: 18,
-    name: "Hoodie Camo DirtyWave",
-    category: "Hoodie",
-    price: 459000,
-    originalPrice: 559000,
-    sku: "ATID070-18",
-    badge: "Hot",
-    badgeTone: "red",
-    images: [img18, img18b, img5],
-    colorImages: { "Xanh": img18, "Nâu": img18b },
-    colors: [{ name: "Xanh", hex: "#4b5320" }, { name: "Nâu", hex: "#8b7355" }],
-    sizes: ["S", "M", "L", "XL"],
-    material: "Cotton pha polyester",
-    fit: "Regular fit",
-    bullets: ["Họa tiết camo cổ điển.", "Dễ phối đồ hàng ngày.", "Chất liệu bền, giữ form."],
-    description: {
-      intro: "Hoodie camo với họa tiết rằn ri cổ điển, dễ phối đồ.",
-      material: "Cotton pha polyester, bền và giữ form tốt.",
-      design: "Họa tiết camo ấn tượng, phù hợp nhiều phong cách.",
-      fit: "Regular fit thoải mái, dễ mặc."
-    }
-  },
-  {
-    id: 19,
-    name: "Hoodie Zip Boxy DirtyWave",
-    category: "Hoodie",
-    price: 519000,
-    originalPrice: 629000,
-    sku: "ATID070-19",
-    badge: "Trending",
-    badgeTone: "dark",
-    images: [img19, img19b, img6],
-    colorImages: { "Đen": img19, "Đỏ": img19b },
-    colors: [{ name: "Đen", hex: "#000000" }, { name: "Đỏ", hex: "#ef4444" }],
-    sizes: ["M", "L", "XL"],
-    material: "Nỉ dày boxy",
-    fit: "Boxy fit",
-    bullets: ["Dáng boxy hiện đại.", "Chất nỉ dày giữ ấm.", "Phong cách streetwear."],
-    description: {
-      intro: "Hoodie zip boxy với dáng rộng hiện đại, phong cách streetwear.",
-      material: "Nỉ dày cao cấp, giữ ấm và form đẹp.",
-      design: "Dáng boxy rộng rãi, tạo phong cách trẻ trung.",
-      fit: "Boxy fit thoải mái, dễ layering."
-    }
-  },
-  {
-    id: 20,
-    name: "Hoodie Zip Silk DirtyWave",
-    category: "Hoodie",
-    price: 679000,
-    originalPrice: 799000,
-    sku: "ATID070-20",
-    badge: "Luxury",
-    badgeTone: "dark",
-    images: [img20, img20b, img20c],
-    colorImages: { "Đen": img20, "Xám": img20b, "Xanh": img20c },
-    colors: [{ name: "Đen", hex: "#000000" }, { name: "Xám", hex: "#6b7280" }, { name: "Xanh", hex: "#191970" }],
-    sizes: ["M", "L", "XL"],
-    material: "Silk blend cao cấp",
-    fit: "Regular fit",
-    bullets: ["Chất liệu silk sang trọng.", "Bề mặt mịn, lên ảnh đẹp.", "Phù hợp dự tiệc, đi chơi."],
-    description: {
-      intro: "Hoodie zip silk với chất liệu cao cấp, sang trọng và mịn màng.",
-      material: "Silk blend mịn màng, bóng đẹp tự nhiên.",
-      design: "Thiết kế tinh tế, sang trọng.",
-      fit: "Regular fit vừa vặn, lịch sự."
-    }
-  }
-]
-
 const profileOpen = ref(false)
 const mobileOpen = ref(false)
 const voucherDrawerOpen = ref(false)
 const selectedVoucherInDetail = ref(null)
 const searchQuery = ref("")
 const activeImage = ref("")
+const galleryMotionDirection = ref("right")
 const quantity = ref(1)
 const selectedColor = ref("")
 const selectedSize = ref("")
 const activeTab = ref("description")
 const vouchers = ref([])
 const loadingVouchers = ref(false)
+const productsLoading = ref(true)
 const backendProducts = ref([])
 const userAvatar = ref("")
 const userDisplayName = ref("Khách hàng")
 const userRoleLabel = ref("Khách hàng")
 const cartVersion = ref(0)
+const activeCampaignInfo = ref(null)
 const CART_UPDATED_EVENT = "dirtywave:cart-updated"
+const CHECKOUT_PENDING_ITEM_VOUCHERS_KEY = "checkoutPendingItemVoucherSelections"
 const quickPreviewProduct = ref(null)
 const quickPreviewColor = ref("")
 const quickPreviewSize = ref("")
 const quickPreviewQty = ref(1)
+const quickPreviewImageIndex = ref(0)
+
+const MOTION_PRESET_MAP = {
+  snappy: { swipe: 200, fade: 170, ui: 180 },
+  balanced: { swipe: 320, fade: 260, ui: 220 },
+  cinematic: { swipe: 480, fade: 420, ui: 340 }
+}
+
+const motionPresetKeyRaw = String(localStorage.getItem("dirtywave:motion-preset") || "balanced").trim().toLowerCase()
+const motionPresetKey = MOTION_PRESET_MAP[motionPresetKeyRaw] ? motionPresetKeyRaw : "balanced"
+const motionPreset = MOTION_PRESET_MAP[motionPresetKey]
+const galleryMotionVars = {
+  "--pd-swipe-ms": `${motionPreset.swipe}ms`,
+  "--pd-fade-ms": `${motionPreset.fade}ms`,
+  "--pd-ui-ms": `${motionPreset.ui}ms`
+}
+
+const staticQuickImagesByCode = {
+  SP002: [img2, img3],
+  SP009: [img9, img10],
+  SP012: [img12, img12b],
+  SP013: [img13, img13b, img13c, img13d, img13e],
+  SP014: [img14, img14b, img14c],
+  SP016: [img16, img16b, img16c],
+  SP018: [img18, img18b],
+  SP019: [img19, img19b],
+  SP020: [img20, img20b, img20c]
+}
+
+// Map Vietnamese color names to English keywords found in static image filenames
+const colorKeywordMap = {
+  den: "black", do: "red", trang: "white", xam: "gray", xanh: "blue",
+  "xanh duong": "blue", "xanh la": "green", nau: "brown",
+  vang: "yellow", hong: "pink", tim: "purple", cam: "orange",
+  be: "beige", kem: "cream"
+}
 
 const getAvatarStorageKey = (accountId) => `avatar:${accountId}`
 
@@ -583,6 +167,8 @@ const VND = (value) => new Intl.NumberFormat("vi-VN").format(Number(value || 0))
 const normalizeKeyword = (value = "") => String(value)
   .normalize("NFD")
   .replace(/[\u0300-\u036f]/g, "")
+  .replace(/đ/g, "d")
+  .replace(/Đ/g, "D")
   .toLowerCase()
   .trim()
 
@@ -617,6 +203,25 @@ const toImageUrl = (value) => {
   if (normalized.startsWith("assets/") || normalized.startsWith("img/")) return `/${normalized}`
   if (normalized.startsWith("/")) return normalized
   return normalized
+}
+
+const normalizeImageKey = (value = "") => {
+  const raw = String(value || "").trim()
+  if (!raw) return ""
+  const withoutQuery = raw.split("#")[0].split("?")[0]
+  const normalized = withoutQuery.replace(/\\/g, "/").toLowerCase()
+  try {
+    const url = new URL(normalized, window.location.origin)
+    return url.pathname.toLowerCase()
+  } catch {
+    return normalized
+  }
+}
+
+const isSameImage = (left = "", right = "") => {
+  const l = normalizeImageKey(left)
+  const r = normalizeImageKey(right)
+  return !!l && !!r && l === r
 }
 
 const pickImageValues = (entry) => {
@@ -654,16 +259,41 @@ const fallbackImageFor = (id, code = "") => {
   return fallbackImages[0]
 }
 
+const isActiveStatus = (value = "") => {
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+  return !normalized.includes("ngung") && !normalized.includes("inactive")
+}
+
+const getActiveVariants = (value) => {
+  const variants = Array.isArray(value?.sanPhamChiTiets) ? value.sanPhamChiTiets : []
+  return variants.filter((variant) => isActiveStatus(variant?.trangThai || variant?.status))
+}
+
 const normalizeBackendProduct = (item) => {
-  const variants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
+  const variants = getActiveVariants(item)
   const id = resolveProductId(item)
   const code = String(item?.maSanPham || item?.ma || "")
+  const totalStock = variants.reduce((sum, variant) => sum + Math.max(Number(variant?.soLuong || 0), 0), 0)
+  const isInactive = !isActiveStatus(item?.trangThai || item?.status) || variants.length === 0
   const category = String(item?.danhMuc?.tenDanhMuc || item?.loai?.tenLoai || "Thời trang nam")
   const variantPrices = variants.map((variant) => Number(variant?.giaBan || 0)).filter((n) => n > 0)
   const variantOriginalPrices = variants.map((variant) => Number(variant?.giaNhap || 0)).filter((n) => n > 0)
-  const overrideImages = getProductImageOverride({ id, maSanPham: code })
+  const overrideImages = (Array.isArray(getProductImageOverride({ id, maSanPham: code }))
+    ? getProductImageOverride({ id, maSanPham: code })
+    : [])
+    .map((entry) => toImageUrl(entry))
+    .filter(Boolean)
 
-  const images = overrideImages.length ? overrideImages : [...new Set(pickImageValues([
+  const staticImages = code && staticQuickImagesByCode[code]
+    ? staticQuickImagesByCode[code]
+    : []
+
+  const backendImages = [...new Set(pickImageValues([
     item?.anh,
     item?.hinhAnh,
     item?.images,
@@ -672,6 +302,14 @@ const normalizeBackendProduct = (item) => {
     item?.anhChinh,
     variants
   ]))]
+
+  const images = overrideImages.length
+    ? [...new Set(overrideImages)]
+    : staticImages.length
+      ? [...new Set(staticImages)]
+      : backendImages.length
+        ? [...new Set(backendImages)]
+        : []
 
   const colors = [...new Set(
     variants
@@ -695,12 +333,35 @@ const normalizeBackendProduct = (item) => {
 
   const descriptionText = String(item?.moTa || "").trim()
 
-  // Add colorImages for static products (12-20)
-  let colorImages = {}
-  if (id >= 12 && id <= 20) {
-    const staticProduct = PRODUCTS.find(p => p.id === id)
-    if (staticProduct?.colorImages) {
-      colorImages = staticProduct.colorImages
+  const colorImages = {}
+  if (staticImages.length) {
+    // When static images exist, match colors by filename keyword
+    for (const variant of variants) {
+      const colorName = String(variant?.mauSac?.tenMau || "").trim()
+      if (!colorName || colorImages[colorName]) continue
+      const normalizedColor = normalizeKeyword(colorName)
+      const keyword = colorKeywordMap[normalizedColor]
+        || Object.entries(colorKeywordMap).find(([k]) => normalizedColor.includes(k))?.[1]
+        || ""
+      if (!keyword) continue
+      const matched = staticImages.find((img) => String(img || "").toLowerCase().includes(keyword))
+      if (matched) colorImages[colorName] = matched
+    }
+  } else {
+    // Fallback: extract from backend variant fields
+    for (const variant of variants) {
+      const colorName = String(variant?.mauSac?.tenMau || "").trim()
+      const image = pickImageValues([
+        variant,
+        variant?.anh,
+        variant?.hinhAnh,
+        variant?.image,
+        variant?.imageUrl,
+        variant?.duongDanAnh
+      ])[0] || ""
+      if (colorName && image && !colorImages[colorName]) {
+        colorImages[colorName] = image
+      }
     }
   }
 
@@ -712,8 +373,8 @@ const normalizeBackendProduct = (item) => {
     price,
     originalPrice,
     sku: code,
-    badge: String(item?.trangThai || "").toLowerCase().includes("ngung") ? "Hết hàng" : "Còn hàng",
-    badgeTone: String(item?.trangThai || "").toLowerCase().includes("ngung") ? "dark" : "red",
+    badge: totalStock > 0 && !isInactive ? `Còn lại ${totalStock} sản phẩm` : "Hết hàng",
+    badgeTone: totalStock > 0 && !isInactive ? "green" : "dark",
     images: images.length ? images : [fallbackImageFor(id, code)],
     colorImages,
     colors,
@@ -780,33 +441,101 @@ const displayImages = computed(() => {
     ? currentProduct.value.images.filter(Boolean)
     : []
 
-  if (baseImages.length) return baseImages
+  const orderedColorImages = []
+  for (const color of effectiveColors.value) {
+    const colorId = Number(colorNameToIdMap.value?.[color?.name] || 0)
+    const fromMap = colorId > 0 ? String(colorImageMap.value?.[colorId] || "").trim() : ""
+    if (fromMap) orderedColorImages.push(fromMap)
+  }
+
+  const extraColorImages = Object.values(colorImageMap.value || {})
+    .map((image) => String(image || "").trim())
+    .filter(Boolean)
+
+  const images = [...new Set([
+    ...orderedColorImages,
+    ...baseImages,
+    ...extraColorImages
+  ])]
+
+  if (images.length) return images
   return [createPlaceholderImage(0)]
 })
 
 const hasSingleImage = computed(() => displayImages.value.length <= 1)
 
 const colorImageMap = computed(() => {
-  const raw = currentProduct.value?.raw
-  if (!raw) return {}
-
-  const id = resolveProductId(raw)
-  const code = String(raw?.maSanPham || raw?.ma || "")
-  const config = getProductImageConfig({ id, maSanPham: code })
-
   const map = {}
-  for (const entry of (config.colorImages || [])) {
-    if (entry.colorId && entry.image) {
-      map[entry.colorId] = entry.image
+  const raw = currentProduct.value?.raw
+  const variants = getActiveVariants(raw)
+  const productId = currentProduct.value?.id || 0
+  const productCode = currentProduct.value?.sku || ""
+
+  // 1. HIGHEST PRIORITY: From staticQuickImagesByCode matched by color name in filename
+  const staticImages = productCode && staticQuickImagesByCode[productCode]
+    ? staticQuickImagesByCode[productCode]
+    : []
+  if (staticImages.length > 0) {
+    for (const color of effectiveColors.value) {
+      const colorId = Number(colorNameToIdMap.value?.[color?.name] || 0)
+      if (colorId <= 0 || map[colorId]) continue
+      const normalizedColor = normalizeKeyword(color?.name || "")
+      const keyword = colorKeywordMap[normalizedColor]
+        || Object.entries(colorKeywordMap).find(([k]) => normalizedColor.includes(k))?.[1]
+        || ""
+      if (!keyword) continue
+      const matchedImage = staticImages.find((img) =>
+        String(img || "").toLowerCase().includes(keyword)
+      )
+      if (matchedImage) map[colorId] = matchedImage
     }
   }
+
+  // 2. From localStorage productImageConfig (admin-set colorImages)
+  const config = getProductImageConfig({ id: productId, maSanPham: productCode })
+  const storedColorImages = Array.isArray(config?.colorImages) ? config.colorImages : []
+  for (const entry of storedColorImages) {
+    const colorId = Number(entry?.colorId || 0)
+    const image = String(entry?.image || "").trim()
+    if (colorId > 0 && image && !map[colorId]) {
+      map[colorId] = image
+    }
+  }
+
+  // 3. From normalizeBackendProduct's colorImages (name-based)
+  const namedColorImages = currentProduct.value?.colorImages || {}
+  for (const [colorName, image] of Object.entries(namedColorImages)) {
+    const colorId = Number(colorNameToIdMap.value?.[colorName] || 0)
+    const normalizedImage = String(image || "").trim()
+    if (colorId > 0 && normalizedImage && !map[colorId]) {
+      map[colorId] = normalizedImage
+    }
+  }
+
+  // 4. LOWEST PRIORITY: From backend variant image fields (only if no static images for this product)
+  if (!staticImages.length) {
+    for (const variant of variants) {
+      const colorId = Number(variant?.mauSac?.id || 0)
+      if (colorId <= 0 || map[colorId]) continue
+      const image = pickImageValues([
+        variant,
+        variant?.anh,
+        variant?.hinhAnh,
+        variant?.image,
+        variant?.imageUrl,
+        variant?.duongDanAnh
+      ])[0] || ""
+      if (image) map[colorId] = image
+    }
+  }
+
   return map
 })
 
 const colorNameToIdMap = computed(() => {
   const raw = currentProduct.value?.raw
   if (!raw) return {}
-  const variants = Array.isArray(raw?.sanPhamChiTiets) ? raw.sanPhamChiTiets : []
+  const variants = getActiveVariants(raw)
   const map = {}
   for (const v of variants) {
     const name = String(v?.mauSac?.tenMau || "").trim()
@@ -816,25 +545,89 @@ const colorNameToIdMap = computed(() => {
   return map
 })
 
+const resolveColorImageByName = (colorName) => {
+  const target = normalizeKeyword(colorName)
+  if (!target) return ""
+
+  const namedColorImages = currentProduct.value?.colorImages || {}
+  for (const [name, image] of Object.entries(namedColorImages)) {
+    if (normalizeKeyword(name) === target) {
+      const normalizedImage = String(image || "").trim()
+      if (normalizedImage) return normalizedImage
+    }
+  }
+
+  const raw = currentProduct.value?.raw
+  const variants = getActiveVariants(raw)
+  for (const variant of variants) {
+    const variantColor = normalizeKeyword(variant?.mauSac?.tenMau || "")
+    if (variantColor !== target) continue
+    const image = pickImageValues([
+      variant,
+      variant?.anh,
+      variant?.hinhAnh,
+      variant?.image,
+      variant?.imageUrl,
+      variant?.duongDanAnh
+    ])[0] || ""
+    if (image) return image
+  }
+
+  return ""
+}
+
 const activeImageIndex = computed(() => {
   const idx = displayImages.value.findIndex((image) => image === activeImage.value)
   return idx >= 0 ? idx : 0
 })
 
+const galleryTransitionName = computed(() => {
+  return galleryMotionDirection.value === "left"
+    ? "pd-image-swipe-left"
+    : "pd-image-swipe-right"
+})
+
+const setActiveImageWithMotion = (nextImage, preferredDirection = "auto") => {
+  const next = String(nextImage || "").trim()
+  if (!next) return
+  if (isSameImage(next, activeImage.value)) return
+
+  if (preferredDirection === "left" || preferredDirection === "right") {
+    galleryMotionDirection.value = preferredDirection
+  } else {
+    const currentIndex = displayImages.value.findIndex((image) => isSameImage(image, activeImage.value))
+    const nextIndex = displayImages.value.findIndex((image) => isSameImage(image, next))
+    if (currentIndex >= 0 && nextIndex >= 0) {
+      galleryMotionDirection.value = nextIndex < currentIndex ? "left" : "right"
+    } else {
+      galleryMotionDirection.value = "right"
+    }
+  }
+
+  activeImage.value = next
+}
+
+const forceScrollTop = () => {
+  window.scrollTo({ top: 0, behavior: "auto" })
+  requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, behavior: "auto" })
+  })
+}
+
 const selectGalleryImage = (image) => {
-  activeImage.value = image
+  setActiveImageWithMotion(image, "auto")
 }
 
 const showPrevImage = () => {
   if (!displayImages.value.length) return
   const nextIndex = (activeImageIndex.value - 1 + displayImages.value.length) % displayImages.value.length
-  activeImage.value = displayImages.value[nextIndex]
+  setActiveImageWithMotion(displayImages.value[nextIndex], "left")
 }
 
 const showNextImage = () => {
   if (!displayImages.value.length) return
   const nextIndex = (activeImageIndex.value + 1) % displayImages.value.length
-  activeImage.value = displayImages.value[nextIndex]
+  setActiveImageWithMotion(displayImages.value[nextIndex], "right")
 }
 
 const matchedBackendProduct = computed(() => {
@@ -846,41 +639,51 @@ const displayedProductCode = computed(() => {
 })
 
 const backendVariants = computed(() => {
-  const rows = Array.isArray(matchedBackendProduct.value?.sanPhamChiTiets)
-    ? matchedBackendProduct.value.sanPhamChiTiets
-    : []
+  const rows = getActiveVariants(matchedBackendProduct.value)
 
   return rows.map((variant, index) => ({
     id: variant?.id,
+    maChiTietSanPham: String(variant?.maChiTietSanPham || variant?.maSanPhamChiTiet || "").trim(),
     colorName: String(variant?.mauSac?.tenMau || "").trim(),
     sizeName: String(variant?.kichThuoc?.tenKichThuoc || "").trim(),
     price: Number(variant?.giaBan || 0),
+    soLuong: Number(variant?.soLuong || 0),
+    giaBanGoc: Number(variant?.giaBanGoc || 0),
     sortIndex: index
   }))
+})
+
+const currentStock = computed(() => {
+  const selected = Number(selectedBackendVariant.value?.soLuong || 0)
+  if (selected > 0) return selected
+  if (backendVariants.value.length) {
+    return backendVariants.value.reduce((sum, variant) => sum + Math.max(Number(variant?.soLuong || 0), 0), 0)
+  }
+  return 0
+})
+
+const stockBadge = computed(() => {
+  const qty = Number(currentStock.value || 0)
+  if (qty > 0) return { text: `Còn lại ${qty} sản phẩm`, tone: "green" }
+  return { text: "Hết hàng", tone: "dark" }
 })
 
 const colorHexByName = (name) => {
   const normalized = normalizeKeyword(name)
   if (normalized.includes("den")) return "#1a1a1a"
+  if (normalized.includes("do") || normalized.includes("red")) return "#dc2626"
   if (normalized.includes("trang") || normalized.includes("kem")) return "#ded7ca"
+  if (normalized.includes("xanh la") || normalized.includes("green")) return "#4f6f52"
   if (normalized.includes("nau")) return "#6b412c"
   if (normalized.includes("hong")) return "#d684a1"
+  if (normalized.includes("vang") || normalized.includes("yellow")) return "#d4a017"
+  if (normalized.includes("cam") || normalized.includes("orange")) return "#e07020"
   if (normalized.includes("xam") || normalized.includes("ghi")) return "#7f858f"
   if (normalized.includes("xanh")) return "#2f4f75"
   return "#9ca3af"
 }
 
 const effectiveColors = computed(() => {
-  // For static products (12-20), use their defined colors
-  const productId = Number(currentProduct.value.id)
-  if (productId >= 12 && productId <= 20) {
-    return (currentProduct.value.colors || []).map((color) => ({
-      name: color?.name || "",
-      hex: color?.hex || colorHexByName(color?.name)
-    }))
-  }
-  
-  // For backend products, use variant-based colors
   if (backendVariants.value.length) {
     const colorMap = new Map()
     for (const variant of backendVariants.value) {
@@ -929,8 +732,15 @@ const effectivePrice = computed(() => {
 })
 
 const effectiveOriginalPrice = computed(() => {
-  const oldPrice = Number(currentProduct.value.originalPrice || 0)
   const nowPrice = Number(effectivePrice.value || 0)
+  // When a campaign discount is active, show the pre-campaign shelf price as the original
+  if (activeCampaignInfo.value?.giaTri > 0 && nowPrice > 0) {
+    const giaBanGoc = Number(selectedBackendVariant.value?.giaBanGoc || 0)
+    if (giaBanGoc > nowPrice) return giaBanGoc
+    // fallback: back-calculate from the discount percentage
+    return Math.round(nowPrice / (1 - activeCampaignInfo.value.giaTri / 100))
+  }
+  const oldPrice = Number(currentProduct.value.originalPrice || 0)
   if (oldPrice > nowPrice) return oldPrice
   return 0
 })
@@ -950,6 +760,14 @@ const productDiscount = computed(() => {
   return Math.round(((oldPrice - currentPrice) / oldPrice) * 100)
 })
 
+const displayedSubtotalPrice = computed(() => Number(effectivePrice.value || 0) * Number(quantity.value || 1))
+
+const displayedSubtotalOriginalPrice = computed(() => {
+  const oldPrice = Number(effectiveOriginalPrice.value || 0)
+  if (oldPrice <= 0) return 0
+  return oldPrice * Number(quantity.value || 1)
+})
+
 const userInitials = computed(() => {
   const words = String(userDisplayName.value || "KH").trim().split(/\s+/).filter(Boolean)
   if (words.length >= 2) return `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase()
@@ -962,24 +780,72 @@ const cartCount = computed(() => {
   return Object.values(stored).reduce((sum, value) => sum + Number(value || 0), 0)
 })
 
+const buildVariantCartKey = (id, color = "", size = "", voucherCode = "") => {
+  const base = String(id || "").trim()
+  const c = String(color || "").trim()
+  const s = String(size || "").trim()
+  const voucher = String(voucherCode || "").trim().toUpperCase()
+  return c || s || voucher ? `${base}__${c}__${s}__${voucher}` : base
+}
+
+const parseVariantCartKey = (rawKey) => {
+  const raw = String(rawKey || "")
+  const [idPart, colorPart = "", sizePart = "", voucherPart = ""] = raw.split("__")
+  return {
+    productId: Number(idPart) || 0,
+    color: String(colorPart || "").trim(),
+    size: String(sizePart || "").trim(),
+    voucherCode: String(voucherPart || "").trim().toUpperCase(),
+  }
+}
+
+const resolveStoredLinePrice = (productId, color = "", size = "") => {
+  const product = productCatalog.value.find((item) => Number(item.id) === Number(productId))
+  if (!product) return 0
+
+  const variants = getActiveVariants(product?.raw)
+  const exact = variants.find((variant) => {
+    const vColor = String(variant?.mauSac?.tenMau || "").trim()
+    const vSize = String(variant?.kichThuoc?.tenKichThuoc || "").trim()
+    return (!color || vColor === color) && (!size || vSize === size)
+  })
+
+  const matched = exact
+    || variants.find((variant) => String(variant?.mauSac?.tenMau || "").trim() === color)
+    || variants.find((variant) => String(variant?.kichThuoc?.tenKichThuoc || "").trim() === size)
+
+  const variantPrice = Number(matched?.giaBan || 0)
+  if (variantPrice > 0) return variantPrice
+  return Number(product.price || 0)
+}
+
 const voucherBaseAmount = computed(() => Number(effectivePrice.value || 0) * Number(quantity.value || 1))
 
+const estimatedVoucherSubtotal = computed(() => voucherBaseAmount.value)
+
+const voucherDiscountAmount = computed(() => {
+  if (!selectedVoucherInDetail.value) return 0
+  return calculateVoucherDiscount(selectedVoucherInDetail.value, estimatedVoucherSubtotal.value)
+})
+
+const priceAfterVoucher = computed(() => Math.max(0, estimatedVoucherSubtotal.value - voucherDiscountAmount.value))
+
 const applicableVouchers = computed(() => {
-  return vouchers.value.filter((voucher) => isVoucherApplicable(voucher, voucherBaseAmount.value, null))
+  return vouchers.value.filter((voucher) => isVoucherApplicable(voucher, estimatedVoucherSubtotal.value, null))
 })
 
 const promoLines = computed(() => {
-  return vouchers.value.map((voucher) => {
+  return vouchers.value.slice(0, 4).map((voucher) => {
     const val = Number(voucher.giaTriGiamGia || 0)
     const discountLabel = voucher.hinhThucGiam
       ? `giảm ${val}%`
       : `giảm ${val >= 1000 ? Math.round(val / 1000) + 'K' : val + 'đ'}`
-    return { code: voucher.maPhieuGiamGia, discountLabel, min: VND(voucher.hoaDonToiThieu || 0) }
+    return { code: voucher.maPhieuGiamGia, discountLabel, min: VND(voucher.hoaDonToiThieu || 0), voucher }
   })
 })
 
 // Show all loaded vouchers – backend filters by active; no extra client-side blocking
-const voucherChips = computed(() => vouchers.value)
+const voucherChips = computed(() => vouchers.value.slice(0, 4))
 
 const voucherPreview = computed(() => voucherChips.value)
 
@@ -995,198 +861,25 @@ const syncProductState = () => {
 }
 
 const loadBackendProducts = async () => {
+  productsLoading.value = true
   try {
     const response = await getAllSanPham()
     const backendData = Array.isArray(response?.data) ? response.data : []
-    
-    // Add static products 12-20
-    const staticProducts = [
-      {
-        id: 12,
-        tenSanPham: "Bomber Astronaut DirtyWave",
-        maSanPham: "ATID070-12",
-        anh: img12,
-        danhMuc: { tenDanhMuc: "Bomber" },
-        giaBan: 549000,
-        giaGoc: 699000,
-        sanPhamChiTiets: [
-          { id: 1201, mauSac: { id: 1, tenMau: "Xanh" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 549000 },
-          { id: 1202, mauSac: { id: 1, tenMau: "Xanh" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 549000 },
-          { id: 1203, mauSac: { id: 1, tenMau: "Xanh" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 549000 },
-          { id: 1204, mauSac: { id: 2, tenMau: "Xám" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 549000 },
-          { id: 1205, mauSac: { id: 2, tenMau: "Xám" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 549000 },
-          { id: 1206, mauSac: { id: 2, tenMau: "Xám" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 549000 }
-        ]
-      },
-      {
-        id: 13,
-        tenSanPham: "Bomber Embroidered Fuzzy DirtyWave",
-        maSanPham: "ATID070-13",
-        anh: img13,
-        danhMuc: { tenDanhMuc: "Bomber" },
-        giaBan: 599000,
-        giaGoc: 749000,
-        sanPhamChiTiets: [
-          { id: 1301, mauSac: { id: 3, tenMau: "Be" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 599000 },
-          { id: 1302, mauSac: { id: 3, tenMau: "Be" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 599000 },
-          { id: 1303, mauSac: { id: 3, tenMau: "Be" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 599000 },
-          { id: 1304, mauSac: { id: 3, tenMau: "Be" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 599000 },
-          { id: 1305, mauSac: { id: 4, tenMau: "Xanh" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 599000 },
-          { id: 1306, mauSac: { id: 4, tenMau: "Xanh" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 599000 },
-          { id: 1307, mauSac: { id: 4, tenMau: "Xanh" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 599000 },
-          { id: 1308, mauSac: { id: 4, tenMau: "Xanh" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 599000 },
-          { id: 1309, mauSac: { id: 5, tenMau: "Nâu" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 599000 },
-          { id: 1310, mauSac: { id: 5, tenMau: "Nâu" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 599000 },
-          { id: 1311, mauSac: { id: 5, tenMau: "Nâu" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 599000 },
-          { id: 1312, mauSac: { id: 5, tenMau: "Nâu" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 599000 },
-          { id: 1313, mauSac: { id: 6, tenMau: "Đen" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 599000 },
-          { id: 1314, mauSac: { id: 6, tenMau: "Đen" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 599000 },
-          { id: 1315, mauSac: { id: 6, tenMau: "Đen" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 599000 },
-          { id: 1316, mauSac: { id: 6, tenMau: "Đen" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 599000 },
-          { id: 1317, mauSac: { id: 7, tenMau: "Xám" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 599000 },
-          { id: 1318, mauSac: { id: 7, tenMau: "Xám" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 599000 },
-          { id: 1319, mauSac: { id: 7, tenMau: "Xám" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 599000 },
-          { id: 1320, mauSac: { id: 7, tenMau: "Xám" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 599000 }
-        ]
-      },
-      {
-        id: 14,
-        tenSanPham: "Bomber Windbreaker DirtyWave",
-        maSanPham: "ATID070-14",
-        anh: img14,
-        danhMuc: { tenDanhMuc: "Bomber" },
-        giaBan: 479000,
-        giaGoc: 599000,
-        sanPhamChiTiets: [
-          { id: 1401, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 479000 },
-          { id: 1402, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 479000 },
-          { id: 1403, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 479000 },
-          { id: 1404, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 479000 },
-          { id: 1405, mauSac: { id: 5, tenMau: "Xanh" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 479000 },
-          { id: 1406, mauSac: { id: 5, tenMau: "Xanh" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 479000 },
-          { id: 1407, mauSac: { id: 5, tenMau: "Xanh" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 479000 },
-          { id: 1408, mauSac: { id: 5, tenMau: "Xanh" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 479000 },
-          { id: 1409, mauSac: { id: 8, tenMau: "Đỏ" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 479000 },
-          { id: 1410, mauSac: { id: 8, tenMau: "Đỏ" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 479000 },
-          { id: 1411, mauSac: { id: 8, tenMau: "Đỏ" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 479000 },
-          { id: 1412, mauSac: { id: 8, tenMau: "Đỏ" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 479000 }
-        ]
-      },
-      {
-        id: 15,
-        tenSanPham: "Coach Leopard DirtyWave",
-        maSanPham: "ATID070-15",
-        anh: img15,
-        danhMuc: { tenDanhMuc: "Coach" },
-        giaBan: 849000,
-        giaGoc: 999000,
-        sanPhamChiTiets: [
-          { id: 1501, mauSac: { id: 6, tenMau: "Vàng nâu" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 849000 },
-          { id: 1502, mauSac: { id: 6, tenMau: "Vàng nâu" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 849000 },
-          { id: 1503, mauSac: { id: 6, tenMau: "Vàng nâu" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 849000 }
-        ]
-      },
-      {
-        id: 16,
-        tenSanPham: "Coach Longsleeve DirtyWave",
-        maSanPham: "ATID070-16",
-        anh: img16,
-        danhMuc: { tenDanhMuc: "Coach" },
-        giaBan: 529000,
-        giaGoc: 649000,
-        sanPhamChiTiets: [
-          { id: 1601, mauSac: { id: 1, tenMau: "Xanh" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 529000 },
-          { id: 1602, mauSac: { id: 1, tenMau: "Xanh" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 529000 },
-          { id: 1603, mauSac: { id: 1, tenMau: "Xanh" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 529000 },
-          { id: 1604, mauSac: { id: 1, tenMau: "Xanh" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 529000 },
-          { id: 1605, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 529000 },
-          { id: 1606, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 529000 },
-          { id: 1607, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 529000 },
-          { id: 1608, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 529000 },
-          { id: 1609, mauSac: { id: 7, tenMau: "Trắng" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 529000 },
-          { id: 1610, mauSac: { id: 7, tenMau: "Trắng" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 529000 },
-          { id: 1611, mauSac: { id: 7, tenMau: "Trắng" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 529000 },
-          { id: 1612, mauSac: { id: 7, tenMau: "Trắng" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 529000 }
-        ]
-      },
-      {
-        id: 17,
-        tenSanPham: "Coach Tiger Stripe DirtyWave",
-        maSanPham: "ATID070-17",
-        anh: img17,
-        danhMuc: { tenDanhMuc: "Coach" },
-        giaBan: 779000,
-        giaGoc: 899000,
-        sanPhamChiTiets: [
-          { id: 1701, mauSac: { id: 8, tenMau: "Cam" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 779000 },
-          { id: 1702, mauSac: { id: 8, tenMau: "Cam" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 779000 },
-          { id: 1703, mauSac: { id: 8, tenMau: "Cam" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 779000 }
-        ]
-      },
-      {
-        id: 18,
-        tenSanPham: "Hoodie Camo DirtyWave",
-        maSanPham: "ATID070-18",
-        anh: img18,
-        danhMuc: { tenDanhMuc: "Hoodie" },
-        giaBan: 459000,
-        giaGoc: 559000,
-        sanPhamChiTiets: [
-          { id: 1801, mauSac: { id: 10, tenMau: "Xanh" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 459000 },
-          { id: 1802, mauSac: { id: 10, tenMau: "Xanh" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 459000 },
-          { id: 1803, mauSac: { id: 10, tenMau: "Xanh" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 459000 },
-          { id: 1804, mauSac: { id: 10, tenMau: "Xanh" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 459000 },
-          { id: 1805, mauSac: { id: 11, tenMau: "Nâu" }, kichThuoc: { id: 1, tenKichThuoc: "S" }, giaBan: 459000 },
-          { id: 1806, mauSac: { id: 11, tenMau: "Nâu" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 459000 },
-          { id: 1807, mauSac: { id: 11, tenMau: "Nâu" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 459000 },
-          { id: 1808, mauSac: { id: 11, tenMau: "Nâu" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 459000 }
-        ]
-      },
-      {
-        id: 19,
-        tenSanPham: "Hoodie Zip Boxy DirtyWave",
-        maSanPham: "ATID070-19",
-        anh: img19,
-        danhMuc: { tenDanhMuc: "Hoodie" },
-        giaBan: 519000,
-        giaGoc: 629000,
-        sanPhamChiTiets: [
-          { id: 1901, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 519000 },
-          { id: 1902, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 519000 },
-          { id: 1903, mauSac: { id: 2, tenMau: "Đen" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 519000 },
-          { id: 1904, mauSac: { id: 15, tenMau: "Đỏ" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 519000 },
-          { id: 1905, mauSac: { id: 15, tenMau: "Đỏ" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 519000 },
-          { id: 1906, mauSac: { id: 15, tenMau: "Đỏ" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 519000 }
-        ]
-      },
-      {
-        id: 20,
-        tenSanPham: "Hoodie Zip Silk DirtyWave",
-        maSanPham: "ATID070-20",
-        anh: img20,
-        danhMuc: { tenDanhMuc: "Hoodie" },
-        giaBan: 679000,
-        giaGoc: 799000,
-        sanPhamChiTiets: [
-          { id: 2001, mauSac: { id: 12, tenMau: "Đen" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 679000 },
-          { id: 2002, mauSac: { id: 12, tenMau: "Đen" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 679000 },
-          { id: 2003, mauSac: { id: 12, tenMau: "Đen" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 679000 },
-          { id: 2004, mauSac: { id: 13, tenMau: "Xám" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 679000 },
-          { id: 2005, mauSac: { id: 13, tenMau: "Xám" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 679000 },
-          { id: 2006, mauSac: { id: 13, tenMau: "Xám" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 679000 },
-          { id: 2007, mauSac: { id: 14, tenMau: "Xanh" }, kichThuoc: { id: 2, tenKichThuoc: "M" }, giaBan: 679000 },
-          { id: 2008, mauSac: { id: 14, tenMau: "Xanh" }, kichThuoc: { id: 3, tenKichThuoc: "L" }, giaBan: 679000 },
-          { id: 2009, mauSac: { id: 14, tenMau: "Xanh" }, kichThuoc: { id: 4, tenKichThuoc: "XL" }, giaBan: 679000 }
-        ]
+    const withCampaignPrice = await Promise.all(backendData.map(async (item) => {
+      const variants = getActiveVariants(item)
+      if (!variants.length) return item
+      const productId = Number(item?.id || 0)
+      const pricedVariants = await applyCampaignPriceToVariants(variants, productId)
+      return {
+        ...item,
+        sanPhamChiTiets: pricedVariants,
       }
-    ]
-    
-    // Merge backend and static products, avoid duplicates by ID
-    const existingIds = new Set(backendData.map(p => Number(p.id)))
-    const newStaticProducts = staticProducts.filter(p => !existingIds.has(p.id))
-    backendProducts.value = [...backendData, ...newStaticProducts]
+    }))
+    backendProducts.value = withCampaignPrice
   } catch {
     backendProducts.value = []
+  } finally {
+    productsLoading.value = false
   }
 }
 
@@ -1252,7 +945,7 @@ const loadVouchers = async () => {
       const allData = response?.data
       payload = Array.isArray(allData) ? allData : (Array.isArray(allData?.content) ? allData.content : [])
     }
-    vouchers.value = payload.map(normalizeVoucher).filter((voucher) => voucher.maPhieuGiamGia)
+    vouchers.value = payload.map(normalizeVoucher).filter((voucher) => voucher.maPhieuGiamGia).slice(0, 4)
   } catch {
     vouchers.value = []
   } finally {
@@ -1260,9 +953,22 @@ const loadVouchers = async () => {
   }
 }
 
+const persistCheckoutVoucherSelection = (voucher) => {
+  try {
+    if (voucher) {
+      localStorage.setItem('checkoutSelectedVoucher', JSON.stringify(voucher))
+      localStorage.removeItem(CHECKOUT_PENDING_ITEM_VOUCHERS_KEY)
+      return
+    }
+
+    localStorage.removeItem(CHECKOUT_PENDING_ITEM_VOUCHERS_KEY)
+    localStorage.removeItem('checkoutSelectedVoucher')
+  } catch {}
+}
+
 const selectVoucher = (voucher) => {
-  if (!isVoucherApplicable(voucher, voucherBaseAmount.value, null)) {
-    const needed = Number(voucher.hoaDonToiThieu || 0) - voucherBaseAmount.value
+  if (!isVoucherApplicable(voucher, estimatedVoucherSubtotal.value, null)) {
+    const needed = Number(voucher.hoaDonToiThieu || 0) - estimatedVoucherSubtotal.value
     if (needed > 0) {
       toast.error(`Cần thêm ${VND(needed)} để áp dụng voucher này`)
     } else {
@@ -1271,8 +977,8 @@ const selectVoucher = (voucher) => {
     return
   }
   selectedVoucherInDetail.value = voucher
-  try { localStorage.setItem('checkoutSelectedVoucher', JSON.stringify(voucher)) } catch {}
-  toast.success(`Đã áp dụng ${voucher.maPhieuGiamGia} – tiết kiệm ${VND(calculateVoucherDiscount(voucher, voucherBaseAmount.value))}`)
+  persistCheckoutVoucherSelection(voucher)
+  toast.success(`Đã áp dụng ${voucher.maPhieuGiamGia} - tiết kiệm ${VND(calculateVoucherDiscount(voucher, estimatedVoucherSubtotal.value))}`)
   closeVoucherDrawer()
 }
 
@@ -1308,24 +1014,84 @@ const notifyCartUpdated = () => {
   window.dispatchEvent(new Event(CART_UPDATED_EVENT))
 }
 
+const isLoggedIn = () => {
+  const userId = String(localStorage.getItem("userId") || "").trim()
+  const role = String(localStorage.getItem("role") || "").trim().toUpperCase()
+  return Boolean(userId && role)
+}
+
 const addToCart = () => {
+  if (!isLoggedIn()) {
+    toast.error("Vui lòng đăng nhập trước khi thêm vào giỏ hàng")
+    router.push("/auth/customer-login")
+    return
+  }
   if (!validateSelection()) return
   const storedCart = readCartObject()
-  const key = String(currentProduct.value.id)
+  const color = String(selectedColor.value || "").trim()
+  const size = String(selectedSize.value || "").trim()
+  const key = buildVariantCartKey(currentProduct.value.id, color, size, "")
   storedCart[key] = Number(storedCart[key] || 0) + quantity.value
   writeCartObject(storedCart)
+
+  const cartImage = activeImage.value
+    || currentProduct.value.images?.[0]
+    || fallbackImageForVariant({
+      id: currentProduct.value.id,
+      maSanPham: currentProduct.value.sku,
+      tenSanPham: currentProduct.value.name,
+      tenMauSac: color,
+      maChiTietSanPham: selectedBackendVariant.value?.maChiTietSanPham || ''
+    })
+    || ""
+  const variantsObj = readCartVariantsObject()
+  variantsObj[key] = {
+    color,
+    size,
+    voucherCode: "",
+    spctId: selectedBackendVariant.value?.id || null,
+    image: cartImage
+  }
+  writeCartVariantsObject(variantsObj)
+
+  if (selectedVoucherInDetail.value) {
+    persistCheckoutVoucherSelection(selectedVoucherInDetail.value)
+  }
+
   refreshCartCount()
   notifyCartUpdated()
-  toast.success(`Đã thêm ${quantity.value} sản phẩm vào giỏ hàng`)
+  toast.cartAdded({
+    name: currentProduct.value.name,
+    color,
+    size,
+    image: cartImage,
+    price: currentProduct.value.salePrice || currentProduct.value.price,
+    actionLabel: "Xem giỏ hàng",
+  })
 }
 
 const buyNow = () => {
+  if (!isLoggedIn()) {
+    toast.error("Vui lòng đăng nhập trước khi mua hàng")
+    router.push("/auth/customer-login")
+    return
+  }
   if (!validateSelection()) return
   if (selectedVoucherInDetail.value) {
-    try { localStorage.setItem('checkoutSelectedVoucher', JSON.stringify(selectedVoucherInDetail.value)) } catch {}
+    persistCheckoutVoucherSelection(selectedVoucherInDetail.value)
   } else {
     localStorage.removeItem('checkoutSelectedVoucher')
   }
+  const buyImg = activeImage.value
+    || currentProduct.value.images?.[0]
+    || fallbackImageForVariant({
+      id: currentProduct.value.id,
+      maSanPham: currentProduct.value.sku,
+      tenSanPham: currentProduct.value.name,
+      tenMauSac: selectedColor.value,
+      maChiTietSanPham: selectedBackendVariant.value?.maChiTietSanPham || ''
+    })
+    || ""
   writeCheckoutCartArray([{
     id: currentProduct.value.id,
     name: currentProduct.value.name,
@@ -1333,8 +1099,9 @@ const buyNow = () => {
     quantity: quantity.value,
     size: selectedSize.value,
     color: selectedColor.value,
+    voucherCode: "",
     spctId: selectedBackendVariant.value?.id || null,
-    image: activeImage.value || currentProduct.value.images[0]
+    image: buyImg
   }])
   router.push("/checkout")
 }
@@ -1390,6 +1157,7 @@ const goHome = () => router.push("/trang-chu")
 const openCart = () => router.push("/gio-hang")
 const goToProductDetail = (id) => {
   closeQuickPreview()
+  forceScrollTop()
   router.push(`/product/${id}`)
 }
 
@@ -1398,6 +1166,7 @@ const openQuickPreview = (product) => {
   quickPreviewColor.value = product?.colors?.[0]?.name || ""
   quickPreviewSize.value = product?.sizes?.[0] || ""
   quickPreviewQty.value = 1
+  quickPreviewImageIndex.value = 0
 }
 
 const closeQuickPreview = () => {
@@ -1413,15 +1182,162 @@ const getQuickPreviewCode = (product) => {
   return byName?.maSanPham || product.sku || String(product.id)
 }
 
+const getQuickPreviewBackendProduct = (product) => {
+  if (!product) return null
+  const byId = backendProducts.value.find((item) => Number(item?.id) === Number(product.id))
+  if (byId) return byId
+  const name = normalizeKeyword(product?.name)
+  return backendProducts.value.find((item) => normalizeKeyword(item?.tenSanPham) === name) || null
+}
+
+const resolveQuickPreviewColorImage = (product, colorName = "", sizeName = "") => {
+  if (!product || !colorName) return ""
+
+  const backend = getQuickPreviewBackendProduct(product)
+  const variants = getActiveVariants(backend)
+  const exact = variants.find((variant) => {
+    const variantColor = String(variant?.mauSac?.tenMau || "").trim()
+    const variantSize = String(variant?.kichThuoc?.tenKichThuoc || "").trim()
+    const sameColor = normalizeKeyword(variantColor) === normalizeKeyword(colorName)
+    const sameSize = !sizeName || variantSize === sizeName
+    return sameColor && sameSize
+  }) || variants.find((variant) => normalizeKeyword(variant?.mauSac?.tenMau || "") === normalizeKeyword(colorName))
+
+  const variantImages = pickImageValues([exact, exact?.anh, exact?.hinhAnh, exact?.image, exact?.imageUrl, exact?.duongDanAnh])
+  if (variantImages.length) return variantImages[0]
+
+  const colorIndex = Array.isArray(product?.colors)
+    ? product.colors.findIndex((color) => normalizeKeyword(color?.name) === normalizeKeyword(colorName))
+    : -1
+  if (colorIndex >= 0 && Array.isArray(product?.images) && product.images[colorIndex]) {
+    return product.images[colorIndex]
+  }
+
+  return String(product?.images?.[0] || "").trim()
+}
+
+const quickPreviewImages = computed(() => {
+  const product = quickPreviewProduct.value
+  if (!product) return []
+
+  const candidates = []
+  if (Array.isArray(product.images)) {
+    candidates.push(...product.images.map((img) => String(img || "").trim()).filter(Boolean))
+  }
+
+  const colors = Array.isArray(product.colors) ? product.colors : []
+  for (const color of colors) {
+    const name = String(color?.name || "").trim()
+    if (!name) continue
+    const image = resolveQuickPreviewColorImage(product, name, quickPreviewSize.value)
+    if (image) candidates.push(image)
+  }
+
+  if (product?.images?.[0]) candidates.push(String(product.images[0]).trim())
+
+  return [...new Set(candidates.map((img) => String(img || "").trim()).filter(Boolean))]
+})
+
+const quickPreviewActiveImage = computed(() => {
+  const images = quickPreviewImages.value
+  if (!images.length) {
+    return quickPreviewProduct.value?.images?.[0]
+      || fallbackImageFor(quickPreviewProduct.value?.id || 0, getQuickPreviewCode(quickPreviewProduct.value))
+  }
+  const safeIndex = ((quickPreviewImageIndex.value % images.length) + images.length) % images.length
+  return images[safeIndex]
+})
+
+const syncQuickPreviewColorWithImage = () => {
+  const product = quickPreviewProduct.value
+  if (!product || !Array.isArray(product.colors) || !product.colors.length) return
+  const currentImage = quickPreviewActiveImage.value
+  if (!currentImage) return
+
+  const matchedByImage = product.colors.findIndex((color) => {
+    const image = resolveQuickPreviewColorImage(product, String(color?.name || "").trim(), quickPreviewSize.value)
+    return image && isSameImage(image, currentImage)
+  })
+
+  if (matchedByImage >= 0) {
+    quickPreviewColor.value = product.colors[matchedByImage]?.name || quickPreviewColor.value
+    return
+  }
+
+  const index = quickPreviewImages.value.findIndex((img) => isSameImage(img, currentImage))
+  if (index >= 0 && index < product.colors.length) {
+    quickPreviewColor.value = product.colors[index]?.name || quickPreviewColor.value
+  }
+}
+
+const quickPreviewPrevImage = () => {
+  const total = quickPreviewImages.value.length
+  if (total <= 1) return
+  quickPreviewImageIndex.value = (quickPreviewImageIndex.value - 1 + total) % total
+  syncQuickPreviewColorWithImage()
+}
+
+const quickPreviewNextImage = () => {
+  const total = quickPreviewImages.value.length
+  if (total <= 1) return
+  quickPreviewImageIndex.value = (quickPreviewImageIndex.value + 1) % total
+  syncQuickPreviewColorWithImage()
+}
+
+const selectQuickPreviewColor = (colorName, index) => {
+  quickPreviewColor.value = colorName
+  const image = resolveQuickPreviewColorImage(quickPreviewProduct.value, colorName, quickPreviewSize.value)
+  if (image) {
+    const mappedIndex = quickPreviewImages.value.findIndex((img) => isSameImage(img, image))
+    if (mappedIndex >= 0) {
+      quickPreviewImageIndex.value = mappedIndex
+      return
+    }
+  }
+
+  if (Number.isFinite(Number(index)) && index >= 0 && index < quickPreviewImages.value.length) {
+    quickPreviewImageIndex.value = index
+  }
+}
+
 const quickPreviewAddToCart = () => {
   if (!quickPreviewProduct.value?.id) return
   const storedCart = readCartObject()
-  const key = String(quickPreviewProduct.value.id)
+  const color = String(quickPreviewColor.value || "").trim()
+  const size = String(quickPreviewSize.value || "").trim()
+  const key = buildVariantCartKey(quickPreviewProduct.value.id, color, size, "")
   storedCart[key] = Number(storedCart[key] || 0) + quickPreviewQty.value
   writeCartObject(storedCart)
+
+  const qpImage = quickPreviewActiveImage.value
+    || quickPreviewProduct.value.images?.[0]
+    || fallbackImageForVariant({
+      id: quickPreviewProduct.value.id,
+      maSanPham: quickPreviewProduct.value.sku,
+      tenSanPham: quickPreviewProduct.value.name,
+      tenMauSac: color,
+    })
+    || ""
+  const variantsObj = readCartVariantsObject()
+  variantsObj[key] = {
+    color,
+    size,
+    voucherCode: "",
+    spctId: null,
+    image: qpImage
+  }
+  writeCartVariantsObject(variantsObj)
+
   refreshCartCount()
   notifyCartUpdated()
-  toast.success(`Đã thêm ${quickPreviewQty.value} sản phẩm vào giỏ hàng`)
+  toast.cartAdded({
+    name: quickPreviewProduct.value.name,
+    color,
+    size,
+    image: qpImage,
+    price: quickPreviewProduct.value.salePrice || quickPreviewProduct.value.price,
+    actionLabel: "Xem giỏ hàng",
+  })
   closeQuickPreview()
 }
 
@@ -1446,13 +1362,23 @@ watch(() => route.params.id, () => {
   mobileOpen.value = false
   closeVoucherDrawer()
   closeQuickPreview()
-  window.scrollTo({ top: 0, behavior: "auto" })
+  forceScrollTop()
 })
 
 watch(
   () => currentProduct.value.id,
-  () => {
+  async (productId) => {
     syncProductState()
+    // Load campaign discount info for this product
+    activeCampaignInfo.value = null
+    if (productId > 0) {
+      const info = await getProductCampaignInfo(productId).catch(() => null)
+      activeCampaignInfo.value = info
+      if (info && info.giaTri > 0) {
+        const endDate = info.ngayKetThuc ? new Date(info.ngayKetThuc).toLocaleDateString("vi-VN") : ""
+        toast.info(`Sản phẩm đang được giảm ${Math.round(info.giaTri)}%${endDate ? ` đến ${endDate}` : ""} với chương trình "${info.tenKhuyenMai}"`, 6000)
+      }
+    }
   },
   { immediate: true }
 )
@@ -1461,17 +1387,55 @@ watch(selectedColor, (colorName) => {
   if (!effectiveSizes.value.includes(selectedSize.value)) {
     selectedSize.value = effectiveSizes.value[0] || ""
   }
-  // For backend products with colorImageMap
+
   const colorId = colorNameToIdMap.value[colorName]
   if (colorId && colorImageMap.value[colorId]) {
-    activeImage.value = colorImageMap.value[colorId]
+    setActiveImageWithMotion(colorImageMap.value[colorId], "auto")
     return
   }
-  // For static products (new products 12-20) with colorImages
-  const staticColorImages = currentProduct.value?.colorImages
-  if (staticColorImages && staticColorImages[colorName]) {
-    activeImage.value = staticColorImages[colorName]
+  const byName = resolveColorImageByName(colorName)
+  if (byName) {
+    setActiveImageWithMotion(byName, "auto")
+    return
   }
+})
+
+watch(activeImage, (image) => {
+  if (!image) return
+
+  const selectedColorId = Number(colorNameToIdMap.value?.[selectedColor.value] || 0)
+  if (selectedColorId > 0 && isSameImage(colorImageMap.value?.[selectedColorId] || "", image)) {
+    return
+  }
+
+  for (const color of effectiveColors.value) {
+    const colorId = Number(colorNameToIdMap.value?.[color?.name] || 0)
+    const colorImage = colorId > 0 ? String(colorImageMap.value?.[colorId] || "") : ""
+    const fallbackImage = resolveColorImageByName(color?.name || "")
+    const targetImage = colorImage || fallbackImage
+    if (targetImage && isSameImage(targetImage, image)) {
+      if (selectedColor.value !== color.name) selectedColor.value = color.name
+      return
+    }
+  }
+
+  const displayIdx = displayImages.value.findIndex((entry) => isSameImage(entry, image))
+  if (displayIdx >= 0 && displayIdx < effectiveColors.value.length) {
+    const mappedColor = effectiveColors.value[displayIdx]?.name || ""
+    if (mappedColor && selectedColor.value !== mappedColor) selectedColor.value = mappedColor
+  }
+})
+
+watch(quickPreviewImages, (images) => {
+  if (!images.length) {
+    quickPreviewImageIndex.value = 0
+    return
+  }
+  if (quickPreviewImageIndex.value >= images.length) quickPreviewImageIndex.value = 0
+})
+
+watch(quickPreviewImageIndex, () => {
+  syncQuickPreviewColorWithImage()
 })
 
 watch(effectiveColors, (colors) => {
@@ -1483,6 +1447,7 @@ watch(effectiveColors, (colors) => {
 onMounted(async () => {
   await Promise.all([loadCurrentUser(), loadVouchers(), loadBackendProducts()])
   syncProductState()
+  forceScrollTop()
   document.addEventListener("click", handleDocumentClick)
   window.addEventListener("storage", refreshCartCount)
   window.addEventListener(AUTH_CONTEXT_CHANGED_EVENT, loadCurrentUser)
@@ -1497,17 +1462,21 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="product-detail-page">
+  <div class="product-detail-page" :style="galleryMotionVars">
     <SiteNav :cart-count="cartCount" />
 
     <main class="pd-shell">
       <div class="pd-breadcrumb">
         <button type="button" @click="goHome">Trang chủ</button>
         <ChevronRight :size="14" />
-        <strong>{{ currentProduct.name }}</strong>
+        <strong>{{ productsLoading ? 'Đang tải...' : currentProduct.name }}</strong>
       </div>
 
-      <section class="pd-main">
+      <section v-if="productsLoading" class="pd-main" style="min-height:60vh;display:flex;align-items:center;justify-content:center">
+        <span style="color:#888;font-size:1rem">Đang tải sản phẩm…</span>
+      </section>
+
+      <section v-else class="pd-main">
         <div class="pd-gallery" :class="{ 'pd-gallery--single': displayImages.length <= 1 }">
           <div v-if="displayImages.length > 1" class="pd-gallery__thumbs">
             <button
@@ -1523,7 +1492,14 @@ onUnmounted(() => {
           </div>
 
           <div class="pd-gallery__stage">
-            <img :src="activeImage || displayImages[0]" :alt="currentProduct.name" />
+            <transition :name="galleryTransitionName" mode="out-in">
+              <img
+                :key="normalizeImageKey(activeImage || displayImages[0])"
+                class="pd-gallery__image"
+                :src="activeImage || displayImages[0]"
+                :alt="currentProduct.name"
+              />
+            </transition>
             <button v-if="displayImages.length > 1" type="button" class="pd-gallery__arrow pd-gallery__arrow--left" aria-label="Ảnh trước" @click="showPrevImage">
               <ChevronLeft :size="18" />
             </button>
@@ -1537,15 +1513,23 @@ onUnmounted(() => {
           <div class="pd-info__panel">
             <div class="pd-info__topline">
               <h1>{{ currentProduct.name }}</h1>
-              <span class="pd-stock" :class="`is-${currentProduct.badgeTone}`">{{ currentProduct.badge }}</span>
+              <span class="pd-stock" :class="`is-${stockBadge.tone}`">{{ stockBadge.text }}</span>
             </div>
 
             <p class="pd-sku">Mã sản phẩm: {{ displayedProductCode }}</p>
 
             <div class="pd-price-row">
-              <strong>{{ VND(effectivePrice) }}</strong>
-              <s v-if="effectiveOriginalPrice">{{ VND(effectiveOriginalPrice) }}</s>
+              <strong>{{ VND(displayedSubtotalPrice) }}</strong>
+              <s v-if="displayedSubtotalOriginalPrice">{{ VND(displayedSubtotalOriginalPrice) }}</s>
               <span v-if="productDiscount" class="pd-discount">-{{ productDiscount }}%</span>
+            </div>
+
+            <div v-if="activeCampaignInfo && activeCampaignInfo.giaTri > 0" class="pd-campaign-banner">
+              <span class="pd-campaign-banner__badge">🏷️ Giảm {{ Math.round(activeCampaignInfo.giaTri) }}%</span>
+              <span class="pd-campaign-banner__period">
+                Từ {{ new Date(activeCampaignInfo.ngayBatDau).toLocaleDateString('vi-VN') }}
+                đến {{ new Date(activeCampaignInfo.ngayKetThuc).toLocaleDateString('vi-VN') }}
+              </span>
             </div>
 
             <section class="pd-promo-box">
@@ -1554,32 +1538,18 @@ onUnmounted(() => {
                 <strong>Ưu đãi online</strong>
               </div>
               <ul>
-                <li v-for="line in promoLines" :key="line.code">
+                <li
+                  v-for="line in promoLines"
+                  :key="line.code"
+                  class="pd-promo-box__line"
+                  @click="selectVoucher(line.voucher)"
+                >
                   Nhập mã <b>{{ line.code }}</b> {{ line.discountLabel }} đơn từ {{ line.min }}
                 </li>
                 <li v-if="!promoLines.length">Hiện chưa có voucher khả dụng theo dữ liệu khuyến mãi hiện tại.</li>
                 <li>Freeship đơn từ 299K</li>
               </ul>
             </section>
-
-            <div class="pd-voucher-row">
-              <span class="pd-label">Mã giảm giá</span>
-              <div class="pd-voucher-row__chips">
-                <button
-                  v-for="voucher in voucherPreview"
-                  :key="voucher.id || voucher.maPhieuGiamGia"
-                  type="button"
-                  class="pd-voucher-chip"
-                  :class="{ 'is-selected': selectedVoucherInDetail?.maPhieuGiamGia === voucher.maPhieuGiamGia }"
-                  @click="openVoucherDrawer"
-                >
-                  {{ voucherChipLabel(voucher) }}
-                </button>
-              </div>
-              <small v-if="selectedVoucherInDetail" class="pd-selected-voucher-hint">
-                ✓ {{ selectedVoucherInDetail.maPhieuGiamGia }} đã được áp dụng
-              </small>
-            </div>
 
             <div v-if="effectiveColors.length > 0" class="pd-option-row">
               <span class="pd-label">Màu sắc: <b>{{ selectedColor }}</b></span>
@@ -1623,7 +1593,7 @@ onUnmounted(() => {
             <div class="pd-buy-row">
               <div class="pd-qty">
                 <button type="button" @click="quantity = Math.max(1, quantity - 1)">-</button>
-                <strong>{{ quantity }}</strong>
+                <input type="number" v-model.number="quantity" min="1" class="pd-qty-input" @change="quantity = Math.max(1, Math.floor(quantity) || 1)" />
                 <button type="button" @click="quantity += 1">+</button>
               </div>
               <button type="button" class="pd-cart-button" @click="addToCart">THÊM VÀO GIỎ</button>
@@ -1699,7 +1669,6 @@ onUnmounted(() => {
           >
             <div class="pd-related__image">
               <img :src="item.images[0]" :alt="item.name" />
-              <span>{{ item.badge }}</span>
               <div class="pd-related__actions">
                 <button type="button" class="pd-related__action" @click.stop="openQuickPreview(item)">
                   <Eye :size="16" />
@@ -1711,6 +1680,7 @@ onUnmounted(() => {
             </div>
             <div class="pd-related__body">
               <small>{{ item.category }}</small>
+              <span class="pd-related__stock">{{ item.badgeTone === 'green' ? item.badge.replace('Còn lại ', 'Còn: ') : item.badge }}</span>
               <p>{{ item.name }}</p>
               <strong>{{ VND(item.price) }}</strong>
               <s v-if="item.originalPrice">{{ VND(item.originalPrice) }}</s>
@@ -1729,7 +1699,21 @@ onUnmounted(() => {
           <X :size="16" />
         </button>
         <div class="pd-quick-view__image">
-          <img :src="quickPreviewProduct.images[0]" :alt="quickPreviewProduct.name" />
+          <img :src="quickPreviewActiveImage" :alt="quickPreviewProduct.name" />
+          <button
+            v-if="quickPreviewImages.length > 1"
+            type="button"
+            class="pd-quick-view__nav pd-quick-view__nav--prev"
+            aria-label="Ảnh trước"
+            @click="quickPreviewPrevImage"
+          >‹</button>
+          <button
+            v-if="quickPreviewImages.length > 1"
+            type="button"
+            class="pd-quick-view__nav pd-quick-view__nav--next"
+            aria-label="Ảnh sau"
+            @click="quickPreviewNextImage"
+          >›</button>
         </div>
         <div class="pd-quick-view__body">
           <h3>{{ quickPreviewProduct.name }}</h3>
@@ -1740,14 +1724,14 @@ onUnmounted(() => {
             <span class="pd-quick-view__label">Màu sắc: <b>{{ quickPreviewColor }}</b></span>
             <div class="pd-quick-view__swatches">
               <button
-                v-for="color in quickPreviewProduct.colors"
+                v-for="(color, index) in quickPreviewProduct.colors"
                 :key="color.name"
                 type="button"
                 class="pd-quick-view__swatch"
                 :class="{ 'is-active': quickPreviewColor === color.name }"
                 :style="{ background: color.hex }"
                 :title="color.name"
-                @click="quickPreviewColor = color.name"
+                @click="selectQuickPreviewColor(color.name, index)"
               ></button>
             </div>
           </div>
@@ -1799,7 +1783,7 @@ onUnmounted(() => {
         <aside class="pd-drawer">
           <div class="pd-drawer__head">
             <div>
-              <small>Voucher giảm giá - áp dụng online</small>
+              <small>Áp dụng cho sản phẩm hiện tại</small>
               <h3>Kho voucher DirtyWave</h3>
             </div>
             <button type="button" class="pd-drawer__close" @click="closeVoucherDrawer">
@@ -1816,7 +1800,7 @@ onUnmounted(() => {
             >
               <div class="pd-drawer__voucher-info">
                 <span class="pd-drawer__label">{{ voucher.tenPhieuGiamGia || 'Voucher' }}</span>
-                <strong class="pd-drawer__amount">{{ VND(calculateVoucherDiscount(voucher, voucherBaseAmount)) }}</strong>
+                <strong class="pd-drawer__amount">{{ VND(calculateVoucherDiscount(voucher, estimatedVoucherSubtotal)) }}</strong>
                 <p class="pd-drawer__min">Đơn từ {{ VND(voucher.hoaDonToiThieu || 0) }}</p>
                 <p class="pd-drawer__code">Mã: <b>{{ voucher.maPhieuGiamGia }}</b></p>
               </div>
@@ -2376,11 +2360,17 @@ onUnmounted(() => {
   background: white;
   cursor: pointer;
   overflow: hidden;
+  transition: transform var(--pd-ui-ms, 220ms) ease, border-color var(--pd-ui-ms, 220ms) ease, box-shadow var(--pd-ui-ms, 220ms) ease;
+}
+
+.pd-gallery__thumb:hover {
+  transform: translateY(-2px);
 }
 
 .pd-gallery__thumb.is-active {
   border-color: var(--pd-red);
   box-shadow: 0 0 0 1px rgba(197, 22, 45, 0.22);
+  transform: translateY(-1px);
 }
 
 .pd-gallery__thumb img {
@@ -2404,6 +2394,40 @@ onUnmounted(() => {
   display: block;
 }
 
+.pd-gallery__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pd-image-swipe-right-enter-active,
+.pd-image-swipe-right-leave-active,
+.pd-image-swipe-left-enter-active,
+.pd-image-swipe-left-leave-active {
+  transition: transform var(--pd-swipe-ms, 320ms) cubic-bezier(0.22, 1, 0.36, 1), opacity var(--pd-fade-ms, 260ms) ease;
+}
+
+.pd-image-swipe-right-enter-from {
+  opacity: 0.18;
+  transform: translateX(26px) scale(0.985);
+}
+
+.pd-image-swipe-right-leave-to {
+  opacity: 0;
+  transform: translateX(-24px) scale(0.985);
+}
+
+.pd-image-swipe-left-enter-from {
+  opacity: 0.18;
+  transform: translateX(-26px) scale(0.985);
+}
+
+.pd-image-swipe-left-leave-to {
+  opacity: 0;
+  transform: translateX(24px) scale(0.985);
+}
+
 .pd-gallery__arrow {
   position: absolute;
   top: 50%;
@@ -2418,6 +2442,17 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  transition: transform var(--pd-ui-ms, 220ms) ease, background-color var(--pd-ui-ms, 220ms) ease, box-shadow var(--pd-ui-ms, 220ms) ease;
+}
+
+.pd-gallery__arrow:hover {
+  transform: translateY(-50%) scale(1.08);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 8px 20px rgba(17, 24, 39, 0.18);
+}
+
+.pd-gallery__arrow:active {
+  transform: translateY(-50%) scale(0.95);
 }
 
 .pd-gallery__arrow--left { left: 10px; }
@@ -2461,6 +2496,11 @@ onUnmounted(() => {
   color: var(--pd-red-dark);
 }
 
+.pd-stock.is-green {
+  background: #e8f8ef;
+  color: #047857;
+}
+
 .pd-stock.is-dark {
   background: #fee7eb;
   color: var(--pd-red-dark);
@@ -2500,6 +2540,62 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
+.pd-campaign-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.08), rgba(185, 28, 28, 0.06));
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  border-radius: 10px;
+  font-size: 13px;
+  color: #7f1d1d;
+}
+.pd-campaign-banner__badge {
+  background: #dc2626;
+  color: white;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 12px;
+}
+.pd-campaign-banner__name {
+  font-weight: 600;
+}
+.pd-campaign-banner__period {
+  opacity: 0.75;
+  font-size: 12px;
+}
+
+  .pd-voucher-applied-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+    padding: 8px 14px;
+    background: rgba(255, 77, 79, 0.07);
+    border: 1px solid rgba(255, 77, 79, 0.22);
+    border-radius: 10px;
+    font-size: 14px;
+    color: rgba(17, 24, 39, 0.75);
+  }
+  .pd-after-voucher-price {
+    font-size: 20px;
+    font-weight: 700;
+    color: #b42324;
+  }
+  .pd-saved-amount {
+    font-size: 12.5px;
+    color: #15803d;
+    font-weight: 500;
+    background: rgba(21, 128, 61, 0.09);
+    padding: 3px 8px;
+    border-radius: 6px;
+  }
+
 .pd-promo-box {
   padding: 14px 16px;
   border: 1px dashed #ef6a78;
@@ -2522,6 +2618,14 @@ onUnmounted(() => {
   color: #374151;
   font-size: 13px;
   line-height: 1.8;
+}
+
+.pd-promo-box__line {
+  cursor: pointer;
+}
+
+.pd-promo-box__line:hover {
+  color: #991b1b;
 }
 
 .pd-voucher-row,
@@ -2588,6 +2692,11 @@ onUnmounted(() => {
   border: 1px solid #d6ccd0;
   border-radius: 50%;
   background: white;
+  transition: transform var(--pd-ui-ms, 220ms) ease, border-color var(--pd-ui-ms, 220ms) ease, box-shadow var(--pd-ui-ms, 220ms) ease;
+}
+
+.pd-color:hover {
+  transform: translateY(-2px) scale(1.04);
 }
 
 .pd-color span {
@@ -2595,11 +2704,29 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   border-radius: 50%;
+  transition: transform var(--pd-ui-ms, 220ms) ease;
 }
 
 .pd-color.is-active {
   border-color: var(--pd-red);
   box-shadow: 0 0 0 1px var(--pd-red);
+  animation: pd-color-pop var(--pd-ui-ms, 220ms) ease;
+}
+
+.pd-color.is-active span {
+  transform: scale(0.9);
+}
+
+@keyframes pd-color-pop {
+  0% {
+    transform: scale(0.88);
+  }
+  60% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .pd-size-head {
@@ -2668,6 +2795,24 @@ onUnmounted(() => {
 .pd-qty strong {
   font-size: 14px;
   color: #111827;
+}
+
+.pd-qty-input {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.pd-qty-input::-webkit-outer-spin-button,
+.pd-qty-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .pd-cart-button,
@@ -2807,22 +2952,23 @@ onUnmounted(() => {
   object-position: center 35%;
 }
 
-.pd-related__image span {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  padding: 4px 7px;
-  border-radius: 999px;
-  background: rgba(143, 17, 33, 0.94);
-  color: white;
-  font-size: 9px;
-  font-weight: 700;
-}
-
 .pd-related__body {
   display: grid;
   gap: 6px;
   padding: 12px 12px 14px;
+}
+
+.pd-related__stock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #e8f8ef;
+  color: #047857;
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .pd-related__actions {
@@ -2891,6 +3037,7 @@ onUnmounted(() => {
 }
 
 .pd-quick-view__image {
+  position: relative;
   border-radius: 12px;
   overflow: hidden;
   background: linear-gradient(180deg, #f8f5f5 0%, #f0eded 100%);
@@ -2901,6 +3048,32 @@ onUnmounted(() => {
   height: 100%;
   object-fit: cover;
   object-position: center 35%;
+}
+
+.pd-quick-view__nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(17, 24, 39, 0.22);
+  background: rgba(255, 255, 255, 0.9);
+  color: #111827;
+  font-size: 22px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.pd-quick-view__nav--prev {
+  left: 10px;
+}
+
+.pd-quick-view__nav--next {
+  right: 10px;
 }
 
 .pd-quick-view__body {

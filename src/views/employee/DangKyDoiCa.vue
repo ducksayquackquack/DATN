@@ -333,6 +333,9 @@ textarea {
   padding: 10px;
   font-size: 14px;
 }
+select {
+  padding-right: 34px;
+}
 
 .actions {
   margin-top: 10px;

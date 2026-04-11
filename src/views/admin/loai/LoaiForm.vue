@@ -1,7 +1,7 @@
 <script setup>
 import { reactive, onMounted } from "vue"
 import { useRouter, useRoute } from "vue-router"
-import { ArrowLeft, Save, Pencil, Trash2 } from "lucide-vue-next"
+import { ArrowLeft, Save, Trash2 } from "lucide-vue-next"
 import {
   createLoai,
   updateLoai,
@@ -36,8 +36,7 @@ onMounted(async () => {
 })
 
 async function save() {
-  const action = id ? "update" : "create"
-  const confirmed = await window.confirm(`Do you really wanna change it? (${action} type)`)
+  const confirmed = await window.confirmDialog?.(id ? "Bạn có chắc muốn cập nhật loại này?" : "Bạn có chắc muốn tạo loại mới?") ?? confirm(id ? "Cập nhật loại?" : "Tạo loại mới?")
   if (!confirmed) return
 
   const payload = {
@@ -177,8 +176,8 @@ async function save() {
                   </td>
                   <td class="right">
                     <div class="actions">
-                      <button class="iconbtn">
-                        <Pencil size="16" />
+                      <button class="iconbtn" title="Xem chi tiết">
+                        <span class="material-icons-outlined">visibility</span>
                       </button>
 
                       <button class="iconbtn">

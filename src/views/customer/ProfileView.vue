@@ -7,7 +7,81 @@ import {
   getKhachHangByTaiKhoanId,
   updateKhachHang
 } from '../../services/KhachHangService'
-import { getAllHoaDon, updateHoaDonBySystemEvent } from '../../services/hoaDonService'
+import { getAllHoaDon, updateHoaDonBySystemEvent, getHoaDonById } from '../../services/hoaDonService'
+import { getAllSanPham } from '../../services/sanPhamService'
+import { getProductImageOverride } from '../../utils/productImageOverrides'
+import { fallbackImageForVariant } from '../../utils/productImageFallback'
+import { resolveApiOrigin } from '../../utils/apiOrigin'
+import img1 from '../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url'
+import img2 from '../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url'
+import img3 from '../../assets/img/Jackets/bomber/bomber-gia-da.jpg?url'
+import img4 from '../../assets/img/Jackets/bomber/bomber-nhe-cotton.jpg?url'
+import img5 from '../../assets/img/Jackets/hoodie/hoodie-dang-hop.jpg?url'
+import img6 from '../../assets/img/Jackets/hoodie/hoodie-in-hinh.jpg?url'
+import img7 from '../../assets/img/Jackets/hoodie/hoodie-keo-khoa.jpg?url'
+import img8 from '../../assets/img/Jackets/coach/coach-cach-nhiet.jpg?url'
+import img9 from '../../assets/img/Jackets/coach/coach-da-asos.jpg?url'
+import img10 from '../../assets/img/Jackets/coach/coach-gia-da.jpg?url'
+import img11 from '../../assets/img/Jackets/coach/coach-long-cuu.jpg?url'
+import img12 from '../../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-black.PNG?url'
+import img13 from '../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-black.PNG?url'
+import img14 from '../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-black.PNG?url'
+import img15 from '../../assets/img/Jackets/coach/coach-leopard/coach-leopard.PNG?url'
+import img16 from '../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-black.PNG?url'
+import img17 from '../../assets/img/Jackets/coach/coach-tiger-stripe/coach-tiger-stripe.PNG?url'
+import img18 from '../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-black.PNG?url'
+import img19 from '../../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-blue.PNG?url'
+import img20 from '../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-black.PNG?url'
+
+const fallbackImages = [img1,img2,img3,img4,img5,img6,img7,img8,img9,img10,img11,img12,img13,img14,img15,img16,img17,img18,img19,img20]
+
+const nameFallbackRules = [
+  { keywords: ['bomber', 'da', 'lon'], image: img1 },
+  { keywords: ['bomber', 'dang', 'lung'], image: img2 },
+  { keywords: ['bomber', 'gia', 'da'], image: img3 },
+  { keywords: ['bomber', 'cotton'], image: img4 },
+  { keywords: ['hoodie', 'dang', 'hop'], image: img5 },
+  { keywords: ['hoodie', 'in', 'hinh'], image: img6 },
+  { keywords: ['hoodie', 'keo', 'khoa'], image: img7 },
+  { keywords: ['coach', 'cach', 'nhiet'], image: img8 },
+  { keywords: ['coach', 'da', 'asos'], image: img9 },
+  { keywords: ['coach', 'gia', 'da'], image: img10 },
+  { keywords: ['coach', 'long', 'cuu'], image: img11 },
+  { keywords: ['astronaut'], image: img12 },
+  { keywords: ['embroidered', 'fuzzy'], image: img13 },
+  { keywords: ['windbreaker'], image: img14 },
+  { keywords: ['leopard'], image: img15 },
+  { keywords: ['longsleeve'], image: img16 },
+  { keywords: ['tiger', 'stripe'], image: img17 },
+  { keywords: ['camo'], image: img18 },
+  { keywords: ['zip', 'boxy'], image: img19 },
+  { keywords: ['zip', 'silk'], image: img20 },
+]
+const codeFallbackMap = {
+  SP001: img1, SP002: img2, SP003: img3, SP004: img4, SP005: img5,
+  SP006: img6, SP007: img7, SP008: img8, SP009: img9, SP010: img10,
+  SP011: img11, SP012: img12, SP013: img13, SP014: img14, SP015: img15,
+  SP016: img16, SP017: img17, SP018: img18, SP019: img19, SP020: img20,
+}
+const getNameFallbackImage = (name = '') => {
+  const normalized = String(name || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+  if (!normalized) return ''
+  const found = nameFallbackRules.find((rule) => rule.keywords.every((kw) => normalized.includes(kw)))
+  return found?.image || ''
+}
+const getCodeFallbackImage = (code = '') => {
+  const upper = String(code || '').trim().toUpperCase()
+  return codeFallbackMap[upper] || ''
+}
+const fallbackImageFor = (id, name = '', code = '') => {
+  const byCode = getCodeFallbackImage(code)
+  if (byCode) return byCode
+  const byName = getNameFallbackImage(name)
+  if (byName) return byName
+  const n = Number(id)
+  if (Number.isFinite(n) && n > 0) return fallbackImages[(n - 1) % fallbackImages.length]
+  return fallbackImages[0]
+}
 import {
   createDiaChi,
   deleteDiaChi,
@@ -43,7 +117,12 @@ const customer = ref(null)
 const orders = ref([])
 const addresses = ref([])
 const avatarInputRef = ref(null)
+const selectedOrderId = ref(null)
+const orderDetailData = ref(null)
+const loadingOrderDetail = ref(false)
+const productCatalog = ref(null)
 const OFFLINE_ORDER_STORAGE_KEY = 'pendingOfflineOrders'
+const ORDER_ITEM_VOUCHER_SNAPSHOTS_KEY = 'orderItemVoucherSnapshots'
 const LOCAL_REGISTERED_PROFILES_KEY = 'localRegisteredProfiles'
 const MISSING_PROFILE_TOAST_PREFIX = 'customer:missing-profile-warning:'
 
@@ -154,6 +233,245 @@ const getOrderTotal = (order) => {
   }, 0)
 
   return Math.max(subtotal + Number(order?.phiShip || order?.shipping || 0) - Number(order?.giaSauGiamGia || order?.discount || 0), 0)
+}
+
+/* ── Product catalog & order detail ── */
+const loadProductCatalog = async () => {
+  if (productCatalog.value) return productCatalog.value
+  try {
+    const res = await getAllSanPham({ size: 9999 })
+    const list = Array.isArray(res?.data?.content) ? res.data.content : (Array.isArray(res?.data) ? res.data : [])
+    const apiBase = resolveApiOrigin()
+    const toUrl = (raw) => {
+      if (!raw) return ''
+      if (raw.startsWith('http')) return raw
+      return `${apiBase}${raw.startsWith('/') ? '' : '/'}${raw}`
+    }
+    const pickImage = (product, variant) => {
+      const variantImg = variant?.anh || variant?.hinhAnh || variant?.image
+      if (variantImg) return toUrl(variantImg)
+      const byVariantFallback = fallbackImageForVariant({
+        id: product?.id,
+        maSanPham: product?.maSanPham,
+        tenSanPham: product?.tenSanPham || product?.name,
+        tenMauSac: variant?.mauSac?.tenMauSac || variant?.mauSac?.tenMau || variant?.tenMauSac || variant?.tenMau,
+        maChiTietSanPham: variant?.ma,
+      })
+      if (byVariantFallback) return byVariantFallback
+      const override = getProductImageOverride({ id: product?.id, maSanPham: product?.maSanPham })
+      const overrideUrl = Array.isArray(override) ? override[0] : override
+      if (overrideUrl) return overrideUrl
+      const productImg = product?.anh || product?.hinhAnh || product?.image || product?.images?.[0] || product?.listAnh?.[0]
+      if (productImg) return toUrl(productImg)
+      return fallbackImageFor(product?.id, product?.tenSanPham || product?.name || '', product?.maSanPham || '')
+    }
+    const map = new Map()
+    for (const sp of list) {
+      const spName = sp.tenSanPham || sp.ten || ''
+      const variants = Array.isArray(sp.sanPhamChiTiets) ? sp.sanPhamChiTiets : []
+      for (const v of variants) {
+        const varImg = pickImage(sp, v)
+        const colorName = v.mauSac?.tenMauSac || v.mauSac?.tenMau || v.tenMauSac || v.tenMau || ''
+        const sizeName = v.kichThuoc?.tenKichThuoc || v.kichThuoc?.tenSize || v.tenKichThuoc || v.tenSize || ''
+        const parts = [spName, colorName, sizeName].filter(Boolean)
+        map.set(v.id, {
+          ten: parts.join(' - '),
+          anh: varImg,
+          mauSac: String(colorName || '').trim(),
+          kichThuoc: String(sizeName || '').trim(),
+          maSanPhamChiTiet: String(v.ma || '').trim(),
+        })
+      }
+    }
+    productCatalog.value = map
+    return map
+  } catch {
+    return new Map()
+  }
+}
+
+const resolveItemName = (item, catalog) => {
+  if (item.tenSanPhamChiTiet && !String(item.tenSanPhamChiTiet).startsWith('SP #')) return item.tenSanPhamChiTiet
+  const entry = catalog?.get?.(item.spctId || item.sanPhamChiTietId)
+  return entry?.ten || item.tenSanPhamChiTiet || item.name || `SP #${item.spctId || item.id}`
+}
+const resolveItemImage = (item, catalog) => {
+  const spctId = Number(item.spctId || item.sanPhamChiTietId || item.id)
+  const fromCatalog = catalog?.get?.(spctId)?.anh
+  if (fromCatalog) return fromCatalog
+  if (item.image || item.anh) return item.image || item.anh
+  const itemName = item.tenSanPhamChiTiet || item.name || ''
+  return fallbackImageForVariant({
+    id: Number(item.productId || item.sanPhamId || spctId),
+    maSanPham: item.maSanPham,
+    tenSanPham: itemName,
+    tenMauSac: item?.mauSac?.tenMauSac || item?.mauSac?.tenMau || item?.tenMauSac || item?.tenMau || item?.mauSac,
+    maChiTietSanPham: item?.maSanPhamChiTiet,
+  }) || fallbackImageFor(spctId, itemName)
+}
+
+const normalizeMetaText = (value) => {
+  const normalized = String(value || '').trim()
+  if (!normalized) return ''
+  const lowered = normalized.toLowerCase()
+  if (['null', 'undefined', 'n/a', 'na', 'khong ro', 'không rõ', 'chua ro', 'chưa rõ'].includes(lowered)) {
+    return ''
+  }
+  return normalized
+}
+
+const getOrderItemColor = (item) => {
+  const value = item?.mauSac?.tenMauSac
+    || item?.mauSac?.tenMau
+    || item?.tenMauSac
+    || item?.tenMau
+    || item?.mauSac
+    || productCatalog.value?.get?.(Number(item?.spctId || item?.sanPhamChiTietId || item?.id))?.mauSac
+  return normalizeMetaText(value)
+}
+
+const getOrderItemSize = (item) => {
+  const value = item?.kichThuoc?.tenKichThuoc
+    || item?.kichThuoc?.tenSize
+    || item?.tenKichThuoc
+    || item?.tenSize
+    || item?.kichThuoc
+    || productCatalog.value?.get?.(Number(item?.spctId || item?.sanPhamChiTietId || item?.id))?.kichThuoc
+  return normalizeMetaText(value)
+}
+
+const getVoucherSnapshotMap = () => {
+  try {
+    const raw = localStorage.getItem(ORDER_ITEM_VOUCHER_SNAPSHOTS_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+const resolveOrderVoucherSnapshot = (order) => {
+  if (!order) return null
+  const map = getVoucherSnapshotMap()
+  const keys = [
+    String(order?.maHoaDon || '').trim(),
+    String(order?.id || '').trim(),
+  ].filter(Boolean)
+  for (const key of keys) {
+    if (map[key]) return map[key]
+  }
+  return null
+}
+
+const getOrderItemVouchers = (order, item) => {
+  const vouchers = []
+
+  const directCode = String(
+    item?.maPhieuGiamGia
+      || item?.voucherCode
+      || item?.maVoucher
+      || item?.phieuGiamGia
+      || item?.voucher?.code
+      || ''
+  ).trim()
+  const directDiscount = Number(
+    item?.voucherDiscount
+      || item?.giamGiaVoucher
+      || item?.giaTriGiamGia
+      || item?.giamGia
+      || item?.discount
+      || item?.voucher?.discount
+      || 0
+  )
+  if (directCode || directDiscount > 0) {
+    vouchers.push({ code: directCode, discount: directDiscount })
+  }
+
+  const snapshot = resolveOrderVoucherSnapshot(order)
+  const rows = Array.isArray(snapshot?.itemVouchers) ? snapshot.itemVouchers : []
+  if (rows.length) {
+    const spctId = Number(item?.spctId || item?.sanPhamChiTietId || 0)
+    const color = String(getOrderItemColor(item) || '').trim().toLowerCase()
+    const size = String(getOrderItemSize(item) || '').trim().toLowerCase()
+    const productId = Number(item?.id || item?.sanPhamId || 0)
+
+    const matchedRows = rows.filter((row) => {
+      const sameSpct = spctId > 0 && Number(row?.spctId || 0) === spctId
+      if (sameSpct) return true
+      const sameProduct = productId > 0 && Number(row?.productId || 0) === productId
+      if (!sameProduct) return false
+      const sameColor = !color || String(row?.color || '').trim().toLowerCase() === color
+      const sameSize = !size || String(row?.size || '').trim().toLowerCase() === size
+      return sameColor && sameSize
+    })
+
+    for (const row of matchedRows) {
+      const code = String(row?.voucherCode || '').trim()
+      const discount = Number(row?.discount || 0)
+      if (code || discount > 0) {
+        vouchers.push({ code, discount })
+      }
+    }
+  }
+
+  if (!vouchers.length) return []
+
+  // Merge duplicate voucher rows (same code) for lines that were aggregated by backend.
+  const mergedMap = new Map()
+  for (const voucher of vouchers) {
+    const code = String(voucher?.code || '').trim()
+    const discount = Number(voucher?.discount || 0)
+    const key = code || '__applied__'
+    const current = mergedMap.get(key) || { code, discount: 0 }
+    current.discount += discount
+    if (!current.code && code) current.code = code
+    mergedMap.set(key, current)
+  }
+
+  return Array.from(mergedMap.values())
+    .filter((voucher) => voucher.code || voucher.discount > 0)
+    .sort((a, b) => Number(b.discount || 0) - Number(a.discount || 0))
+}
+
+const openOrderDetail = async (order) => {
+  selectedOrderId.value = order.id
+  orderDetailData.value = null
+  loadingOrderDetail.value = true
+  try {
+    if (order?.isOfflineFallback) {
+      const catalog = await loadProductCatalog()
+      const rawItems = Array.isArray(order.items) ? order.items : []
+      const enriched = rawItems.map(item => ({
+        ...item,
+        tenSanPhamChiTiet: resolveItemName(item, catalog),
+        anh: resolveItemImage(item, catalog)
+      }))
+      orderDetailData.value = { ...order, hoaDonChiTiets: enriched }
+      return
+    }
+    if (!order?.id || String(order.id).startsWith('offline-')) return
+    const [res, catalog] = await Promise.all([getHoaDonById(order.id), loadProductCatalog()])
+    const detail = res?.data?.hoaDon || res?.data || {}
+    const rawItems = Array.isArray(res?.data?.items) ? res.data.items
+      : Array.isArray(detail?.hoaDonChiTiets) ? detail.hoaDonChiTiets
+      : Array.isArray(detail?.items) ? detail.items : []
+    const enriched = rawItems.map(item => ({
+      ...item,
+      tenSanPhamChiTiet: resolveItemName(item, catalog),
+      anh: resolveItemImage(item, catalog)
+    }))
+    orderDetailData.value = { ...order, ...detail, hoaDonChiTiets: enriched }
+  } catch {
+    orderDetailData.value = order
+  } finally {
+    loadingOrderDetail.value = false
+  }
+}
+const closeOrderDetail = () => { selectedOrderId.value = null; orderDetailData.value = null }
+const selectedOrder = computed(() => orders.value.find(o => o.id === selectedOrderId.value) || null)
+const getOrderItems = (order) => {
+  const src = orderDetailData.value || order
+  return Array.isArray(src?.hoaDonChiTiets) ? src.hoaDonChiTiets : (Array.isArray(src?.items) ? src.items : [])
 }
 
 const isVnpayOrder = (order) => {
@@ -294,6 +612,14 @@ const loadOrders = async (customerId) => {
 
 const getOrderStatusLabel = (order) => {
   return normalizeAdminStatusLabel(order?.orderStatusName || order?.trangThai || '')
+}
+
+const getOrderStatusTone = (order) => {
+  const label = getOrderStatusLabel(order)
+  if (/hoàn thành|thành công/i.test(label)) return 'success'
+  if (/hủy|thất bại/i.test(label)) return 'danger'
+  if (/chờ|đang/i.test(label)) return 'warning'
+  return 'neutral'
 }
 
 const getOrderPaymentFlow = (order) => {
@@ -777,8 +1103,10 @@ watch(() => route.query.tab, (tab) => {
               >
                 {{ getOrderPaymentFlow(order).label }}
               </div>
-              <div class="order-actions" v-if="canConfirmPayment(order)">
+              <div class="order-actions">
+                <button class="btn" @click="openOrderDetail(order)">Xem chi tiết</button>
                 <button
+                  v-if="canConfirmPayment(order)"
                   class="btn primary"
                   :disabled="confirmingOrderId === order.id"
                   @click="confirmPayment(order)"
@@ -822,6 +1150,109 @@ watch(() => route.query.tab, (tab) => {
       </template>
     </div>
   </main>
+
+  <!-- Modal chi tiết đơn hàng -->
+  <div v-if="selectedOrder" class="order-detail-overlay" @click.self="closeOrderDetail">
+    <div class="order-detail-modal">
+      <div class="order-detail-header">
+        <h3>Chi tiết đơn <span class="order-code">#{{ selectedOrder.maHoaDon || selectedOrder.id }}</span></h3>
+        <button class="order-detail-close" @click="closeOrderDetail">✕</button>
+      </div>
+      <div class="order-detail-body">
+        <div v-if="loadingOrderDetail" class="order-detail-loading">
+          <span class="spinner"></span>
+          <p>Đang tải chi tiết đơn hàng...</p>
+        </div>
+        <template v-else>
+          <!-- Info grid -->
+          <div class="order-detail-info">
+            <div class="info-item">
+              <span class="info-label">Trạng thái</span>
+              <span class="info-value status-badge" :class="`status-${getOrderStatusTone(selectedOrder)}`">{{ getOrderStatusLabel(selectedOrder) }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Ngày tạo</span>
+              <span class="info-value">{{ formatDateTime(selectedOrder.ngayTao) }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Phương thức thanh toán</span>
+              <span class="info-value">{{ selectedOrder.phuongThucThanhToan || 'COD' }}</span>
+            </div>
+            <div class="info-item" v-if="selectedOrder.tenNguoiNhan || selectedOrder.tenKhachHang">
+              <span class="info-label">Người nhận</span>
+              <span class="info-value">{{ selectedOrder.tenNguoiNhan || selectedOrder.tenKhachHang }}</span>
+            </div>
+            <div class="info-item full" v-if="selectedOrder.diaChiNhanHang">
+              <span class="info-label">Địa chỉ nhận hàng</span>
+              <span class="info-value">{{ selectedOrder.diaChiNhanHang }}</span>
+            </div>
+            <div class="info-item" v-if="selectedOrder.soDienThoaiNhanHang">
+              <span class="info-label">SĐT nhận hàng</span>
+              <span class="info-value">{{ selectedOrder.soDienThoaiNhanHang }}</span>
+            </div>
+            <div class="info-item" v-if="selectedOrder.ngayNhanHangDuKien">
+              <span class="info-label">Dự kiến giao</span>
+              <span class="info-value">{{ formatDateTime(selectedOrder.ngayNhanHangDuKien) }}</span>
+            </div>
+            <div class="info-item" v-if="selectedOrder.ghiChu">
+              <span class="info-label">Ghi chú</span>
+              <span class="info-value">{{ selectedOrder.ghiChu }}</span>
+            </div>
+          </div>
+
+          <!-- Product table -->
+          <div class="order-detail-products" v-if="getOrderItems(selectedOrder).length">
+            <h4>Sản phẩm</h4>
+            <div class="product-list">
+              <div class="product-row" v-for="(item, i) in getOrderItems(selectedOrder)" :key="i">
+                <div class="product-img">
+                  <img :src="item.anh || item.image || ''" @error="$event.target.src = fallbackImageForVariant({ id: item.productId || item.sanPhamId || item.spctId || item.sanPhamChiTietId || item.id, maSanPham: item.maSanPham, tenSanPham: item.tenSanPhamChiTiet || item.name || '', tenMauSac: getOrderItemColor(item), maChiTietSanPham: item.maSanPhamChiTiet }) || fallbackImageFor(item.spctId || item.sanPhamChiTietId || item.id, item.tenSanPhamChiTiet || item.name || '')" />
+                </div>
+                <div class="product-info">
+                  <span class="product-name">{{ item.tenSanPhamChiTiet || item.name || `SP #${item.spctId || item.id}` }}</span>
+                  <span v-if="getOrderItemColor(item) || getOrderItemSize(item)" class="product-meta-inline">
+                    <template v-if="getOrderItemColor(item)">Màu: {{ getOrderItemColor(item) }}</template>
+                    <template v-if="getOrderItemColor(item) && getOrderItemSize(item)"> • </template>
+                    <template v-if="getOrderItemSize(item)">Size: {{ getOrderItemSize(item) }}</template>
+                  </span>
+                  <span class="product-qty">SL: {{ item.soLuong || item.quantity }} × {{ formatCurrency(item.giaBan || item.price || 0) }}</span>
+                  <span
+                    v-for="(voucher, voucherIndex) in getOrderItemVouchers(selectedOrder, item)"
+                    :key="`${voucher.code || 'applied'}-${voucherIndex}`"
+                    class="product-voucher-inline"
+                  >
+                    Voucher {{ voucher.code || 'đã áp dụng' }}
+                    <template v-if="voucher.discount > 0"> • -{{ formatCurrency(voucher.discount) }}</template>
+                  </span>
+                </div>
+                <div class="product-line-total">
+                  {{ formatCurrency(item.thanhTien || (item.giaBan || item.price || 0) * (item.soLuong || item.quantity || 0)) }}
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="muted" v-else>Không có thông tin sản phẩm.</p>
+
+          <!-- Totals -->
+          <div class="order-detail-totals">
+            <div class="total-line" v-if="selectedOrder.phiShip">
+              <span>Phí vận chuyển</span>
+              <span>{{ formatCurrency(selectedOrder.phiShip) }}</span>
+            </div>
+            <div class="total-line discount" v-if="selectedOrder.giaSauGiamGia">
+              <span>Giảm giá</span>
+              <span>-{{ formatCurrency(selectedOrder.giaSauGiamGia) }}</span>
+            </div>
+            <div class="total-line grand">
+              <span>Tổng cộng</span>
+              <strong>{{ formatCurrency(getOrderTotal(selectedOrder)) }}</strong>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
   </div>
 </template>
 
@@ -949,6 +1380,9 @@ select {
   border: 1px solid #d4dde9;
   border-radius: 10px;
   padding: 10px 12px;
+}
+select {
+  padding-right: 34px;
 }
 
 .section-actions {
@@ -1098,7 +1532,96 @@ select {
 
 .order-actions {
   margin-top: 10px;
+  display: flex;
+  gap: 8px;
 }
+
+/* Order detail modal */
+.order-detail-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+  animation: fadeIn .2s ease;
+}
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+.order-detail-modal {
+  background: #fff; border-radius: 20px;
+  width: 100%; max-width: 720px; max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.25);
+  animation: slideUp .25s ease;
+}
+@keyframes slideUp { from { transform: translateY(24px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+.order-detail-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 20px 24px; border-bottom: 1px solid #e5e7eb;
+  position: sticky; top: 0; background: #fff; z-index: 1;
+  border-radius: 20px 20px 0 0;
+}
+.order-detail-header h3 { margin: 0; font-size: 18px; font-weight: 700; color: #111; }
+.order-code { color: #dc2626; }
+.order-detail-close {
+  width: 36px; height: 36px; border-radius: 50%;
+  border: 1px solid #e5e7eb; background: #f9fafb;
+  font-size: 18px; cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+  transition: background .15s;
+}
+.order-detail-close:hover { background: #f1f5f9; }
+.order-detail-body { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+.order-detail-loading { text-align: center; padding: 40px 0; color: #94a3b8; }
+.order-detail-loading .spinner {
+  display: inline-block; width: 28px; height: 28px;
+  border: 3px solid #e5e7eb; border-top-color: #dc2626;
+  border-radius: 50%; animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg) } }
+.order-detail-loading p { margin-top: 12px; font-size: 14px; }
+
+/* Info grid */
+.order-detail-info {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  background: #f8fafc; border-radius: 14px; padding: 16px 18px;
+}
+.info-item { display: flex; flex-direction: column; gap: 3px; }
+.info-item.full { grid-column: 1 / -1; }
+.info-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+.info-value { font-size: 15px; color: #1e293b; font-weight: 500; }
+.status-badge { padding: 3px 10px; border-radius: 6px; font-size: 13px; font-weight: 600; display: inline-block; width: fit-content; }
+.status-success { background: #dcfce7; color: #166534; }
+.status-danger { background: #fee2e2; color: #991b1b; }
+.status-warning { background: #fef3c7; color: #92400e; }
+.status-neutral { background: #f1f5f9; color: #475569; }
+
+/* Product list */
+.order-detail-products h4 { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: #111; }
+.product-list { display: flex; flex-direction: column; gap: 10px; }
+.product-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: 12px; background: #f9fafb;
+  border: 1px solid #f1f5f9;
+}
+.product-img { flex-shrink: 0; width: 60px; height: 60px; border-radius: 10px; overflow: hidden; background: #f1f5f9; }
+.product-img img { width: 100%; height: 100%; object-fit: cover; }
+.product-img-placeholder { width: 100%; height: 100%; background: #e5e7eb; border-radius: 10px; }
+.product-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.product-name { font-size: 14px; font-weight: 600; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.product-meta-inline { font-size: 12px; color: #475569; }
+.product-qty { font-size: 13px; color: #64748b; }
+.product-voucher-inline { font-size: 12px; color: #b91c1c; font-weight: 600; }
+.product-line-total { font-size: 15px; font-weight: 700; color: #111; white-space: nowrap; }
+
+/* Totals */
+.order-detail-totals {
+  border-top: 1px solid #e5e7eb; padding-top: 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.total-line { display: flex; justify-content: space-between; font-size: 15px; color: #334155; }
+.total-line.discount { color: #dc2626; }
+.total-line.grand { font-size: 17px; padding-top: 8px; border-top: 1px dashed #d1d5db; color: #111; }
+.total-line.grand strong { color: #dc2626; }
 
 .muted {
   color: #64748b;

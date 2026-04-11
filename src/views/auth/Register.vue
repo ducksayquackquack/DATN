@@ -455,7 +455,6 @@ const navigateWithTransition = (path) => {
           <h1>Tạo tài khoản</h1>
           <small class="muted">Tạo tài khoản khách hàng để mua sắm</small>
         </div>
-        <span class="pill">Secure</span>
       </div>
 
       <div class="body">
@@ -630,29 +629,28 @@ const navigateWithTransition = (path) => {
 }
 
 .brand-d-icon {
-  width: 1.06em;
-  height: 1.06em;
+  width: 1.4em;
+  height: 1.4em;
   object-fit: contain;
   margin-right: -0.04em;
+  margin-top: -0.15em;
   filter:
     sepia(1)
-    saturate(14)
+    saturate(20)
     hue-rotate(326deg)
-    brightness(0.98)
-    contrast(1.16)
-    drop-shadow(0 3px 8px rgba(197, 22, 45, 0.22));
+    brightness(1.3)
+    contrast(1.1);
   transition: transform 0.25s ease, filter 0.25s ease;
 }
 
 .brand:hover .brand-d-icon {
-  transform: scale(1.08) rotate(-3deg);
+  transform: scale(1.1) rotate(-3deg);
   filter:
     sepia(1)
-    saturate(15)
+    saturate(22)
     hue-rotate(326deg)
-    brightness(1.03)
-    contrast(1.18)
-    drop-shadow(0 4px 12px rgba(197, 22, 45, 0.3));
+    brightness(1.4)
+    contrast(1.12);
 }
 
 .brand-rest {
@@ -703,15 +701,11 @@ const navigateWithTransition = (path) => {
   line-height: 1.35;
   padding-top: 0;
   padding-bottom: 0;
-  background-image:
-    linear-gradient(45deg, transparent 50%, #6b7280 50%),
-    linear-gradient(135deg, #6b7280 50%, transparent 50%);
-  background-position:
-    calc(100% - 18px) calc(50% - 2px),
-    calc(100% - 12px) calc(50% - 2px);
-  background-size: 6px 6px, 6px 6px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  padding-right: 42px;
+  background-position: right 14px center;
+  background-size: 12px 12px;
+  padding-right: 38px;
 }
 
 .field select option {

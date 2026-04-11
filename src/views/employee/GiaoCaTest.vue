@@ -19,6 +19,57 @@
       </div>
     </div>
 
+    <!-- 24H OVERDUE WARNING -->
+    <div v-if="is24hOverdue && caHienTai" class="gct-overdue-banner">
+      <i class="fa-solid fa-triangle-exclamation"></i>
+      <span>Ca đã mở quá <b>24 giờ</b> ({{ shiftDurationText }}). Vui lòng đóng ca ngay để tránh sai lệch số liệu.</span>
+    </div>
+
+    <!-- PHIEU THU/CHI MODAL -->
+    <div v-if="showPhieuModal" class="gct-overlay" @click.self="showPhieuModal = false">
+      <div class="gct-phieu-modal">
+        <div class="gct-phieu-modal-header">
+          <h3>{{ phieuModalType === 'THU' ? 'Tạo phiếu thu' : 'Tạo phiếu chi' }}</h3>
+          <button class="gct-phieu-modal-close" @click="showPhieuModal = false">&times;</button>
+        </div>
+        <div class="gct-phieu-modal-body">
+          <div class="gct-field">
+            <label class="gct-label">Phương thức <span class="req">*</span></label>
+            <select v-model="phieuForm.phuongThuc" class="gct-input gct-select">
+              <option value="TIEN_MAT">Tiền mặt</option>
+              <option value="CHUYEN_KHOAN">Chuyển khoản</option>
+              <option value="THE">Thẻ</option>
+            </select>
+          </div>
+          <div class="gct-field">
+            <label class="gct-label">Số tiền <span class="req">*</span></label>
+            <input
+              type="text"
+              class="gct-input"
+              :value="phieuForm.soTien > 0 ? formatNumber(phieuForm.soTien) : ''"
+              @input="onPhieuMoneyInput"
+              placeholder="Nhập số tiền"
+            />
+          </div>
+          <div class="gct-field">
+            <label class="gct-label">Lý do</label>
+            <input
+              type="text"
+              class="gct-input"
+              v-model="phieuForm.lyDo"
+              :placeholder="phieuModalType === 'THU' ? 'VD: Nhận tiền trả nợ...' : 'VD: Mua vật tư, nộp tiền...'"
+            />
+          </div>
+        </div>
+        <div class="gct-phieu-modal-footer">
+          <button class="btn-dang-xuat" @click="showPhieuModal = false">Hủy</button>
+          <button class="btn-mo-ca" @click="handleCreatePhieu" :disabled="phieuSubmitting">
+            {{ phieuSubmitting ? 'Đang tạo...' : 'Xác nhận' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- ─────────────────── NO ACTIVE SHIFT ─────────────────── -->
     <template v-if="!loading && !caHienTai">
 
@@ -82,9 +133,9 @@
 
           <div class="gct-mo-ca-footer">
             <button class="btn-dang-xuat" @click="handleDangXuat">Đăng xuất</button>
-            <button class="btn-mo-ca" @click="handleBatDauCa" :disabled="isSubmitting">
+            <button class="btn-mo-ca" @click="handleBatDauCa" :disabled="isSubmitting || !canOpenShift">
               <i v-if="isSubmitting" class="fa-solid fa-spinner fa-spin"></i>
-              {{ isSubmitting ? 'Đang xử lý...' : 'Mở ca' }}
+              {{ !canOpenShift ? 'Không có quyền mở ca' : (isSubmitting ? 'Đang xử lý...' : 'Mở ca') }}
             </button>
           </div>
         </div>
@@ -96,9 +147,14 @@
           <i class="fa-regular fa-calendar-xmark gct-no-icon"></i>
           <h3>Chưa có ca làm việc hôm nay</h3>
           <p>{{ errorMessage || 'Bạn chưa được phân công ca làm việc hôm nay. Vui lòng liên hệ quản lý.' }}</p>
-          <button class="btn-retry" @click="loadData">
-            <i class="fa-solid fa-arrows-rotate"></i> Kiểm tra lại
-          </button>
+          <div class="gct-no-shift-actions">
+            <button class="btn-retry" @click="handleRetryCheck">
+              <i class="fa-solid fa-arrows-rotate"></i> Kiểm tra lại
+            </button>
+            <button class="btn-demo-access" @click="enableDemoAccess">
+              <i class="fa-solid fa-flask"></i> Demo access
+            </button>
+          </div>
         </div>
       </div>
 
@@ -149,12 +205,18 @@
                     <small>{{ caHienTai.soDonHangDaThanhToan || 0 }} hóa đơn</small>
                   </th>
                   <th>
-                    Phiếu thu
-                    <small>0 phiếu</small>
+                    <div class="th-phieu-header">
+                      <span>Phiếu thu</span>
+                      <button class="btn-add-phieu" @click="openPhieuModal('THU')" title="Tạo phiếu thu"><i class="fa-solid fa-plus"></i> Tạo</button>
+                    </div>
+                    <small>{{ phieuThuList.length }} phiếu</small>
                   </th>
                   <th>
-                    Phiếu chi
-                    <small>0 phiếu</small>
+                    <div class="th-phieu-header">
+                      <span>Phiếu chi</span>
+                      <button class="btn-add-phieu btn-add-phieu-chi" @click="openPhieuModal('CHI')" title="Tạo phiếu chi"><i class="fa-solid fa-plus"></i> Tạo</button>
+                    </div>
+                    <small>{{ phieuChiList.length }} phiếu</small>
                   </th>
                   <th>
                     Trả hàng
@@ -166,22 +228,22 @@
                 <tr>
                   <td class="td-item">1. Tiền mặt</td>
                   <td>{{ cashRevenue + codRevenue > 0 ? formatNumber(cashRevenue + codRevenue) : 0 }}</td>
-                  <td>0</td>
-                  <td class="td-red">0</td>
+                  <td>{{ phieuThuCash > 0 ? formatNumber(phieuThuCash) : 0 }}</td>
+                  <td class="td-red">{{ phieuChiCash > 0 ? formatNumber(phieuChiCash) : 0 }}</td>
                   <td class="td-red">0</td>
                 </tr>
                 <tr>
                   <td class="td-item">2. Chuyển khoản</td>
                   <td>{{ transferRevenue > 0 ? formatNumber(transferRevenue) : 0 }}</td>
-                  <td>0</td>
-                  <td class="td-red">0</td>
+                  <td>{{ phieuThuTransfer > 0 ? formatNumber(phieuThuTransfer) : 0 }}</td>
+                  <td class="td-red">{{ phieuChiTransfer > 0 ? formatNumber(phieuChiTransfer) : 0 }}</td>
                   <td class="td-red">0</td>
                 </tr>
                 <tr>
                   <td class="td-item">3. Thẻ</td>
                   <td>0</td>
-                  <td>0</td>
-                  <td class="td-red">0</td>
+                  <td>{{ phieuThuCard > 0 ? formatNumber(phieuThuCard) : 0 }}</td>
+                  <td class="td-red">{{ phieuChiCard > 0 ? formatNumber(phieuChiCard) : 0 }}</td>
                   <td class="td-red">0</td>
                 </tr>
                 <tr>
@@ -194,12 +256,104 @@
                 <tr class="tr-total">
                   <td class="td-item"><b>Tổng thu</b></td>
                   <td><b>{{ formatNumber(cashRevenue + codRevenue + transferRevenue) }}</b></td>
-                  <td><b>0</b></td>
-                  <td class="td-red"><b>0</b></td>
+                  <td><b>{{ phieuThuTotal > 0 ? formatNumber(phieuThuTotal) : 0 }}</b></td>
+                  <td class="td-red"><b>{{ phieuChiTotal > 0 ? formatNumber(phieuChiTotal) : 0 }}</b></td>
                   <td class="td-red"><b>0</b></td>
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <!-- Phieu list (expandable) -->
+          <div v-if="phieuThuList.length || phieuChiList.length" class="gct-phieu-list-wrap">
+            <div v-if="phieuThuList.length" class="gct-phieu-list">
+              <h4 class="gct-phieu-list-title gct-phieu-thu-title">Chi tiết phiếu thu ({{ phieuThuList.length }})</h4>
+              <div v-for="p in phieuThuList" :key="p.id" class="gct-phieu-item">
+                <span class="gct-phieu-badge gct-phieu-badge-thu">THU</span>
+                <span class="gct-phieu-method">{{ p.phuongThuc === 'TIEN_MAT' ? 'Tiền mặt' : p.phuongThuc === 'CHUYEN_KHOAN' ? 'CK' : 'Thẻ' }}</span>
+                <span class="gct-phieu-amount">{{ formatNumber(p.soTien) }}đ</span>
+                <span class="gct-phieu-reason">{{ p.lyDo || '—' }}</span>
+                <button class="gct-phieu-del" @click="handleDeletePhieu(p)" title="Xóa">&times;</button>
+              </div>
+            </div>
+            <div v-if="phieuChiList.length" class="gct-phieu-list">
+              <h4 class="gct-phieu-list-title gct-phieu-chi-title">Chi tiết phiếu chi ({{ phieuChiList.length }})</h4>
+              <div v-for="p in phieuChiList" :key="p.id" class="gct-phieu-item">
+                <span class="gct-phieu-badge gct-phieu-badge-chi">CHI</span>
+                <span class="gct-phieu-method">{{ p.phuongThuc === 'TIEN_MAT' ? 'Tiền mặt' : p.phuongThuc === 'CHUYEN_KHOAN' ? 'CK' : 'Thẻ' }}</span>
+                <span class="gct-phieu-amount gct-phieu-amount-chi">{{ formatNumber(p.soTien) }}đ</span>
+                <span class="gct-phieu-reason">{{ p.lyDo || '—' }}</span>
+                <button class="gct-phieu-del" @click="handleDeletePhieu(p)" title="Xóa">&times;</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── BÁO CÁO CHỐT CA (iPOS style) ── -->
+        <div class="gct-dc-section">
+          <div class="gct-dc-sec-head">
+            <span class="sec-label">Báo cáo chốt ca</span>
+          </div>
+          <div class="gct-report">
+            <div class="gct-report-block">
+              <h4 class="gct-report-title">BÁN HÀNG</h4>
+              <div class="gct-report-row">
+                <span>Số hóa đơn</span>
+                <b>{{ caHienTai?.soDonHangDaThanhToan || 0 }}</b>
+              </div>
+              <div class="gct-report-row">
+                <span>Doanh thu</span>
+                <b>{{ formatNumber(banHangGross) }} đ</b>
+              </div>
+              <div class="gct-report-row">
+                <span>+ Tiền mặt (1)</span>
+                <b>{{ formatNumber(banHangTienMat) }} đ</b>
+              </div>
+              <div class="gct-report-row">
+                <span>+ Chuyển khoản</span>
+                <b>{{ formatNumber(banHangCK) }} đ</b>
+              </div>
+            </div>
+
+            <div class="gct-report-block">
+              <h4 class="gct-report-title gct-report-thu">THU</h4>
+              <div class="gct-report-row">
+                <span>+ Tiền mặt (2)</span>
+                <b>{{ formatNumber(phieuThuCash) }} đ</b>
+              </div>
+              <div class="gct-report-row">
+                <span>+ Chuyển khoản</span>
+                <b>{{ formatNumber(phieuThuTransfer) }} đ</b>
+              </div>
+            </div>
+
+            <div class="gct-report-block">
+              <h4 class="gct-report-title gct-report-chi">CHI</h4>
+              <div class="gct-report-row">
+                <span>+ Tiền mặt (3)</span>
+                <b class="td-red">{{ formatNumber(phieuChiCash) }} đ</b>
+              </div>
+              <div class="gct-report-row">
+                <span>+ Chuyển khoản</span>
+                <b class="td-red">{{ formatNumber(phieuChiTransfer) }} đ</b>
+              </div>
+            </div>
+
+            <div class="gct-report-block gct-report-bangiao">
+              <h4 class="gct-report-title">BÀN GIAO CA</h4>
+              <div class="gct-report-row">
+                <span>Tiền mặt đầu ca</span>
+                <b>{{ formatNumber(caHienTai?.tienDauCaNhap || 0) }} đ</b>
+              </div>
+              <div class="gct-report-row">
+                <span>Tiền mặt trong ca (1)+(2)-(3)</span>
+                <b>{{ formatNumber(tienMatTrongCa) }} đ</b>
+              </div>
+              <div class="gct-report-row gct-report-highlight">
+                <span>Tiền mặt cuối ca</span>
+                <b>{{ formatNumber(tienMatCuoiCa) }} đ</b>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -209,7 +363,7 @@
             <span class="sec-label">Cuối ca</span>
             <span class="sec-value sec-hint">
               <i class="fa-regular fa-circle-question"></i>
-              Tiền mặt: <b>{{ formatNumber(tinhTongLyThuyet) }}</b>
+              Tiền mặt lý thuyết: <b>{{ formatNumber(tienMatCuoiCa) }}</b>
             </span>
           </div>
 
@@ -272,8 +426,8 @@
 
     <!-- TOAST -->
     <transition name="gct-toast-slide">
-      <div v-if="showToast" class="gct-toast">
-        <i class="fa-solid fa-circle-check gct-toast-icon"></i>
+      <div v-if="showToast" class="gct-toast" :class="`gct-toast-${toastType}`">
+        <i :class="toastType === 'error' ? 'fa-solid fa-circle-xmark' : toastType === 'warning' ? 'fa-solid fa-triangle-exclamation' : 'fa-solid fa-circle-check'" class="gct-toast-icon"></i>
         <span>{{ toastMessage }}</span>
         <button class="gct-toast-close" @click="showToast = false">×</button>
       </div>
@@ -302,6 +456,7 @@ import {
   resolveInvoiceEmployeeId,
   resolveRevenueDateKey,
 } from "@/utils/orderRevenue";
+import { getPhieuByShift, createPhieu, deletePhieu } from "@/services/phieuThuChiService";
 
 const router = useRouter();
 const emit = defineEmits(["ca-started"]);
@@ -492,7 +647,9 @@ const showHandoverReminder = ref(false);
 const errorMessage = ref("");
 const showToast = ref(false);
 const toastMessage = ref("");
+const toastType = ref("success");
 let toastTimeout = null;
+const isDemoAccess = ref(false);
 
 const tienBanDauInput = ref(0);
 const ghiChuBanDau = ref("");
@@ -501,6 +658,14 @@ const ghiChuInput = ref("");
 
 const now = ref(new Date());
 let timer = null;
+
+// ─── Phieu thu/chi state ───────────────────────────────────────────────────
+const phieuThuList = ref([]);
+const phieuChiList = ref([]);
+const showPhieuModal = ref(false);
+const phieuModalType = ref("THU"); // THU or CHI
+const phieuForm = ref({ phuongThuc: "TIEN_MAT", soTien: 0, lyDo: "" });
+const phieuSubmitting = ref(false);
 
 // ─── Computed ──────────────────────────────────────────────────────────────
 
@@ -546,12 +711,108 @@ const caStartedAt = computed(() => {
 });
 
 const tinhTongLyThuyet = computed(() => {
-  if (!caHienTai.value) return 0;
-  return (caHienTai.value.tienDauCaNhap || 0) + (cashRevenue.value + codRevenue.value);
+  return tienMatCuoiCa.value;
 });
 
 const chenhLech = computed(() => {
-  return tienThucTeInput.value - tinhTongLyThuyet.value;
+  return tienThucTeInput.value - tienMatCuoiCa.value;
+});
+
+// ─── Phieu computed ────────────────────────────────────────────────────────
+const phieuThuCash = computed(() => phieuThuList.value.filter((p) => p.phuongThuc === "TIEN_MAT").reduce((s, p) => s + Number(p.soTien || 0), 0));
+const phieuThuTransfer = computed(() => phieuThuList.value.filter((p) => p.phuongThuc === "CHUYEN_KHOAN").reduce((s, p) => s + Number(p.soTien || 0), 0));
+const phieuThuCard = computed(() => phieuThuList.value.filter((p) => p.phuongThuc === "THE").reduce((s, p) => s + Number(p.soTien || 0), 0));
+const phieuThuTotal = computed(() => phieuThuCash.value + phieuThuTransfer.value + phieuThuCard.value);
+
+const phieuChiCash = computed(() => phieuChiList.value.filter((p) => p.phuongThuc === "TIEN_MAT").reduce((s, p) => s + Number(p.soTien || 0), 0));
+const phieuChiTransfer = computed(() => phieuChiList.value.filter((p) => p.phuongThuc === "CHUYEN_KHOAN").reduce((s, p) => s + Number(p.soTien || 0), 0));
+const phieuChiCard = computed(() => phieuChiList.value.filter((p) => p.phuongThuc === "THE").reduce((s, p) => s + Number(p.soTien || 0), 0));
+const phieuChiTotal = computed(() => phieuChiCash.value + phieuChiTransfer.value + phieuChiCard.value);
+
+// ─── 24h overdue check ────────────────────────────────────────────────────
+const is24hOverdue = computed(() => {
+  if (!caHienTai.value || !idNhanVien.value) return false;
+  const active = loadActiveShift(idNhanVien.value);
+  if (!active?.startedAt) return false;
+  const started = new Date(active.startedAt);
+  return (now.value - started) > 24 * 60 * 60 * 1000;
+});
+
+const shiftDurationText = computed(() => {
+  if (!caHienTai.value || !idNhanVien.value) return "";
+  const active = loadActiveShift(idNhanVien.value);
+  if (!active?.startedAt) return "";
+  const ms = now.value - new Date(active.startedAt);
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+  return `${hours}h ${mins}m`;
+});
+
+// ─── Role check ───────────────────────────────────────────────────────────
+// Per reviewer: only THU_NGAN (cashier), OWNER, ADMIN, QUAN_LY, and employee-role variants can open a shift.
+const ALLOWED_SHIFT_CODES = new Set([
+  "ADMIN",
+  "OWNER",
+  "THU_NGAN",
+  "CASHIER",
+  "QUAN_LY",
+  "MANAGER",
+  "CHU_CUA_HANG",
+  "NHAN_VIEN",
+  "NHANVIEN",
+  "EMPLOYEE",
+]);
+
+const normalizeRoleCode = (value) => {
+  return String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/^ROLE_/, "")
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+}
+
+const userRole = computed(() => normalizeRoleCode(localStorage.getItem("role") || ""));
+
+const resolveChucVuCode = (user) => {
+  if (!user) return "";
+  // API returns chucVu as object { id, maChucVu, tenChucVu }
+  const cv = user.chucVu;
+  if (cv && typeof cv === "object") {
+    return normalizeRoleCode(cv.maChucVu || cv.tenChucVu || "")
+  }
+  // Fallback: direct string field
+  return normalizeRoleCode(cv || "")
+};
+
+const canOpenShift = computed(() => {
+  if (userRole.value === "ADMIN") return true;
+  if (!currentUser.value) return true;
+  const code = resolveChucVuCode(currentUser.value);
+  if (!code) return true; // No position assigned → allow (backward-compat)
+  return ALLOWED_SHIFT_CODES.has(code) || ALLOWED_SHIFT_CODES.has(userRole.value);
+});
+
+const chucVuLabel = computed(() => {
+  const cv = currentUser.value?.chucVu;
+  if (cv && typeof cv === "object") return cv.tenChucVu || cv.maChucVu || "";
+  return String(cv || "");
+});
+
+// ─── Báo cáo chốt ca computeds (iPOS style) ──────────────────────────────
+const banHangTienMat = computed(() => cashRevenue.value + codRevenue.value);
+const banHangCK = computed(() => transferRevenue.value);
+const banHangGross = computed(() => banHangTienMat.value + banHangCK.value);
+
+const tienMatTrongCa = computed(() => {
+  // Cash from sales + cash from thu - cash from chi
+  return banHangTienMat.value + phieuThuCash.value - phieuChiCash.value;
+});
+
+const tienMatCuoiCa = computed(() => {
+  return (caHienTai.value?.tienDauCaNhap || 0) + tienMatTrongCa.value;
 });
 
 // ─── Helpers / Formatters ──────────────────────────────────────────────────
@@ -568,13 +829,84 @@ const onInputMoney = (event, type) => {
   if (type === "end") tienThucTeInput.value = val;
 };
 
-const triggerToast = (msg) => {
+const triggerToast = (msg, type = "success") => {
   toastMessage.value = msg;
+  toastType.value = type;
   showToast.value = true;
   if (toastTimeout) clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => {
     showToast.value = false;
-  }, 3000);
+  }, 3500);
+};
+
+// ─── Phieu Thu/Chi CRUD ────────────────────────────────────────────────────
+
+const fetchPhieu = async () => {
+  if (!idNhanVien.value || !caHienTai.value) {
+    phieuThuList.value = [];
+    phieuChiList.value = [];
+    return;
+  }
+  try {
+    const ngayLam = caHienTai.value.ngayLam || resolveRevenueDateKeyForShift();
+    const idCaLam = caHienTai.value.idCaLam || 0;
+    const res = await getPhieuByShift(idNhanVien.value, ngayLam, idCaLam);
+    const list = Array.isArray(res?.data) ? res.data : [];
+    phieuThuList.value = list.filter((p) => p.loai === "THU");
+    phieuChiList.value = list.filter((p) => p.loai === "CHI");
+  } catch {
+    phieuThuList.value = [];
+    phieuChiList.value = [];
+  }
+};
+
+const openPhieuModal = (type) => {
+  phieuModalType.value = type;
+  phieuForm.value = { phuongThuc: "TIEN_MAT", soTien: 0, lyDo: "" };
+  showPhieuModal.value = true;
+};
+
+const handleCreatePhieu = async () => {
+  if (!phieuForm.value.soTien || Number(phieuForm.value.soTien) <= 0) {
+    triggerToast("Vui lòng nhập số tiền hợp lệ", "warning");
+    return;
+  }
+  phieuSubmitting.value = true;
+  try {
+    await createPhieu({
+      loai: phieuModalType.value,
+      phuongThuc: phieuForm.value.phuongThuc,
+      soTien: Number(phieuForm.value.soTien),
+      lyDo: String(phieuForm.value.lyDo || "").trim(),
+      idNhanVien: idNhanVien.value,
+      ngayLam: caHienTai.value?.ngayLam || resolveRevenueDateKeyForShift(),
+      idCaLam: caHienTai.value?.idCaLam || 0,
+      nguoiTao: currentUser.value?.tenNhanVien || currentUser.value?.hoTen || ""
+    });
+    showPhieuModal.value = false;
+    await fetchPhieu();
+    triggerToast(`Tạo phiếu ${phieuModalType.value === "THU" ? "thu" : "chi"} thành công!`);
+  } catch (err) {
+    triggerToast("Lỗi: " + (err?.response?.data?.message || err?.message || "Không thể tạo phiếu"), "error");
+  } finally {
+    phieuSubmitting.value = false;
+  }
+};
+
+const handleDeletePhieu = async (phieu) => {
+  if (!confirm(`Xóa phiếu ${phieu.loai === "THU" ? "thu" : "chi"} ${formatNumber(phieu.soTien)}đ?`)) return;
+  try {
+    await deletePhieu(phieu.id);
+    await fetchPhieu();
+    triggerToast("Đã xóa phiếu");
+  } catch {
+    triggerToast("Không thể xóa phiếu", "error");
+  }
+};
+
+const onPhieuMoneyInput = (event) => {
+  const raw = event.target.value.replace(/\D/g, "");
+  phieuForm.value.soTien = Number(raw);
 };
 
 // ─── Revenue Fetch (extended with cash / cod / transfer breakdown) ──────────
@@ -641,11 +973,48 @@ const evaluateHandoverReminder = () => {
   }
 };
 
+const enableDemoAccess = () => {
+  const nowDate = new Date();
+  const currentHour = nowDate.getHours();
+  const shiftEndHour = Math.min(currentHour + 5, 23);
+  const today = getTodayDateKey();
+
+  lichHomNay.value = {
+    id: -1,
+    idCaLam: 1,
+    idNhanVien: idNhanVien.value,
+    ngayLam: today,
+    tenCa: "Ca demo",
+    gioBatDau: `${String(currentHour).padStart(2, "0")}:00`,
+    gioKetThuc: `${String(shiftEndHour).padStart(2, "0")}:59`,
+  };
+
+  isDemoAccess.value = true;
+  errorMessage.value = "Đang ở chế độ demo: có thể mở/đóng ca để test giao diện mà không ghi lịch sử ca thật.";
+};
+
+const handleRetryCheck = async () => {
+  await loadData();
+
+  if (caHienTai.value) {
+    triggerToast("Đã tìm thấy ca đang hoạt động.");
+    return;
+  }
+
+  if (lichHomNay.value) {
+    triggerToast(errorMessage.value || "Đã tìm thấy ca làm việc. Bạn có thể mở ca.");
+    return;
+  }
+
+  triggerToast(errorMessage.value || "Hiện chưa có ca làm việc khả dụng.", "error");
+};
+
 // ─── Load Data ─────────────────────────────────────────────────────────────
 
 const loadData = async () => {
   loading.value = true;
   errorMessage.value = "";
+  isDemoAccess.value = false;
 
   try {
     if (!idNhanVien.value) {
@@ -740,6 +1109,8 @@ const loadData = async () => {
       caHienTai.value.tongTienTrongCa = rev.cashRevenue + rev.codRevenue;
       caHienTai.value.soDonHangDaThanhToan = rev.orderCount;
 
+      await fetchPhieu();
+
       const stored = loadActiveShift(idNhanVien.value);
       if (stored) {
         stored.tongTienTrongCa = caHienTai.value.tongTienTrongCa;
@@ -779,9 +1150,10 @@ const refreshRevenue = async () => {
       stored.soDonHangDaThanhToan = rev.orderCount;
       saveActiveShift(idNhanVien.value, stored);
     }
+    await fetchPhieu();
     triggerToast("Đã cập nhật dữ liệu thành công!");
   } catch {
-    errorMessage.value = "Không thể cập nhật dữ liệu. Vui lòng thử lại.";
+    triggerToast("Không thể cập nhật dữ liệu. Vui lòng thử lại.", "error");
   } finally {
     isRefreshing.value = false;
   }
@@ -791,6 +1163,10 @@ const refreshRevenue = async () => {
 
 const handleBatDauCa = async () => {
   errorMessage.value = "";
+  if (!canOpenShift.value) {
+    errorMessage.value = "Chức vụ của bạn không được phép mở ca. Vui lòng liên hệ quản lý.";
+    return;
+  }
   if (tienBanDauInput.value < 0) {
     errorMessage.value = "Tiền mặt đầu ca không hợp lệ.";
     return;
@@ -812,6 +1188,7 @@ const handleBatDauCa = async () => {
       tongTienTrongCa: 0,
       soDonHangDaThanhToan: 0,
       ghiChuBanDau: String(ghiChuBanDau.value || "").trim(),
+      isDemoAccess: isDemoAccess.value,
       startedAt: new Date().toISOString(),
     };
 
@@ -851,6 +1228,16 @@ const submitKetThucCa = async (printAfter = false) => {
   errorMessage.value = "";
 
   try {
+    if (isDemoAccess.value || caHienTai.value?.isDemoAccess) {
+      clearActiveShift(idNhanVien.value);
+      caHienTai.value = null;
+      lichHomNay.value = null;
+      showHandoverReminder.value = false;
+      isDemoAccess.value = false;
+      triggerToast("Đã đóng ca demo. Không có dữ liệu nào được ghi vào lịch sử ca.");
+      return;
+    }
+
     const nowMinutes = now.value.getHours() * 60 + now.value.getMinutes();
     const shiftEndMinutes = toMinutes(lichHomNay.value.gioKetThuc);
     const isEarlyClose = nowMinutes < shiftEndMinutes;
@@ -877,6 +1264,8 @@ const submitKetThucCa = async (printAfter = false) => {
       `Tiền lý thuyết: ${formatNumber(tongLyThuyet)}đ`,
       `Tiền thực tế: ${formatNumber(tienThucTeInput.value)}đ`,
       `Chênh lệch: ${chenh >= 0 ? "+" : ""}${formatNumber(chenh)}đ`,
+      phieuThuList.value.length ? `Phiếu thu: ${phieuThuList.value.length} (${formatNumber(phieuThuTotal.value)}đ)` : "",
+      phieuChiList.value.length ? `Phiếu chi: ${phieuChiList.value.length} (${formatNumber(phieuChiTotal.value)}đ)` : "",
       earlyCloseNote,
       ghiChuInput.value.trim(),
     ]
@@ -911,7 +1300,7 @@ const submitKetThucCa = async (printAfter = false) => {
 
     await loadData();
   } catch (error) {
-    errorMessage.value = "Lỗi: " + (error.response?.data?.message || error.message || "Không thể đóng ca.");
+    triggerToast("Lỗi: " + (error.response?.data?.message || error.message || "Không thể đóng ca."), "error");
   } finally {
     isSubmitting.value = false;
   }
@@ -948,7 +1337,8 @@ onUnmounted(() => {
 ═══════════════════════════════════════════════ */
 .gct-page {
   min-height: 100vh;
-  background: #f0f2f5;
+  background: #fff;
+  width: 100%;
   font-family: "Be Vietnam Pro", "Segoe UI", Tahoma, sans-serif;
   color: #374151;
   display: flex;
@@ -976,7 +1366,7 @@ onUnmounted(() => {
   width: 36px;
   height: 36px;
   border: 4px solid #e5e7eb;
-  border-top-color: #1677ff;
+  border-top-color: #b11226;
   border-radius: 50%;
   animation: gct-spin 0.8s linear infinite;
 }
@@ -1055,6 +1445,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 40px 16px;
+  background: #fff;
 }
 
 /* ═══════════════════════════════════════════════
@@ -1118,7 +1509,7 @@ onUnmounted(() => {
 }
 
 .gct-input:focus {
-  border-bottom-color: #1677ff;
+  border-bottom-color: #b11226;
 }
 
 .gct-input-readonly {
@@ -1135,8 +1526,8 @@ onUnmounted(() => {
 }
 
 .btn-dang-xuat {
-  border: 1px solid #1677ff;
-  color: #1677ff;
+  border: 1px solid #111827;
+  color: #111827;
   background: #fff;
   padding: 9px 20px;
   border-radius: 6px;
@@ -1147,11 +1538,11 @@ onUnmounted(() => {
 }
 
 .btn-dang-xuat:hover {
-  background: #e6f4ff;
+  background: #f3f4f6;
 }
 
 .btn-mo-ca {
-  background: #1677ff;
+  background: #b11226;
   color: #fff;
   border: none;
   padding: 9px 24px;
@@ -1166,11 +1557,11 @@ onUnmounted(() => {
 }
 
 .btn-mo-ca:hover:not(:disabled) {
-  background: #0958d9;
+  background: #8f0e1f;
 }
 
 .btn-mo-ca:disabled {
-  background: #93c5fd;
+  background: #e4a4ad;
   cursor: not-allowed;
 }
 
@@ -1208,8 +1599,20 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 
+.gct-no-shift-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.gct-no-shift-actions button {
+  margin-top: 0;
+  min-height: 36px;
+}
+
 .btn-retry {
-  background: #1677ff;
+  background: #b11226;
   color: #fff;
   border: none;
   padding: 9px 20px;
@@ -1217,14 +1620,33 @@ onUnmounted(() => {
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  margin-top: 8px;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
 }
 
 .btn-retry:hover {
-  background: #0958d9;
+  background: #8f0e1f;
+}
+
+.btn-demo-access {
+  background: #111827;
+  color: #fff;
+  border: none;
+  padding: 9px 20px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-demo-access:hover {
+  background: #1f2937;
 }
 
 /* ═══════════════════════════════════════════════
@@ -1255,6 +1677,7 @@ onUnmounted(() => {
   align-items: flex-start;
   justify-content: center;
   padding: 28px 16px;
+  background: #fff;
 }
 
 .gct-dong-ca {
@@ -1285,7 +1708,7 @@ onUnmounted(() => {
 }
 
 .gct-ca-code {
-  color: #1677ff;
+  color: #b11226;
 }
 
 .gct-dc-meta {
@@ -1331,7 +1754,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 5px;
-  color: #1677ff;
+  color: #b11226;
   font-size: 0.88rem;
 }
 
@@ -1431,7 +1854,7 @@ onUnmounted(() => {
 .btn-cap-nhat {
   border: none;
   background: transparent;
-  color: #1677ff;
+  color: #b11226;
   cursor: pointer;
   font-size: 0.9rem;
   font-weight: 600;
@@ -1442,11 +1865,11 @@ onUnmounted(() => {
 }
 
 .btn-cap-nhat:hover:not(:disabled) {
-  color: #0958d9;
+  color: #8f0e1f;
 }
 
 .btn-cap-nhat:disabled {
-  color: #93c5fd;
+  color: #d89da6;
   cursor: not-allowed;
 }
 
@@ -1472,7 +1895,7 @@ onUnmounted(() => {
 }
 
 .btn-dong-in {
-  background: #1677ff;
+  background: #b11226;
   color: #fff;
   border: none;
   padding: 9px 20px;
@@ -1484,7 +1907,7 @@ onUnmounted(() => {
 }
 
 .btn-dong-in:hover:not(:disabled) {
-  background: #0958d9;
+  background: #8f0e1f;
 }
 
 .btn-dong-in:disabled {
@@ -1513,15 +1936,24 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  border-left: 4px solid #10b981;
+  border-left: 4px solid #111827;
   z-index: 9999;
   min-width: 260px;
   font-size: 0.9rem;
   color: #374151;
 }
 
+.gct-toast-success { border-left-color: #111827; }
+.gct-toast-success .gct-toast-icon { color: #111827; }
+
+.gct-toast-error { border-left-color: #dc2626; }
+.gct-toast-error .gct-toast-icon { color: #dc2626; }
+
+.gct-toast-warning { border-left-color: #d97706; }
+.gct-toast-warning .gct-toast-icon { color: #d97706; }
+
 .gct-toast-icon {
-  color: #10b981;
+  color: #111827;
   font-size: 1.1rem;
 }
 
@@ -1572,6 +2004,299 @@ onUnmounted(() => {
   .btn-dong-in {
     width: 100%;
     text-align: center;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   24H OVERDUE BANNER
+═══════════════════════════════════════════════ */
+.gct-overdue-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fef2f2;
+  border-bottom: 2px solid #ef4444;
+  padding: 12px 28px;
+  color: #b91c1c;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.gct-overdue-banner i {
+  font-size: 1.1rem;
+  color: #ef4444;
+}
+
+/* ═══════════════════════════════════════════════
+   PHIEU MODAL
+═══════════════════════════════════════════════ */
+.gct-phieu-modal {
+  background: #fff;
+  border-radius: 10px;
+  width: min(440px, 92vw);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.gct-phieu-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.gct-phieu-modal-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #111827;
+}
+
+.gct-phieu-modal-close {
+  border: none;
+  background: transparent;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #9ca3af;
+  line-height: 1;
+}
+
+.gct-phieu-modal-body {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gct-phieu-modal-footer {
+  padding: 16px 24px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.gct-select {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 8px 34px 8px 10px;
+  font-size: 0.95rem;
+}
+
+/* ═══════════════════════════════════════════════
+   PHIEU TABLE HEADER BUTTONS
+═══════════════════════════════════════════════ */
+.th-phieu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.btn-add-phieu {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: none;
+  background: #b11226;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-add-phieu i {
+  font-size: 0.65rem;
+}
+
+.btn-add-phieu:hover {
+  background: #8f0e1f;
+  box-shadow: 0 2px 8px rgba(177, 18, 38, 0.25);
+}
+
+.btn-add-phieu-chi {
+  background: #374151;
+}
+
+.btn-add-phieu-chi:hover {
+  background: #111827;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* ═══════════════════════════════════════════════
+   PHIEU LIST
+═══════════════════════════════════════════════ */
+.gct-phieu-list-wrap {
+  padding: 0 28px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gct-phieu-list-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0 0 6px;
+  color: #374151;
+}
+
+.gct-phieu-thu-title { color: #111827; }
+.gct-phieu-chi-title { color: #dc2626; }
+
+.gct-phieu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #f9fafb;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.gct-phieu-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.gct-phieu-badge-thu {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.gct-phieu-badge-chi {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.gct-phieu-method {
+  color: #6b7280;
+  min-width: 60px;
+}
+
+.gct-phieu-amount {
+  font-weight: 600;
+  color: #111827;
+  min-width: 80px;
+}
+
+.gct-phieu-amount-chi {
+  color: #dc2626;
+}
+
+.gct-phieu-reason {
+  flex: 1;
+  color: #9ca3af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gct-phieu-del {
+  border: none;
+  background: transparent;
+  color: #d1d5db;
+  font-size: 1.1rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.gct-phieu-del:hover {
+  color: #ef4444;
+}
+
+/* ═══════════════════════════════════════════════
+   BÁO CÁO CHỐT CA (iPOS style)
+═══════════════════════════════════════════════ */
+.gct-report {
+  padding: 16px 28px 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 28px;
+}
+
+.gct-report-block {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #fafbfc;
+}
+
+.gct-report-bangiao {
+  grid-column: 1 / -1;
+  background: #fff5f6;
+  border-color: #f2c4cb;
+}
+
+.gct-report-title {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #b11226;
+  border-left: 3px solid #b11226;
+  padding-left: 8px;
+}
+
+.gct-report-thu {
+  color: #b11226;
+  border-left-color: #b11226;
+}
+
+.gct-report-chi {
+  color: #dc2626;
+  border-left-color: #dc2626;
+}
+
+.gct-report-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 0.88rem;
+  color: #374151;
+}
+
+.gct-report-row span {
+  color: #6b7280;
+}
+
+.gct-report-row b {
+  color: #111827;
+}
+
+.gct-report-highlight {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 2px solid #b11226;
+  font-size: 0.95rem;
+}
+
+.gct-report-highlight span {
+  font-weight: 600;
+  color: #b11226;
+}
+
+.gct-report-highlight b {
+  color: #b11226;
+  font-size: 1.05rem;
+}
+
+@media (max-width: 640px) {
+  .gct-report {
+    grid-template-columns: 1fr;
+  }
+  .gct-report-bangiao {
+    grid-column: 1;
   }
 }
 </style>

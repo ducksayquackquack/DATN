@@ -13,7 +13,7 @@
           <Ticket :size="22" :stroke-width="2" class="voucher-icon" />
           <div class="voucher-info">
             <h4>{{ selectedVoucher.tenPhieuGiamGia }}</h4>
-            <p class="voucher-code">{{ selectedVoucher.maPhieuGiamGia }}</p>
+            <p v-if="selectedVoucher.maPhieuGiamGia && selectedVoucher.maPhieuGiamGia !== selectedVoucher.tenPhieuGiamGia" class="voucher-code">{{ selectedVoucher.maPhieuGiamGia }}</p>
           </div>
           <button class="btn-remove" @click="removeVoucher" title="Bỏ áp dụng">×</button>
         </div>
@@ -21,7 +21,7 @@
           <div class="discount-amount">
             Giảm: <strong>{{ formatCurrency(currentDiscount) }}</strong>
           </div>
-          <div class="voucher-desc">{{ selectedVoucher.moTa || 'Không có mô tả' }}</div>
+          <div v-if="selectedVoucher.moTa" class="voucher-desc">{{ selectedVoucher.moTa }}</div>
         </div>
       </div>
     </div>
@@ -59,10 +59,12 @@
               </div>
               <div class="voucher-item-body">
                 <p class="voucher-code">Mã: {{ voucher.maPhieuGiamGia }}</p>
-                <p class="voucher-desc">{{ voucher.moTa || 'Không có mô tả' }}</p>
+                <p v-if="voucher.moTa" class="voucher-desc">{{ voucher.moTa }}</p>
                 <div class="voucher-conditions">
                   <span v-if="voucher.hoaDonToiThieu > 0">Đơn tối thiểu: {{ formatCurrency(voucher.hoaDonToiThieu) }}</span>
-                  <span v-if="voucher.soTienGiamToiDa > 0">Giảm tối đa: {{ formatCurrency(voucher.soTienGiamToiDa) }}</span>
+                  <span>Giảm tối đa: {{ formatMaxDiscount(voucher) }}</span>
+                  <span>SL còn: {{ voucher.soLuongSuDung ?? 0 }}</span>
+                  <span>Đã dùng: {{ voucher.soLuongDaDung ?? 0 }}</span>
                 </div>
                 <p v-if="!voucher.isApplicable && voucher.amountNeeded > 0" class="voucher-note">
                   Cần mua thêm {{ formatCurrency(voucher.amountNeeded) }} để áp dụng
@@ -88,7 +90,8 @@ import {
   getActiveVouchers,
   getAllVouchers,
   calculateVoucherDiscount,
-  isVoucherApplicable
+  isVoucherApplicable,
+  normalizeVoucherData
 } from '@/services/khuyenMaiService'
 
 const props = defineProps({
@@ -195,9 +198,9 @@ const applyPersistedVoucherSelection = () => {
 
   const syntheticVoucher = {
     id: `persisted-${fallbackCode || fallbackName}`,
-    maPhieuGiamGia: fallbackCode || fallbackName,
+    maPhieuGiamGia: fallbackCode,
     tenPhieuGiamGia: fallbackName,
-    moTa: 'Không có mô tả',
+    moTa: '',
     _fromPersistedOrder: true
   }
 
@@ -251,6 +254,11 @@ const formatCurrency = (value) => {
   }).format(value || 0)
 }
 
+const formatMaxDiscount = (voucher) => {
+  const max = Number(voucher?.soTienGiamToiDa || 0)
+  return max > 0 ? formatCurrency(max) : 'Không giới hạn'
+}
+
 const extractVoucherList = (response) => {
   const payload = response?.data
   if (Array.isArray(payload)) return payload
@@ -296,10 +304,11 @@ const loadVouchers = async () => {
       newVouchers = extractVoucherList(fallbackRes)
     }
 
-    vouchers.value = newVouchers
+    const normalizedVouchers = newVouchers.map((voucher) => normalizeVoucherData(voucher))
+    vouchers.value = normalizedVouchers
 
     if (selectedVoucher.value) {
-      const refreshed = newVouchers.find((v) => v.id === selectedVoucher.value.id)
+      const refreshed = normalizedVouchers.find((v) => v.id === selectedVoucher.value.id)
       if (refreshed) {
         selectedVoucher.value = refreshed
       }

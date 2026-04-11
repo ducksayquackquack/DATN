@@ -17,13 +17,14 @@ import { getAllSanPham } from "../../../services/sanPhamService"
 import VoucherSelector from "../../../components/voucher/VoucherSelector.vue"
 import { useConfirm } from "../../../composables/useConfirm"
 import { useToast } from "../../../composables/useToast"
-import { CheckCircle2, ClipboardList, Loader2, Minus, Package2, PackageCheck, PackageSearch, Plus, RotateCcw, Save, Search, ShoppingBag, Ticket, Trash2, Truck, UserRound, X, OctagonX } from "lucide-vue-next"
+import { CheckCircle2, ClipboardList, Loader2, Minus, Package2, PackageCheck, PackageSearch, Plus, RotateCcw, Save, Search, ShoppingBag, Ticket, Truck, UserRound, X, OctagonX } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel, normalizeOrderStatusCode } from "../../../utils/adminStatus"
 import { describePaymentFlowState } from "../../../utils/paymentWorkflow"
 import { buildOrderLookupTrackingUrl } from "../../../utils/publicTrackingUrl"
 import { validateEmployeeActiveShift } from "../../../utils/shiftGuard"
 import { resolveApiOrigin } from "../../../utils/apiOrigin"
-import { getProductImageOverride } from "../../../utils/productImageOverrides"
+import { getProductImageConfig, getProductImageOverride } from "../../../utils/productImageOverrides"
+import { fallbackImageForVariant } from "../../../utils/productImageFallback"
 import logoFallback from "../../../assets/img/logo/new logo.png?url"
 import img1 from "../../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
 import img2 from "../../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
@@ -37,18 +38,61 @@ import img9 from "../../../assets/img/Jackets/coach/coach-da-asos.jpg?url"
 import img10 from "../../../assets/img/Jackets/coach/coach-gia-da.jpg?url"
 import img11 from "../../../assets/img/Jackets/coach/coach-long-cuu.jpg?url"
 // New products
-import img12 from "../../../assets/img/Jackets/bomber/bomber-astronaut/IMG_4435.PNG?url"
-import img13 from "../../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4437.PNG?url"
-import img14 from "../../../assets/img/Jackets/bomber/bomber-windbreaker/IMG_4432.PNG?url"
-import img15 from "../../../assets/img/Jackets/coach/coach-leopard/IMG_4445.PNG?url"
-import img16 from "../../../assets/img/Jackets/coach/coach-longsleeve/IMG_4442.PNG?url"
-import img17 from "../../../assets/img/Jackets/coach/coach-tiger-stripe/IMG_4446.PNG?url"
-import img18 from "../../../assets/img/Jackets/hoodie/hoodie-camo/IMG_4450.PNG?url"
-import img19 from "../../../assets/img/Jackets/hoodie/hoodie-zip-boxy/IMG_4452.PNG?url"
-import img20 from "../../../assets/img/Jackets/hoodie/hoodie-zip-silk/IMG_4447.PNG?url"
+import img12 from "../../../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-black.PNG?url"
+import img13 from "../../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-black.PNG?url"
+import img14 from "../../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-black.PNG?url"
+import img15 from "../../../assets/img/Jackets/coach/coach-leopard/coach-leopard.PNG?url"
+import img16 from "../../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-black.PNG?url"
+import img17 from "../../../assets/img/Jackets/coach/coach-tiger-stripe/coach-tiger-stripe.PNG?url"
+import img18 from "../../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-black.PNG?url"
+import img19 from "../../../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-blue.PNG?url"
+import img20 from "../../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-black.PNG?url"
 
-const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11]
-function fallbackImageFor(id, code = "") {
+const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11, img12, img13, img14, img15, img16, img17, img18, img19, img20]
+
+const nameFallbackRules = [
+  { keywords: ['bomber', 'da', 'lon'], image: img1 },
+  { keywords: ['bomber', 'dang', 'lung'], image: img2 },
+  { keywords: ['bomber', 'gia', 'da'], image: img3 },
+  { keywords: ['bomber', 'cotton'], image: img4 },
+  { keywords: ['hoodie', 'dang', 'hop'], image: img5 },
+  { keywords: ['hoodie', 'in', 'hinh'], image: img6 },
+  { keywords: ['hoodie', 'keo', 'khoa'], image: img7 },
+  { keywords: ['coach', 'cach', 'nhiet'], image: img8 },
+  { keywords: ['coach', 'da', 'asos'], image: img9 },
+  { keywords: ['coach', 'gia', 'da'], image: img10 },
+  { keywords: ['coach', 'long', 'cuu'], image: img11 },
+  { keywords: ['astronaut'], image: img12 },
+  { keywords: ['embroidered', 'fuzzy'], image: img13 },
+  { keywords: ['windbreaker'], image: img14 },
+  { keywords: ['leopard'], image: img15 },
+  { keywords: ['longsleeve'], image: img16 },
+  { keywords: ['tiger', 'stripe'], image: img17 },
+  { keywords: ['camo'], image: img18 },
+  { keywords: ['zip', 'boxy'], image: img19 },
+  { keywords: ['zip', 'silk'], image: img20 },
+]
+const codeFallbackMap = {
+  SP001: img1, SP002: img2, SP003: img3, SP004: img4, SP005: img5,
+  SP006: img6, SP007: img7, SP008: img8, SP009: img9, SP010: img10,
+  SP011: img11, SP012: img12, SP013: img13, SP014: img14, SP015: img15,
+  SP016: img16, SP017: img17, SP018: img18, SP019: img19, SP020: img20,
+}
+function getNameFallbackImage(name = '') {
+  const normalized = String(name || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+  if (!normalized) return ''
+  const found = nameFallbackRules.find((rule) => rule.keywords.every((kw) => normalized.includes(kw)))
+  return found?.image || ''
+}
+function getCodeFallbackImage(code = '') {
+  const upper = String(code || '').trim().toUpperCase()
+  return codeFallbackMap[upper] || ''
+}
+function fallbackImageFor(id, code = "", name = "") {
+  const byCode = getCodeFallbackImage(code)
+  if (byCode) return byCode
+  const byName = getNameFallbackImage(name)
+  if (byName) return byName
   const n = Number(id)
   if (Number.isFinite(n) && n > 0) return fallbackImages[(n - 1) % fallbackImages.length]
   const d = Number(String(code || "").replace(/\D+/g, ""))
@@ -64,8 +108,22 @@ const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, "")
 const panelBasePath = computed(() => (route.path.startsWith('/employee/') ? '/employee' : '/admin'))
 const isEmployeePanel = computed(() => route.path.startsWith('/employee/'))
 
+function normalizeRouteInvoiceId(value) {
+  const raw = String(value ?? "").trim()
+  if (!raw) return null
+
+  const lowered = raw.toLowerCase()
+  if (["create", "null", "undefined", "nan"].includes(lowered)) return null
+
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0) return null
+  return parsed
+}
+
+const routeInvoiceId = computed(() => normalizeRouteInvoiceId(route.params.id))
+
 const isCreate = computed(() => {
-  return route.path.endsWith("/hoa-don/detail/create") || route.params.id === "create" || !route.params.id
+  return route.path.endsWith("/hoa-don/detail/create") || !routeInvoiceId.value
 })
 
 const mode = computed(() => (isCreate.value ? "create" : "edit"))
@@ -75,6 +133,12 @@ const pageTitle = computed(() => {
   if (hoaDon.value.maHoaDon) return hoaDon.value.maHoaDon
   return hoaDon.value.id ? `Hoá đơn #${hoaDon.value.id}` : "Chi tiết hoá đơn"
 })
+
+function resolveCurrentInvoiceId() {
+  const currentId = Number(hoaDon.value.id)
+  if (Number.isFinite(currentId) && currentId > 0) return currentId
+  return routeInvoiceId.value
+}
 
 const isLoading = ref(false)
 const isSaving = ref(false)
@@ -91,6 +155,7 @@ const history = ref([])
 const selectedVoucher = ref(null)
 const persistedVoucherCode = ref("")
 const persistedVoucherName = ref("")
+const ORDER_ITEM_VOUCHER_SNAPSHOTS_KEY = "orderItemVoucherSnapshots"
 const manualStatusNote = ref("")
 const showQuickCustomerForm = ref(false)
 const creatingCustomer = ref(false)
@@ -199,6 +264,14 @@ const variantMap = computed(() => {
   }, new Map())
 })
 
+const variantCodeMap = computed(() => {
+  return sanPhamVariants.value.reduce((accumulator, variant) => {
+    const code = String(variant?.maSanPhamChiTiet || "").trim().toUpperCase()
+    if (code) accumulator.set(code, variant)
+    return accumulator
+  }, new Map())
+})
+
 const subtotal = computed(() => {
   return items.value.reduce((sum, item) => sum + Number(item.thanhTien || 0), 0)
 })
@@ -238,9 +311,24 @@ const fulfillmentLabel = computed(() => {
 
 const businessClosureLabel = computed(() => {
   const explicit = String(hoaDon.value.businessClosureStatusName || "").trim()
+  // Normalize missing diacritics from backend ("Dang mo" → "Đang mở", "Da chot" → "Đã chốt")
+  const normalizeMap = { 'dang mo': 'Đang mở', 'da chot': 'Đã chốt', 'dong': 'Đã chốt' }
+  const normalized = normalizeMap[explicit.toLowerCase()]
+  if (normalized) return normalized
   if (explicit) return explicit
   const code = String(hoaDon.value.businessClosureStatus || "OPEN").toUpperCase()
   return code === "CLOSED" ? "Đã chốt" : "Đang mở"
+})
+
+const discountDisplayLabel = computed(() => {
+  const discountAmount = Number(hoaDon.value.giaSauGiamGia || 0)
+  if (!discountAmount) return formatCurrency(0)
+  const voucherCode = persistedVoucherCode.value || selectedVoucher.value?.maPhieuGiamGia || ''
+  const sub = subtotal.value
+  const pct = sub > 0 ? Math.round((discountAmount / sub) * 100) : 0
+  if (voucherCode && pct > 0) return `${voucherCode} - Giảm ${pct}% (${formatCurrency(discountAmount)})`
+  if (pct > 0) return `Giảm ${pct}% (${formatCurrency(discountAmount)})`
+  return formatCurrency(discountAmount)
 })
 
 const selectedCustomer = computed(() => {
@@ -571,9 +659,21 @@ const canOperateForEmployeeShift = async (employeeId) => {
 function buildVariantLabel(product, variant) {
   const parts = [product?.tenSanPham]
   if (variant?.kichThuoc?.tenKichThuoc) parts.push(`Size ${variant.kichThuoc.tenKichThuoc}`)
-  if (variant?.mauSac?.tenMauSac) parts.push(variant.mauSac.tenMauSac)
+  if (variant?.mauSac?.tenMauSac || variant?.mauSac?.tenMau) {
+    parts.push(variant.mauSac.tenMauSac || variant.mauSac.tenMau)
+  }
   if (variant?.tenSanPhamChiTiet) parts.push(variant.tenSanPhamChiTiet)
   return parts.filter(Boolean).join(" • ")
+}
+
+function normalizeMetaText(value) {
+  const normalized = String(value || "").trim()
+  if (!normalized) return ""
+  const lowered = normalized.toLowerCase()
+  if (["null", "undefined", "n/a", "na", "khong ro", "không rõ", "chua ro", "chưa rõ"].includes(lowered)) {
+    return ""
+  }
+  return normalized
 }
 
 function isImageString(value = "") {
@@ -636,9 +736,27 @@ function flattenVariants(products) {
       return []
     }
 
+    const imageConfig = getProductImageConfig({ id: product?.id, maSanPham: product?.maSanPham })
     const overrideImage = getProductImageOverride({ id: product?.id, maSanPham: product?.maSanPham })[0] || ""
+    const productDirectImage = pickImageValue(product)
 
     return variants.map((variant) => ({
+      ...(function () {
+        const colorId = Number(variant?.mauSac?.id || variant?.mauSacId || variant?.idMauSac || 0)
+        const colorImage = (imageConfig?.colorImages || []).find((entry) => Number(entry?.colorId) === colorId)?.image || ""
+        const variantDirectImage = pickImageValue(variant)
+        const byVariantFallback = fallbackImageForVariant({
+          id: product?.id,
+          maSanPham: product?.maSanPham,
+          tenSanPham: product?.tenSanPham,
+          tenMauSac: variant?.mauSac?.tenMauSac || variant?.mauSac?.tenMau,
+          maChiTietSanPham: variant?.ma,
+        })
+        return {
+          image: toImageUrl(variantDirectImage || colorImage || byVariantFallback || overrideImage || productDirectImage)
+            || fallbackImageFor(product?.id, product?.maSanPham, product?.tenSanPham)
+        }
+      })(),
       spctId: variant.id,
       productId: product.id,
       maSanPham: product.maSanPham || "",
@@ -647,8 +765,7 @@ function flattenVariants(products) {
       giaBan: Number(variant.giaBan || 0),
       soLuongTon: Number(variant.soLuong || 0),
       kichThuoc: variant?.kichThuoc?.tenKichThuoc || "",
-      mauSac: variant?.mauSac?.tenMauSac || "",
-      image: overrideImage || pickImageValue([variant, product, variants]) || fallbackImageFor(product?.id, product?.maSanPham)
+      mauSac: normalizeMetaText(variant?.mauSac?.tenMauSac || variant?.mauSac?.tenMau)
     }))
   })
 }
@@ -658,45 +775,154 @@ function syncTotals() {
 }
 
 function getVariant(spctId) {
-  return variantMap.value.get(spctId) || null
+  const normalized = Number(spctId)
+  return variantMap.value.get(normalized) || variantMap.value.get(spctId) || null
+}
+
+function getVariantFromItem(item) {
+  const byId = getVariant(item?.spctId)
+  if (byId) return byId
+
+  const variantCode = String(item?.maSanPhamChiTiet || "").trim().toUpperCase()
+  if (variantCode) return variantCodeMap.value.get(variantCode) || null
+
+  return null
 }
 
 function getItemName(item) {
-  return item.tenSanPhamChiTiet || getVariant(item.spctId)?.tenSanPhamChiTiet || `SPCT #${item.spctId}`
+  return item.tenSanPhamChiTiet || getVariantFromItem(item)?.tenSanPhamChiTiet || `SPCT #${item.spctId}`
 }
 
-function getItemCodeMeta(item) {
-  const variant = getVariant(item?.spctId)
-  const invoiceProductCode = String(item?.maSanPham || "").trim()
-  const invoiceVariantCode = String(item?.maSanPhamChiTiet || "").trim()
-  const catalogProductCode = String(variant?.maSanPham || "").trim()
-  const catalogVariantCode = String(variant?.maSanPhamChiTiet || "").trim()
+function getItemColor(item) {
+  const variant = getVariantFromItem(item)
+  const value = item?.mauSac?.tenMauSac
+    || item?.mauSac?.tenMau
+    || item?.mauSac?.name
+    || item?.tenMauSac
+    || item?.tenMau
+    || item?.mauSac
+    || variant?.mauSac
+  return normalizeMetaText(value)
+}
 
-  const productCode = invoiceProductCode || catalogProductCode || "SP?"
-  const variantCode = invoiceVariantCode || catalogVariantCode || `SPCT#${item?.spctId}`
+function getItemSize(item) {
+  const variant = getVariantFromItem(item)
+  const value = item?.kichThuoc?.tenKichThuoc
+    || item?.tenKichThuoc
+    || item?.kichThuoc
+    || variant?.kichThuoc
+  return String(value || "").trim()
+}
 
-  const isProductCodeMismatch = Boolean(invoiceProductCode && catalogProductCode)
-    && invoiceProductCode.toUpperCase() !== catalogProductCode.toUpperCase()
-
-  const isVariantCodeMismatch = Boolean(invoiceVariantCode && catalogVariantCode)
-    && invoiceVariantCode.toUpperCase() !== catalogVariantCode.toUpperCase()
-
-  return {
-    productCode,
-    variantCode,
-    mismatch: isProductCodeMismatch || isVariantCodeMismatch,
-    catalogProductCode,
-    catalogVariantCode
-  }
+function getItemInventory(item) {
+  const stock = Number(getVariantFromItem(item)?.soLuongTon)
+  return Number.isFinite(stock) ? stock : null
 }
 
 function getItemImage(item) {
-  const raw = String(item?.image || getVariant(item?.spctId)?.image || "").trim()
+  const variantImage = String(getVariantFromItem(item)?.image || "").trim()
+  const invoiceImage = String(item?.image || item?.anh || "").trim()
+  const raw = invoiceImage || variantImage
   if (raw) {
     const resolved = toImageUrl(raw)
     if (resolved) return resolved
   }
-  return fallbackImageFor(item?.spctId, item?.maSanPhamChiTiet || item?.maSanPham)
+  const byVariant = fallbackImageForVariant({
+    id: item?.productId || item?.sanPhamId || getVariantFromItem(item)?.productId || item?.spctId,
+    maSanPham: item?.maSanPham || getVariantFromItem(item)?.maSanPham,
+    tenSanPham: item?.tenSanPhamChiTiet,
+    tenMauSac: getItemColor(item),
+    maChiTietSanPham: item?.maSanPhamChiTiet || getVariantFromItem(item)?.maSanPhamChiTiet,
+  })
+  if (byVariant) return byVariant
+  return fallbackImageFor(item?.spctId, item?.maSanPhamChiTiet || item?.maSanPham, item?.tenSanPhamChiTiet)
+}
+
+function getItemVouchers(item) {
+  const vouchers = []
+
+  const code = String(
+    item?.voucherCode
+    || item?.maPhieuGiamGia
+    || item?.maVoucher
+    || item?.phieuGiamGia
+    || item?.voucher?.code
+    || ""
+  ).trim()
+  const discount = Number(
+    item?.voucherDiscount
+    || item?.giamGiaVoucher
+    || item?.giaTriGiamGia
+    || item?.discount
+    || item?.voucher?.discount
+    || 0
+  )
+  if (code || discount > 0) {
+    vouchers.push({ code, discount })
+  }
+
+  try {
+    const raw = localStorage.getItem(ORDER_ITEM_VOUCHER_SNAPSHOTS_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    const snapshots = parsed && typeof parsed === "object" ? parsed : {}
+    const keys = [
+      String(hoaDon.value?.maHoaDon || "").trim(),
+      String(hoaDon.value?.id || "").trim(),
+    ].filter(Boolean)
+
+    let snapshot = null
+    for (const key of keys) {
+      if (snapshots[key]) {
+        snapshot = snapshots[key]
+        break
+      }
+    }
+    const rows = Array.isArray(snapshot?.itemVouchers) ? snapshot.itemVouchers : []
+    if (rows.length) {
+      const spctId = Number(item?.spctId || 0)
+      const productId = Number(item?.productId || item?.sanPhamId || 0)
+      const color = String(getItemColor(item) || "").trim().toLowerCase()
+      const size = String(getItemSize(item) || "").trim().toLowerCase()
+
+      const matchedRows = rows.filter((row) => {
+        const sameSpct = spctId > 0 && Number(row?.spctId || 0) === spctId
+        if (sameSpct) return true
+        const sameProduct = productId > 0 && Number(row?.productId || 0) === productId
+        if (!sameProduct) return false
+        const sameColor = !color || String(row?.color || "").trim().toLowerCase() === color
+        const sameSize = !size || String(row?.size || "").trim().toLowerCase() === size
+        return sameColor && sameSize
+      })
+
+      for (const row of matchedRows) {
+        const rowCode = String(row?.voucherCode || "").trim()
+        const rowDiscount = Number(row?.discount || 0)
+        if (rowCode || rowDiscount > 0) {
+          vouchers.push({ code: rowCode, discount: rowDiscount })
+        }
+      }
+    }
+  } catch {
+    return []
+  }
+
+  if (!vouchers.length) return []
+
+  // Merge duplicate voucher rows for aggregated invoice lines.
+  const mergedMap = new Map()
+  for (const voucher of vouchers) {
+    const voucherCode = String(voucher?.code || "").trim()
+    const voucherDiscount = Number(voucher?.discount || 0)
+    const key = voucherCode || "__applied__"
+    const current = mergedMap.get(key) || { code: voucherCode, discount: 0 }
+    current.discount += voucherDiscount
+    if (!current.code && voucherCode) current.code = voucherCode
+    mergedMap.set(key, current)
+  }
+
+  return Array.from(mergedMap.values())
+    .filter((voucher) => voucher.code || voucher.discount > 0)
+    .sort((a, b) => Number(b.discount || 0) - Number(a.discount || 0))
 }
 
 const onImgError = (e) => { e.target.src = logoFallback }
@@ -731,12 +957,18 @@ async function dispatchSystemEvent(eventCode, note, successMessage) {
   //   if (!canOperate) return
   // }
 
+  const invoiceId = resolveCurrentInvoiceId()
+  if (!invoiceId) {
+    showToast("Không tìm thấy ID hóa đơn hợp lệ. Vui lòng tải lại trang hoặc tạo hóa đơn mới.", "warning")
+    return
+  }
+
   isSaving.value = true
   try {
     const maHoaDon = String(hoaDon.value.maHoaDon || "").trim()
     const trackingUrl = maHoaDon ? buildOrderLookupTrackingUrl({ maHoaDon }) : ""
 
-    const response = await updateHoaDonBySystemEvent(hoaDon.value.id, eventCode, note, trackingUrl)
+    const response = await updateHoaDonBySystemEvent(invoiceId, eventCode, note, trackingUrl)
     applyInvoiceDetail(response?.data)
     showToast(successMessage || "Đã cập nhật trạng thái đơn hàng", "success")
 
@@ -760,6 +992,8 @@ async function dispatchSystemEvent(eventCode, note, successMessage) {
 
 async function confirmOnlineOrder() {
   if (!canConfirmOnlineOrder.value) return
+  const ok = await askConfirm("Xác nhận đơn hàng này?")
+  if (!ok) return
   await dispatchSystemEvent(
     "XAC_NHAN_DON_HANG",
     "Nhân viên xác nhận đơn hàng",
@@ -769,6 +1003,8 @@ async function confirmOnlineOrder() {
 
 async function startShipping() {
   if (!canStartShipping.value) return
+  const ok = await askConfirm("Chuyển sang trạng thái đang giao?")
+  if (!ok) return
   await dispatchSystemEvent(
     "GIAO_HANG_BAT_DAU",
     "Đơn hàng đang được giao",
@@ -778,6 +1014,8 @@ async function startShipping() {
 
 async function markReturned() {
   if (!canMarkReturned.value) return
+  const ok = await askConfirm("Xác nhận đơn hoàn về?")
+  if (!ok) return
   await dispatchSystemEvent(
     "GIAO_HANG_HOAN_VE",
     "Đơn hàng hoàn về sau khi giao thất bại",
@@ -787,6 +1025,8 @@ async function markReturned() {
 
 async function quickCompleteOrder() {
   if (!canQuickComplete.value) return
+  const ok = await askConfirm("Xác nhận hoàn thành đơn hàng?")
+  if (!ok) return
   await dispatchSystemEvent(
     isPosOrder.value ? "HOAN_TAT_POS" : "GIAO_HANG_THANH_CONG",
     isPosOrder.value
@@ -798,6 +1038,8 @@ async function quickCompleteOrder() {
 
 async function confirmPaymentByEmployee() {
   if (!canEmployeeConfirmPayment.value) return
+  const ok = await askConfirm("Xác nhận thanh toán VNPay?")
+  if (!ok) return
   await dispatchSystemEvent(
     "THANH_TOAN_NHAN_VIEN_XAC_NHAN",
     "Nhân viên đã xác nhận thanh toán VNPay",
@@ -930,10 +1172,11 @@ async function loadReferenceData() {
 
 function normalizeLoadedItems(loadedItems) {
   return (loadedItems || []).map((item) => {
-    const variant = getVariant(item.spctId)
+    const variant = getVariant(item.spctId) || variantCodeMap.value.get(String(item?.maSanPhamChiTiet || "").trim().toUpperCase()) || null
     return {
       id: item.id,
       spctId: item.spctId,
+      productId: item.productId || item.sanPhamId || variant?.productId || null,
       maSanPham: item.maSanPham || variant?.maSanPham || "",
       maSanPhamChiTiet: item.maSanPhamChiTiet || variant?.maSanPhamChiTiet || "",
       soLuong: Number(item.soLuong || 0),
@@ -941,7 +1184,11 @@ function normalizeLoadedItems(loadedItems) {
       thanhTien: Number(item.thanhTien || 0),
       trangThai: item.trangThai || "ACTIVE",
       tenSanPhamChiTiet: variant?.tenSanPhamChiTiet || item.tenSanPhamChiTiet || "",
-      image: item.image || variant?.image || ""
+      kichThuoc: item?.kichThuoc?.tenKichThuoc || item.kichThuoc || item.tenKichThuoc || variant?.kichThuoc || "",
+      mauSac: item?.mauSac?.tenMauSac || item?.mauSac?.tenMau || item.mauSac || item.tenMauSac || item.tenMau || variant?.mauSac || "",
+      image: item.image || item.anh || variant?.image || "",
+      voucherCode: item?.maPhieuGiamGia || item?.voucherCode || item?.maVoucher || item?.phieuGiamGia || item?.voucher?.code || "",
+      voucherDiscount: Number(item?.voucherDiscount || item?.giamGiaVoucher || item?.giaTriGiamGia || item?.discount || 0),
     }
   })
 }
@@ -1061,7 +1308,12 @@ async function loadInvoice() {
     return
   }
 
-  const response = await getHoaDonById(route.params.id)
+  const invoiceId = routeInvoiceId.value
+  if (!invoiceId) {
+    throw new Error("ID hóa đơn không hợp lệ. Vui lòng mở lại hóa đơn từ danh sách.")
+  }
+
+  const response = await getHoaDonById(invoiceId)
   if (isHtmlPayload(response?.data)) {
     throw new Error("API hoá đơn đang bị chuyển hướng tới /login. Hãy restart backend sau khi cập nhật SecurityConfig.")
   }
@@ -1144,6 +1396,7 @@ function addProduct() {
 async function removeItem(index) {
   const item = items.value[index]
   if (!item) return
+  const invoiceId = resolveCurrentInvoiceId()
 
   const accepted = await askConfirm("Xóa sản phẩm khỏi hoá đơn?", {
     title: "Xác nhận xóa",
@@ -1154,8 +1407,8 @@ async function removeItem(index) {
   if (!accepted) return
 
   try {
-    if (!isCreate.value && item.id) {
-      await deleteHoaDonItem(hoaDon.value.id, item.id)
+    if (!isCreate.value && invoiceId && item.id) {
+      await deleteHoaDonItem(invoiceId, item.id)
     }
 
     items.value.splice(index, 1)
@@ -1170,6 +1423,7 @@ async function removeItem(index) {
 async function changeItemQuantity(index, rawValue) {
   const item = items.value[index]
   if (!item) return
+  const invoiceId = resolveCurrentInvoiceId()
 
   const quantity = Number(rawValue || 0)
   if (quantity <= 0) {
@@ -1181,9 +1435,9 @@ async function changeItemQuantity(index, rawValue) {
   item.thanhTien = quantity * Number(item.giaBan || 0)
   syncTotals()
 
-  if (!isCreate.value && item.id) {
+  if (!isCreate.value && invoiceId && item.id) {
     try {
-      await updateHoaDonItemQty(hoaDon.value.id, item.id, { soLuong: quantity })
+      await updateHoaDonItemQty(invoiceId, item.id, { soLuong: quantity })
     } catch (error) {
       console.error("Update qty failed:", error)
       showToast("Không thể cập nhật số lượng", "error")
@@ -1310,7 +1564,13 @@ async function saveInvoice() {
       return
     }
 
-    await updateHoaDon(hoaDon.value.id, buildUpdatePayload())
+    const invoiceId = resolveCurrentInvoiceId()
+    if (!invoiceId) {
+      showToast("ID hóa đơn không hợp lệ, không thể lưu.", "error")
+      return
+    }
+
+    await updateHoaDon(invoiceId, buildUpdatePayload())
     showToast("Cập nhật hoá đơn thành công", "success")
     backToList(true)
   } catch (error) {
@@ -1423,8 +1683,8 @@ watch(
           <article class="metric-card">
             <div class="metric-icon gold"><Ticket :size="18" /></div>
             <div>
-              <p class="metric-label">Giảm giá đang áp dụng</p>
-              <strong>{{ formatCurrency(hoaDon.giaSauGiamGia) }}</strong>
+              <p class="metric-label">Tổng giảm từ voucher sản phẩm</p>
+              <strong>{{ discountDisplayLabel }}</strong>
             </div>
           </article>
 
@@ -1540,15 +1800,7 @@ watch(
                 <input value="Mua tại quầy" type="text" disabled />
               </label>
 
-              <label class="field" v-if="!isPosOrder">
-                <span>Ngày giao dự kiến</span>
-                <input v-model="hoaDon.ngayNhanHangDuKien" type="date" :disabled="!canEdit" />
-              </label>
 
-              <label class="field" v-if="!isPosOrder">
-                <span>Ngày khách mong muốn</span>
-                <input v-model="hoaDon.ngayNhanHangMongMuon" type="date" :disabled="!canEdit" />
-              </label>
 
               <label class="field" v-if="!isPosOrder">
                 <span>Phí ship</span>
@@ -1711,6 +1963,20 @@ watch(
                 <strong>{{ paymentMethodLabel }}</strong>
               </div>
               <div class="summary-row">
+                <span>Trạng thái đơn</span>
+                <strong :class="`tone-${currentStatusTone}`">{{ currentStatusName }}</strong>
+              </div>
+              <div class="summary-row">
+                <span>Chốt đơn</span>
+                <strong>{{ businessClosureLabel }}</strong>
+              </div>
+              <div class="summary-row" v-if="hoaDon.ngayTao">
+                <span>Ngày tạo</span>
+                <strong>{{ formatDateTime(hoaDon.ngayTao) }}</strong>
+              </div>
+
+              <hr style="border:none;border-top:1px solid var(--line);margin:4px 0" />
+              <div class="summary-row">
                 <span>Tạm tính</span>
                 <strong>{{ formatCurrency(subtotal) }}</strong>
               </div>
@@ -1719,7 +1985,7 @@ watch(
                 <strong>{{ formatCurrency(hoaDon.phiShip) }}</strong>
               </div>
               <div class="summary-row danger-text">
-                <span>Giảm giá</span>
+                <span>Tổng giảm từ voucher sản phẩm {{ persistedVoucherCode || '' }}</span>
                 <strong>-{{ formatCurrency(hoaDon.giaSauGiamGia) }}</strong>
               </div>
               <div class="summary-row total">
@@ -1736,9 +2002,9 @@ watch(
                   <div class="history-dot" :class="{ first: index === 0 }"></div>
                   <div class="history-content">
                     <div class="history-status-row">
-                      <span class="history-from">{{ entry.fromStatus }}</span>
-                      <span class="history-arrow">→</span>
-                      <span class="history-to">{{ entry.toStatus }}</span>
+                        <span class="history-from">{{ entry.fromStatus === entry.toStatus ? 'Cập nhật trạng thái' : entry.fromStatus }}</span>
+                        <span class="history-arrow">→</span>
+                        <span class="history-to">{{ entry.toStatus }}</span>
                     </div>
                     <p v-if="entry.note" class="history-note">{{ entry.note }}</p>
                     <time class="history-time">{{ formatDateTime(entry.changedAt) }}</time>
@@ -1777,12 +2043,26 @@ watch(
               <div class="product-card-body">
                 <div class="product-card-name">{{ getItemName(item) }}</div>
                 <div class="product-card-meta">
-                  <small v-if="item.maSanPham || item.maSanPhamChiTiet || getVariant(item.spctId)">
-                    {{ getItemCodeMeta(item).productCode }} / {{ getItemCodeMeta(item).variantCode }}
-                  </small>
-                  <small v-else>SPCT #{{ item.spctId }}</small>
+                  <span v-if="getItemColor(item)" class="meta-chip">Màu: {{ getItemColor(item) }}</span>
+                  <span v-else class="meta-chip meta-chip-muted">Màu: Chưa rõ</span>
+                  <span v-if="getItemSize(item)" class="meta-chip">Size: {{ getItemSize(item) }}</span>
+                  <span
+                    v-if="getItemInventory(item) !== null"
+                    class="meta-chip"
+                    :class="{ 'meta-chip-danger': getItemInventory(item) < item.soLuong }"
+                  >
+                    Tồn: {{ getItemInventory(item) }}
+                  </span>
                 </div>
                 <div class="product-card-price">{{ formatCurrency(item.giaBan) }}</div>
+                <div
+                  v-for="(voucher, voucherIndex) in getItemVouchers(item)"
+                  :key="`${voucher.code || 'applied'}-${voucherIndex}`"
+                  class="product-card-voucher"
+                >
+                  Voucher {{ voucher.code || 'đã áp dụng' }}
+                  <template v-if="voucher.discount > 0"> • -{{ formatCurrency(voucher.discount) }}</template>
+                </div>
               </div>
               <div class="product-card-actions">
                 <div class="product-card-qty">
@@ -1795,8 +2075,8 @@ watch(
                   </button>
                 </div>
                 <div class="product-card-total">{{ formatCurrency(item.thanhTien) }}</div>
-                <button v-if="canEdit" class="icon-btn" type="button" @click="removeItem(index)">
-                  <Trash2 :size="16" />
+                <button v-if="canEdit" class="icon-btn icon-btn-remove" type="button" @click="removeItem(index)" aria-label="Xóa sản phẩm">
+                  <X :size="15" />
                 </button>
               </div>
             </div>
@@ -1861,7 +2141,7 @@ watch(
 
 .hoa-don-shell {
   display: grid;
-  gap: 20px;
+  gap: 14px;
   max-width: 1400px;
   margin: 0 auto;
 }
@@ -1881,16 +2161,16 @@ watch(
 .loading-card,
 .warning-banner {
   border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 24px;
+  border-radius: 16px;
   background: #ffffff;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
 }
 
 .hero-card {
-  padding: 28px 30px;
+  padding: 18px 22px;
   display: flex;
   justify-content: space-between;
-  gap: 20px;
+  gap: 16px;
   align-items: flex-start;
 }
 
@@ -2018,21 +2298,21 @@ watch(
 .overview-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 10px;
 }
 
 .metric-card {
-  padding: 18px;
+  padding: 12px 14px;
   display: flex;
-  gap: 14px;
+  gap: 10px;
   align-items: center;
-  min-height: 86px;
+  min-height: 60px;
 }
 
 .metric-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   display: grid;
   place-items: center;
 }
@@ -2045,21 +2325,21 @@ watch(
 .detail-grid {
   display: grid;
   grid-template-columns: 1.3fr 0.9fr;
-  gap: 20px;
+  gap: 14px;
 }
 
 .panel {
-  padding: 24px;
+  padding: 16px;
 }
 
 .panel h2 {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 800;
   letter-spacing: -0.02em;
 }
 
 .panel h3 {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
 }
 
@@ -2076,7 +2356,7 @@ watch(
 }
 
 .panel-head {
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .space-between {
@@ -2089,12 +2369,12 @@ watch(
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 12px;
 }
 
 .field {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   align-content: start;
 }
 
@@ -2141,7 +2421,7 @@ watch(
 .strong-select {
   height: 46px !important;
   min-height: 46px !important;
-  padding: 0 14px !important;
+  padding: 0 34px 0 14px !important;
   line-height: 46px !important;
   font-size: 14px !important;
   font-weight: 700 !important;
@@ -2316,15 +2596,15 @@ watch(
 
 .summary-box {
   display: grid;
-  gap: 10px;
-  padding: 18px;
-  border-radius: 18px;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 14px;
   background: #fff;
   border: 1px solid #e5e7eb;
 }
 
 .summary-row strong {
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .summary-row {
@@ -2332,19 +2612,25 @@ watch(
   justify-content: space-between;
   align-items: center;
   color: #334155;
+  font-size: 13px;
 }
 
 .summary-row.total {
-  margin-top: 6px;
-  padding-top: 12px;
+  margin-top: 4px;
+  padding-top: 8px;
   border-top: 1px dashed #d1d5db;
   color: #b91c1c;
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .danger-text {
   color: #dc2626;
 }
+.text-danger { color: #dc2626; }
+.tone-success { color: #16a34a; }
+.tone-danger { color: #dc2626; }
+.tone-warning { color: #d97706; }
+.tone-neutral { color: #64748b; }
 
 .payment-verify-card {
   margin-top: 14px;
@@ -2727,26 +3013,27 @@ watch(
 }
 .product-cards {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 .product-card {
   display: grid;
-  grid-template-columns: 64px 1fr auto;
+  grid-template-columns: 76px 1fr auto;
   gap: 14px;
   align-items: center;
-  padding: 12px 14px;
+  padding: 14px;
   border-radius: 14px;
   border: 1px solid #eef2f7;
-  background: #fafbfc;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
 .product-card:hover {
-  border-color: #dbe2ea;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  border-color: #cbd5e1;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
 }
 .product-card-img {
-  width: 64px;
-  height: 64px;
+  width: 76px;
+  height: 76px;
   border-radius: 12px;
   overflow: hidden;
   background: #f1f5f9;
@@ -2766,30 +3053,57 @@ watch(
 }
 .product-card-body {
   display: grid;
-  gap: 2px;
+  gap: 6px;
   min-width: 0;
 }
 .product-card-name {
   font-weight: 700;
   color: #111827;
-  font-size: 14px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 15px;
+  line-height: 1.35;
 }
-.product-card-meta small {
+.product-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.meta-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  border: 1px solid #dbe2ea;
   color: #64748b;
   font-size: 12px;
+  font-weight: 700;
+}
+.meta-chip-danger {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #be123c;
+}
+.meta-chip-muted {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #94a3b8;
 }
 .product-card-price {
   font-weight: 800;
   color: #b91c1c;
-  font-size: 14px;
+  font-size: 15px;
+}
+.product-card-voucher {
+  font-size: 12px;
+  font-weight: 700;
+  color: #b91c1c;
 }
 .product-card-actions {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
+  justify-content: flex-end;
 }
 .product-card-qty {
   display: flex;
@@ -2831,9 +3145,18 @@ watch(
 .product-card-total {
   font-weight: 800;
   color: #111827;
-  font-size: 14px;
-  min-width: 90px;
+  font-size: 15px;
+  min-width: 110px;
+  margin-right: 6px;
   text-align: right;
+}
+.icon-btn-remove {
+  border: 1px solid #fecdd3;
+  background: #fff1f2;
+  color: #be123c;
+}
+.icon-btn-remove:hover:not(:disabled) {
+  background: #ffe4e6;
 }
 
 /* ── Modal ── */
@@ -3036,12 +3359,20 @@ watch(
   }
 
   .product-card {
-    grid-template-columns: 48px 1fr;
+    grid-template-columns: 56px 1fr;
     gap: 10px;
   }
+  .product-card-img {
+    width: 56px;
+    height: 56px;
+  }
   .product-card-actions {
+    flex-direction: row;
     grid-column: 1 / -1;
     justify-content: space-between;
+  }
+  .product-card-total {
+    margin-right: 0;
   }
   .timeline-label {
     font-size: 10px;

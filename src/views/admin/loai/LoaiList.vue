@@ -2,10 +2,12 @@
 import { ref, onMounted, computed } from "vue"
 import { useRouter } from "vue-router"
 import { getAllLoai, deleteLoai } from "../../../services/loaiService"
-import { Pencil, Trash2 } from "lucide-vue-next"
+import { Trash2 } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel } from "../../../utils/adminStatus"
+import { useConfirm } from "../../../composables/useConfirm"
 
 const router = useRouter()
+const { askConfirm } = useConfirm()
 const list = ref([])
 
 const searchText = ref("")
@@ -29,6 +31,8 @@ async function loadData() {
 onMounted(loadData)
 
 async function remove(id) {
+  const ok = await askConfirm("Xóa loại này?")
+  if (!ok) return
   await deleteLoai(id)
   loadData()
 }
@@ -146,7 +150,7 @@ const filteredData = computed(() => {
                     class="iconbtn"
                     @click="router.push(`/admin/loai/form/${l.id}`)"
                   >
-                    <Pencil size="16" />
+                    <span class="material-icons-outlined">visibility</span>
                   </button>
 
                   <button

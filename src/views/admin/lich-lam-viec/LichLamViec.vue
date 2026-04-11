@@ -232,7 +232,7 @@
               <td class="text-center">
                 <div class="action-buttons">
                   <button class="btn-icon" @click="editSchedule(schedule)" title="Chỉnh sửa">
-                    <span class="material-icons-outlined">edit</span>
+                    <span class="material-icons-outlined">visibility</span>
                   </button>
                   <button class="btn-icon danger" @click="deleteSchedule(schedule)" title="Xóa">
                     <span class="material-icons-outlined">delete</span>
@@ -1158,9 +1158,12 @@ onMounted(async () => {
   padding: 0 12px;
   border-radius: 10px;
   border: 1px solid #d2d8e2;
-  background: #fff;
+  background-color: #fff;
   color: #0f172a;
   font-size: 14px;
+}
+.form-select {
+  padding-right: 34px;
 }
 
 .form-input:focus,
@@ -1267,7 +1270,7 @@ onMounted(async () => {
   border-right: 1px solid #edf1f7;
   font-size: 13px;
   font-weight: 800;
-  color: #1d4e89;
+  color: #991b1b;
   text-align: center;
 }
 
@@ -1405,8 +1408,8 @@ onMounted(async () => {
 }
 
 .schedule-icon.afternoon {
-  background: #dbeafe;
-  color: #1e40af;
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .schedule-icon.evening {

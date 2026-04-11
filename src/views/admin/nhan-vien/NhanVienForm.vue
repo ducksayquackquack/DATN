@@ -247,8 +247,11 @@ input, select, textarea {
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid #d8dee9;
-  background: #fff;
+  background-color: #fff;
   font-size: 14px;
+}
+select {
+  padding-right: 34px;
 }
 
 input:focus,

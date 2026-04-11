@@ -5,6 +5,19 @@ import { hasPaymentFlowTag, PAYMENT_FLOW_TAGS } from "../utils/paymentWorkflow"
 
 const STORAGE_KEY = "notifications:seen"
 
+const normalizeIdentityPart = (value) => String(value || "").trim().toLowerCase()
+
+const resolveNotificationIdentity = (scope = "") => {
+  const userId = normalizeIdentityPart(localStorage.getItem("userId"))
+  const userEmail = normalizeIdentityPart(localStorage.getItem("userEmail"))
+  const role = normalizeIdentityPart(localStorage.getItem("role"))
+
+  if (userId) return `${scope}:uid:${userId}`
+  if (userEmail) return `${scope}:email:${userEmail}`
+  if (role) return `${scope}:role:${role}`
+  return `${scope}:anonymous`
+}
+
 const readSeenMap = () => {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}")
@@ -17,16 +30,18 @@ const writeSeenMap = (value) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(value || {}))
 }
 
-const isSeen = (scope, id) => {
+const isSeen = (scope, id, identityKey = "") => {
   const map = readSeenMap()
-  return Boolean(map?.[scope]?.[id])
+  const bucketKey = String(identityKey || scope || "").trim()
+  return Boolean(map?.[bucketKey]?.[id])
 }
 
-const markSeen = (scope, ids = []) => {
+const markSeen = (scope, ids = [], identityKey = "") => {
   const map = readSeenMap()
-  const current = { ...(map?.[scope] || {}) }
+  const bucketKey = String(identityKey || scope || "").trim()
+  const current = { ...(map?.[bucketKey] || {}) }
   for (const id of ids) current[id] = true
-  map[scope] = current
+  map[bucketKey] = current
   writeSeenMap(map)
 }
 
@@ -90,7 +105,7 @@ const getScopeFromPath = (path = "") => {
   return "customer"
 }
 
-const buildCustomerNotifications = async () => {
+const buildCustomerNotifications = async (identityKey = "") => {
   const list = []
 
   try {
@@ -111,7 +126,7 @@ const buildCustomerNotifications = async () => {
           title: `Đơn hàng ${toCustomerStatusLabel(item)}`,
           description: summarizeCustomerStatus(item),
           link: "/customer/profile?tab=orders",
-          read: isSeen("customer", id)
+          read: isSeen("customer", id, identityKey)
         })
       }
     }
@@ -131,7 +146,7 @@ const buildCustomerNotifications = async () => {
           ? `Yêu cầu xác nhận đã gửi cho hóa đơn ${latest.invoiceCode}.`
           : "Yêu cầu xác nhận đã gửi thành công.",
         link: "/customer/profile?tab=orders",
-        read: isSeen("customer", id)
+        read: isSeen("customer", id, identityKey)
       })
     }
   } catch {
@@ -141,7 +156,7 @@ const buildCustomerNotifications = async () => {
   return list.sort((a, b) => String(b?.createdAt || "").localeCompare(String(a?.createdAt || "")))
 }
 
-const buildStaffNotifications = (rows, scope) => {
+const buildStaffNotifications = (rows, scope, identityKey = "") => {
   const vnpayAwaiting = rows
     .filter((item) => {
       const note = item?.statusNote || ""
@@ -157,7 +172,7 @@ const buildStaffNotifications = (rows, scope) => {
         title: "Thông báo thanh toán VNPay",
         description: `Đơn ${item?.maHoaDon || `#${item?.id}`} đang chờ nhân viên xác nhận tiền vào tài khoản shop.`,
         link: `${scope === "admin" ? "/admin" : "/employee"}/hoa-don/detail/${item.id}`,
-        read: isSeen(scope, id)
+        read: isSeen(scope, id, identityKey)
       }
     })
 
@@ -177,7 +192,7 @@ const buildStaffNotifications = (rows, scope) => {
         title: "Đơn hàng cần xử lý",
         description: `Đơn ${orderCode} hiện ở trạng thái ${statusLabel}.`,
         link: `${scope === "admin" ? "/admin" : "/employee"}/hoa-don/detail/${item.id}`,
-        read: isSeen(scope, id)
+        read: isSeen(scope, id, identityKey)
       }
     })
 
@@ -192,9 +207,12 @@ export function useNotifications(scope = "customer") {
 
   const unreadCount = computed(() => notifications.value.filter((item) => !item.read).length)
 
+  const getSeenIdentityKey = () => resolveNotificationIdentity(scope)
+
   const refresh = async () => {
+    const identityKey = getSeenIdentityKey()
     if (scope === "customer") {
-      notifications.value = await buildCustomerNotifications()
+      notifications.value = await buildCustomerNotifications(identityKey)
       return
     }
 
@@ -202,7 +220,7 @@ export function useNotifications(scope = "customer") {
     try {
       const response = await getAllHoaDon()
       const rows = normalizeList(response)
-      notifications.value = buildStaffNotifications(rows, scope)
+      notifications.value = buildStaffNotifications(rows, scope, identityKey)
     } catch {
       notifications.value = []
     } finally {
@@ -211,14 +229,16 @@ export function useNotifications(scope = "customer") {
   }
 
   const markAllAsRead = () => {
+    const identityKey = getSeenIdentityKey()
     const ids = notifications.value.map((item) => item.id)
-    markSeen(scope, ids)
+    markSeen(scope, ids, identityKey)
     notifications.value = notifications.value.map((item) => ({ ...item, read: true }))
   }
 
   const markOneAsRead = (id) => {
     if (!id) return
-    markSeen(scope, [id])
+    const identityKey = getSeenIdentityKey()
+    markSeen(scope, [id], identityKey)
     notifications.value = notifications.value.map((item) => {
       if (item.id !== id) return item
       return { ...item, read: true }

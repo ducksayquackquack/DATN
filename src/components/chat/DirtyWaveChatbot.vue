@@ -37,15 +37,15 @@ import img8 from "../../assets/img/Jackets/coach/coach-cach-nhiet.jpg?url"
 import img9 from "../../assets/img/Jackets/coach/coach-da-asos.jpg?url"
 import img10 from "../../assets/img/Jackets/coach/coach-gia-da.jpg?url"
 import img11 from "../../assets/img/Jackets/coach/coach-long-cuu.jpg?url"
-import img12 from "../../assets/img/Jackets/bomber/bomber-astronaut/IMG_4435.PNG?url"
-import img13 from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4437.PNG?url"
-import img14 from "../../assets/img/Jackets/bomber/bomber-windbreaker/IMG_4432.PNG?url"
-import img15 from "../../assets/img/Jackets/coach/coach-leopard/IMG_4445.PNG?url"
-import img16 from "../../assets/img/Jackets/coach/coach-longsleeve/IMG_4442.PNG?url"
-import img17 from "../../assets/img/Jackets/coach/coach-tiger-stripe/IMG_4446.PNG?url"
-import img18 from "../../assets/img/Jackets/hoodie/hoodie-camo/IMG_4450.PNG?url"
-import img19 from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/IMG_4452.PNG?url"
-import img20 from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/IMG_4447.PNG?url"
+import img12 from "../../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-black.PNG?url"
+import img13 from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-black.PNG?url"
+import img14 from "../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-black.PNG?url"
+import img15 from "../../assets/img/Jackets/coach/coach-leopard/coach-leopard.PNG?url"
+import img16 from "../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-black.PNG?url"
+import img17 from "../../assets/img/Jackets/coach/coach-tiger-stripe/coach-tiger-stripe.PNG?url"
+import img18 from "../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-black.PNG?url"
+import img19 from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-blue.PNG?url"
+import img20 from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-black.PNG?url"
 
 const route = useRoute()
 const router = useRouter()
@@ -1719,11 +1719,7 @@ onBeforeUnmount(() => {
   box-shadow: 0 14px 28px rgba(0,0,0,0.16);
 }
 
-.dw-launcher-wrap:not(.is-open):hover .dw-contact-pill {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(calc(-84px * (var(--dw-index) + 1))) scale(1);
-}
+/* Hover contact pills disabled — only open on click */
 
 .dw-contact-pill:hover {
   filter: brightness(1.1);

@@ -42,7 +42,7 @@
             </span>
           </router-link>
 
-          <router-link to="/employee/san-pham/list" class="navlink">
+          <router-link to="/employee/san-pham/bien-the" class="navlink">
             <span class="left">
               <Shirt :size="18" />
               Sản phẩm
@@ -87,8 +87,8 @@
 
       </div>
 
-      <div style="margin-top:14px; padding-top:12px; border-top:1px solid #e5e7eb;" class="muted">
-        <small style="color:#6b7280">Ca làm: <b style="color:#dc2626">{{ currentShiftName }}</b></small>
+      <div style="margin-top:14px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.08);" class="muted">
+        <small style="color:rgba(255,255,255,0.5)">Ca làm: <b style="color:#ff6b6b">{{ currentShiftName }}</b></small>
       </div>
     </aside>
 
@@ -180,10 +180,10 @@ const openUserMenu = ref(false)
 const userAvatar = ref('')
 const userDisplayName = ref('Nhân viên')
 const userRole = ref('Nhân viên')
-const { unreadCount: notificationCount } = useNotifications('employee')
-const notificationToastShown = ref(false)
-let notificationToastBootstrapTimer = null
-const NOTIFICATION_TOAST_SESSION_KEY = 'ops:notification-toast-shown:employee'
+const { notifications, unreadCount: notificationCount, refresh: refreshNotifications } = useNotifications('employee')
+const lastToastSignature = ref('')
+let notificationPollTimer = null
+const NOTIFICATION_TOAST_SESSION_KEY = 'ops:notification-toast-signature:employee'
 
 const currentTime = ref(new Date())
 
@@ -263,57 +263,54 @@ const handleAuthContextChanged = () => {
   loadTopbarUser()
 }
 
-const readNotificationToastShownSession = () => {
+const readNotificationToastSignatureSession = () => {
   try {
-    return sessionStorage.getItem(NOTIFICATION_TOAST_SESSION_KEY) === '1'
+    return String(sessionStorage.getItem(NOTIFICATION_TOAST_SESSION_KEY) || '')
   } catch {
-    return false
+    return ''
   }
 }
 
-const writeNotificationToastShownSession = (value) => {
+const writeNotificationToastSignatureSession = (value) => {
   try {
-    if (value) {
-      sessionStorage.setItem(NOTIFICATION_TOAST_SESSION_KEY, '1')
-    } else {
-      sessionStorage.removeItem(NOTIFICATION_TOAST_SESSION_KEY)
-    }
+    const nextValue = String(value || '')
+    if (!nextValue) sessionStorage.removeItem(NOTIFICATION_TOAST_SESSION_KEY)
+    else sessionStorage.setItem(NOTIFICATION_TOAST_SESSION_KEY, nextValue)
   } catch {
     // Ignore storage failures.
   }
 }
 
-const maybeToastNotifications = (count) => {
-  if (!Number(count)) {
-    notificationToastShown.value = false
-    writeNotificationToastShownSession(false)
+const unreadSignature = computed(() => {
+  return notifications.value
+    .filter((item) => !item?.read)
+    .map((item) => String(item?.id || ''))
+    .filter(Boolean)
+    .join('|')
+})
+
+const maybeToastNotifications = () => {
+  const count = Number(notificationCount.value || 0)
+  const signature = String(unreadSignature.value || '')
+
+  if (!count || !signature) {
+    lastToastSignature.value = ''
+    writeNotificationToastSignatureSession('')
     return
   }
 
-  if (notificationToastShown.value || readNotificationToastShownSession()) return
-  notificationToastShown.value = true
-  writeNotificationToastShownSession(true)
+  if (signature === lastToastSignature.value) return
+
+  lastToastSignature.value = signature
+  writeNotificationToastSignatureSession(signature)
   window.toast?.info?.(`Bạn có ${count} thông báo cần xử lý`, 4500)
 }
 
-const startNotificationToastBootstrap = () => {
-  const startedAt = Date.now()
-  if (notificationToastBootstrapTimer) clearInterval(notificationToastBootstrapTimer)
-
-  notificationToastBootstrapTimer = setInterval(() => {
-    const count = Number(notificationCount.value || 0)
-    if (count > 0) {
-      maybeToastNotifications(count)
-      clearInterval(notificationToastBootstrapTimer)
-      notificationToastBootstrapTimer = null
-      return
-    }
-
-    if (Date.now() - startedAt > 7000) {
-      clearInterval(notificationToastBootstrapTimer)
-      notificationToastBootstrapTimer = null
-    }
-  }, 300)
+const startNotificationPolling = () => {
+  if (notificationPollTimer) clearInterval(notificationPollTimer)
+  notificationPollTimer = setInterval(() => {
+    refreshNotifications()
+  }, 12000)
 }
 
 const syncOpsToastOffset = (isOpen) => {
@@ -324,13 +321,8 @@ const syncOpsToastOffset = (isOpen) => {
   document.body.style.setProperty('--ops-toast-top', topValue)
 }
 
-watch(notificationCount, (count) => {
-  if (!Number(count)) {
-    notificationToastShown.value = false
-    writeNotificationToastShownSession(false)
-    return
-  }
-  maybeToastNotifications(count)
+watch(unreadSignature, () => {
+  maybeToastNotifications()
 }, { immediate: true })
 
 watch(openUserMenu, (isOpen) => {
@@ -398,11 +390,12 @@ function closeUserMenu(event) {
 }
 
 onMounted(() => {
-  notificationToastShown.value = readNotificationToastShownSession()
+  lastToastSignature.value = readNotificationToastSignatureSession()
   document.addEventListener("click", closeUserMenu)
   window.addEventListener(AUTH_CONTEXT_CHANGED_EVENT, handleAuthContextChanged)
   loadTopbarUser()
-  startNotificationToastBootstrap()
+  refreshNotifications()
+  startNotificationPolling()
   syncOpsToastOffset(false)
 })
 
@@ -411,9 +404,9 @@ onUnmounted(() => {
   window.removeEventListener(AUTH_CONTEXT_CHANGED_EVENT, handleAuthContextChanged)
   document.body.classList.remove(OPS_TOAST_SHIFT_CLASS)
   document.body.style.removeProperty('--ops-toast-top')
-  if (notificationToastBootstrapTimer) {
-    clearInterval(notificationToastBootstrapTimer)
-    notificationToastBootstrapTimer = null
+  if (notificationPollTimer) {
+    clearInterval(notificationPollTimer)
+    notificationPollTimer = null
   }
 })
 
@@ -440,41 +433,40 @@ watch(() => route.fullPath, () => {
 }
 
 .brand-d-icon {
-  width: 1.08em;
-  height: 1.08em;
+  width: 1.4em;
+  height: 1.4em;
   object-fit: contain;
   margin-right: -0.04em;
+  margin-top: -0.15em;
   filter:
     sepia(1)
-    saturate(14)
+    saturate(20)
     hue-rotate(326deg)
-    brightness(0.98)
-    contrast(1.16)
-    drop-shadow(0 3px 8px rgba(197, 22, 45, 0.24));
+    brightness(1.3)
+    contrast(1.1);
   transition: transform 0.25s ease, filter 0.25s ease;
 }
 
 .brand:hover .brand-d-icon {
-  transform: scale(1.08) rotate(-3deg);
+  transform: scale(1.1) rotate(-3deg);
   filter:
     sepia(1)
-    saturate(15)
+    saturate(22)
     hue-rotate(326deg)
-    brightness(1.03)
-    contrast(1.18)
-    drop-shadow(0 4px 12px rgba(197, 22, 45, 0.32));
+    brightness(1.4)
+    contrast(1.12);
 }
 
 .brand-rest {
   font-size: 1em;
   font-weight: 800;
   letter-spacing: -0.035em;
-  color: #111827;
+  color: #ffffff;
   transition: color 0.25s ease;
 }
 
 .brand:hover .brand-rest {
-  color: #c5162d;
+  color: #ff6b6b;
 }
 
 .navlink {
@@ -484,7 +476,7 @@ watch(() => route.fullPath, () => {
   border-radius:12px;
   cursor:pointer;
   transition: all .25s ease;
-  color: #111827;
+  color: rgba(255,255,255,0.7);
   text-decoration: none;
 }
 
@@ -500,14 +492,15 @@ watch(() => route.fullPath, () => {
 }
 
 .navlink:hover {
-  background: #f1f5f9;
+  background: rgba(255,255,255,0.06);
   transform: translateX(4px);
+  color: #ffffff;
 }
 
 .router-link-active {
-  background: rgba(220,38,38,.10);
+  background: rgba(220,38,38,0.18);
   border-left: 3px solid #dc2626;
-  color: #dc2626;
+  color: #ff6b6b;
 }
 
 /* Bán hàng link */
@@ -515,9 +508,9 @@ watch(() => route.fullPath, () => {
   font-weight: inherit;
 }
 .nav-sales.router-link-active {
-  background: rgba(220,38,38,.10);
+  background: rgba(220,38,38,0.18);
   border-left: 3px solid #dc2626;
-  color: #dc2626;
+  color: #ff6b6b;
 }
 
 .user-menu {

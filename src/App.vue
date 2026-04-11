@@ -1,43 +1,46 @@
 <script setup>
-import { onBeforeUnmount, watchEffect } from "vue"
+import { computed, onBeforeUnmount, watchEffect } from "vue"
 import { useRoute } from "vue-router"
 import GlobalToast from "./components/GlobalToast.vue"
 import GlobalConfirmDialog from "./components/GlobalConfirmDialog.vue"
 import DirtyWaveChatbot from "./components/chat/DirtyWaveChatbot.vue"
+import InternalAssistantDock from "./components/assistant/InternalAssistantDock.vue"
 import { useToast } from "./composables/useToast"
 import { useConfirm } from "./composables/useConfirm"
+import { useInternalAssistant } from "./composables/useInternalAssistant"
 
 const route = useRoute()
 const OPS_THEME_CLASS = "ops-theme"
 
-const { showToast, success, error, warning, info } = useToast()
+const { showToast, success, error, warning, info, cartAdded } = useToast()
 const { askAlert, askConfirm, askPrompt } = useConfirm()
+const {
+  context: sharedAssistantContext,
+  role: sharedAssistantRole
+} = useInternalAssistant()
 
 const nativeAlert = window.alert
 const nativeConfirm = window.confirm
 const nativePrompt = window.prompt
 
-// Keep real browser dialogs available for debugging/fallback.
 window.browserNativeAlert = nativeAlert
 window.browserNativeConfirm = nativeConfirm
 window.browserNativePrompt = nativePrompt
 
-// Make toast available globally
 window.toast = {
   show: showToast,
   success,
   error,
   warning,
-  info
+  info,
+  cartAdded
 }
 
-// Backward compatibility
 window.showToast = showToast
 window.confirmDialog = askConfirm
 window.alertDialog = askAlert
 window.promptDialog = askPrompt
 
-// Replace browser dialogs with app dialogs.
 window.alert = (message) => {
   askAlert(message)
 }
@@ -50,7 +53,6 @@ window.prompt = (message, defaultValue = "") => {
   return askPrompt(message, defaultValue)
 }
 
-// Compatibility aliases requested by existing code paths.
 window.nativeAlert = window.alert
 window.nativeConfirm = window.confirm
 window.nativePrompt = window.prompt
@@ -59,6 +61,94 @@ watchEffect(() => {
   const path = route.path || ""
   const useOpsTheme = path.startsWith("/admin") || path.startsWith("/employee")
   document.body.classList.toggle(OPS_THEME_CLASS, useOpsTheme)
+})
+
+const isInternalArea = computed(() => {
+  const path = route.path || ""
+  return path.startsWith("/admin") || path.startsWith("/employee")
+})
+
+const showCustomerChatbot = computed(() => {
+  const path = route.path || ""
+
+  if (path.startsWith("/admin")) return false
+  if (path.startsWith("/employee")) return false
+  if (path === "/internal-assistant-demo") return false
+
+  return true
+})
+
+const internalAssistantRole = computed(() => {
+  if (sharedAssistantRole?.value) {
+    return String(sharedAssistantRole.value).toUpperCase().includes("ADMIN")
+      ? "ADMIN"
+      : "EMPLOYEE"
+  }
+
+  const path = route.path || ""
+  if (path.startsWith("/admin")) return "ADMIN"
+  return "EMPLOYEE"
+})
+
+const internalAssistantSource = computed(() => {
+  return internalAssistantRole.value === "ADMIN" ? "ADMIN_PANEL" : "EMPLOYEE_PANEL"
+})
+
+const internalAssistantContext = computed(() => {
+  const path = route.path || ""
+  const shared = sharedAssistantContext?.value || {}
+
+  const hasSharedChatContext =
+    !!shared?.pageType ||
+    !!shared?.sessionId ||
+    !!shared?.lastCustomerMessage ||
+    !!shared?.currentReplyDraft
+
+  if (hasSharedChatContext) {
+    return {
+      route: path,
+      ...shared,
+      route: shared.route || path,
+      pageType:
+        shared.pageType ||
+        (shared.sessionId || shared.lastCustomerMessage || shared.currentReplyDraft
+          ? "CUSTOMER_CHAT"
+          : "GENERAL_INTERNAL")
+    }
+  }
+
+  if (path.startsWith("/employee/chat")) {
+    return {
+      pageType: "CUSTOMER_CHAT",
+      route: path
+    }
+  }
+
+  if (path.startsWith("/employee/dashboard") || path.startsWith("/admin/thong-ke")) {
+    return {
+      pageType: "REVENUE_DASHBOARD",
+      route: path
+    }
+  }
+
+  if (path.includes("/ban-hang")) {
+    return {
+      pageType: "POS",
+      route: path
+    }
+  }
+
+  if (path.includes("/hoa-don/detail")) {
+    return {
+      pageType: "ORDER_DETAIL",
+      route: path
+    }
+  }
+
+  return {
+    pageType: "GENERAL_INTERNAL",
+    route: path
+  }
 })
 
 onBeforeUnmount(() => {
@@ -70,13 +160,26 @@ onBeforeUnmount(() => {
   <router-view v-slot="{ Component, route: currentRoute }">
     <div class="app-route-stage">
       <transition name="app-route">
-        <component :is="Component" :key="currentRoute.matched?.[0]?.path || currentRoute.path" class="app-route-view" />
+        <component
+          :is="Component"
+          :key="currentRoute.matched?.[0]?.path || currentRoute.path"
+          class="app-route-view"
+        />
       </transition>
     </div>
   </router-view>
+
   <GlobalToast />
   <GlobalConfirmDialog />
-  <DirtyWaveChatbot />
+
+  <DirtyWaveChatbot v-if="showCustomerChatbot" />
+
+  <InternalAssistantDock
+    v-if="isInternalArea"
+    :role="internalAssistantRole"
+    :source="internalAssistantSource"
+    :context="internalAssistantContext"
+  />
 </template>
 
 <style>

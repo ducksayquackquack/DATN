@@ -1,14 +1,17 @@
 ﻿<script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { Eye, ShoppingCart } from "lucide-vue-next"
+import { Eye, ShoppingCart, Truck, ShieldCheck, CreditCard, RefreshCw } from "lucide-vue-next"
 import { getAllSanPham } from '../../services/sanPhamService'
-import logo from "../../assets/img/logo/new logo.png?url"
+import { applyCampaignPriceToVariants } from '../../services/campaignPricingService'
+import { getAllHoaDon, getHoaDonById } from '../../services/hoaDonService'
+import { getActiveVouchers, getAllVouchers, normalizeVoucherData } from '../../services/khuyenMaiService'
 import SiteNav from '../../components/SiteNav.vue'
 import CustomerFooter from '../../components/customer/CustomerFooter.vue'
 import { useToast } from '../../composables/useToast'
 import { resolveApiOrigin } from '../../utils/apiOrigin'
 import { getProductImageOverride } from '../../utils/productImageOverrides'
+import { fallbackImageForVariant } from '../../utils/productImageFallback'
 import img1 from "../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
 import img2 from "../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
 import img3 from "../../assets/img/Jackets/bomber/bomber-gia-da.jpg?url"
@@ -21,30 +24,41 @@ import img9 from "../../assets/img/Jackets/coach/coach-da-asos.jpg?url"
 import img10 from "../../assets/img/Jackets/coach/coach-gia-da.jpg?url"
 import img11 from "../../assets/img/Jackets/coach/coach-long-cuu.jpg?url"
 // New products
-import img12 from "../../assets/img/Jackets/bomber/bomber-astronaut/IMG_4435.PNG?url"
-import img13 from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4437.PNG?url"
-import img14 from "../../assets/img/Jackets/bomber/bomber-windbreaker/IMG_4432.PNG?url"
-import img15 from "../../assets/img/Jackets/coach/coach-leopard/IMG_4445.PNG?url"
-import img16 from "../../assets/img/Jackets/coach/coach-longsleeve/IMG_4442.PNG?url"
-import img17 from "../../assets/img/Jackets/coach/coach-tiger-stripe/IMG_4446.PNG?url"
-import img18 from "../../assets/img/Jackets/hoodie/hoodie-camo/IMG_4450.PNG?url"
-import img19 from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/IMG_4452.PNG?url"
-import img20 from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/IMG_4447.PNG?url"
+import img12 from "../../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-black.PNG?url"
+import img13 from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-black.PNG?url"
+import img14 from "../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-black.PNG?url"
+import img15 from "../../assets/img/Jackets/coach/coach-leopard/coach-leopard.PNG?url"
+import img16 from "../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-black.PNG?url"
+import img17 from "../../assets/img/Jackets/coach/coach-tiger-stripe/coach-tiger-stripe.PNG?url"
+import img18 from "../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-black.PNG?url"
+import img19 from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-blue.PNG?url"
+import img20 from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-black.PNG?url"
+import img12b from "../../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-blue.PNG?url"
+import img13b from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-green.PNG?url"
+import img13c from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-brown.PNG?url"
+import img13d from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-red.PNG?url"
+import img13e from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-white.PNG?url"
+import img14b from "../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-blue.PNG?url"
+import img14c from "../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-green.PNG?url"
+import img16b from "../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-red.PNG?url"
+import img16c from "../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-white.PNG?url"
+import img18b from "../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-white.PNG?url"
+import img19b from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-white.PNG?url"
+import img20b from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-gray.PNG?url"
+import img20c from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-red.PNG?url"
 import momo from "../../assets/img/payments/momo.png?url"
 import visa from "../../assets/img/payments/visa.png?url"
 import mastercard from "../../assets/img/payments/mastercard.png?url"
 import vnpay from "../../assets/img/payments/vnpay.png?url"
-import { readCartObject, writeCartObject } from "../../utils/cartStorage"
+import { readCartObject, readCartVariantsObject, writeCartObject, writeCartVariantsObject } from "../../utils/cartStorage"
 const router = useRouter()
 const route = useRoute()
-const { success: toastSuccess } = useToast()
+const { success: toastSuccess, cartAdded: toastCartAdded } = useToast()
 const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, '')
 const VND = n => new Intl.NumberFormat("vi-VN").format(n) + "₫"
 const CART_UPDATED_EVENT = "dirtywave:cart-updated"
 
 const activeFilter = ref(null)
-const selectedPriceTier = ref(null)
-const activeMood = ref("Minimal")
 const sectionPulse = ref("")
 const toastMessage = ref("")
 const toastVisible = ref(false)
@@ -52,54 +66,278 @@ let toastTimer = null
 const email = ref("")
 const year = new Date().getFullYear()
 
+const heroBenefits = [
+  { icon: Truck, title: 'Giao hàng toàn quốc', text: 'Nhận hàng nhanh 2-5 ngày' },
+  { icon: ShieldCheck, title: 'Đảm bảo chính hãng', text: 'Chất liệu và form được kiểm tra kỹ' },
+  { icon: CreditCard, title: 'Thanh toán linh hoạt', text: 'Hỗ trợ nhiều phương thức thanh toán' },
+  { icon: RefreshCw, title: 'Đổi trả dễ dàng', text: 'Hỗ trợ đổi size theo chính sách' },
+]
+
+const heroSlides = [
+  {
+    id: 1,
+    cat: 'ALL',
+    target: 'products',
+    tag: 'Bộ sưu tập DirtyWave',
+    title: 'DirtyWave Outerwear Collection',
+    titleMain: 'DirtyWave Outerwear',
+    titleDrop: 'Collection',
+    subtitle: 'Hoodie, Bomber, Coach và nhiều phom áo khoác được yêu thích nhất',
+    heroMain: img16,
+    heroSideTop: img13,
+    heroSideBottom: img14,
+  },
+  {
+    id: 20,
+    cat: 'Hoodie',
+    target: 'products',
+    tag: 'Bộ sưu tập DirtyWave',
+    title: 'Hoodie Zip Silk DirtyWave',
+    subtitle: 'Mềm nhẹ, bóng mịn, phối lớp cực nổi bật',
+    heroMain: img20,
+    heroSideTop: img20b,
+    heroSideBottom: img20c,
+  },
+  {
+    id: 14,
+    cat: 'Bomber',
+    target: 'products',
+    tag: 'Bộ sưu tập DirtyWave',
+    title: 'Bomber Windbreaker DirtyWave',
+    subtitle: 'Chống gió tốt, phom khỏe, chất đường phố rõ nét',
+    heroMain: img14,
+    heroSideTop: img14b,
+    heroSideBottom: img14c,
+  },
+]
+
+const heroActiveIndex = ref(0)
+const heroDirection = ref(1)
+
+const activeHeroSlide = computed(() => heroSlides[heroActiveIndex.value] || heroSlides[0])
+const heroTransitionName = computed(() =>
+  heroDirection.value >= 0 ? 'dw-hero-swipe-next' : 'dw-hero-swipe-prev'
+)
+
+const nextHeroSlide = () => {
+  heroDirection.value = 1
+  heroActiveIndex.value = (heroActiveIndex.value + 1) % heroSlides.length
+}
+
+const prevHeroSlide = () => {
+  heroDirection.value = -1
+  heroActiveIndex.value = (heroActiveIndex.value - 1 + heroSlides.length) % heroSlides.length
+}
+
+const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2)
+
+const smoothScrollToProductNav = () => {
+  const productNav = document.getElementById('sanpham-nav')
+  if (!productNav) return
+
+  const header = document.querySelector('header')
+  const headerOffset = header ? header.getBoundingClientRect().height + 12 : 12
+
+  const startY = window.scrollY || window.pageYOffset
+  const targetY = Math.max(0, productNav.getBoundingClientRect().top + startY - headerOffset)
+  const distance = targetY - startY
+  const duration = 760
+  const startTime = performance.now()
+
+  const step = (now) => {
+    const elapsed = now - startTime
+    const progress = Math.min(elapsed / duration, 1)
+    const eased = easeInOutCubic(progress)
+    window.scrollTo(0, startY + distance * eased)
+    if (progress < 1) window.requestAnimationFrame(step)
+  }
+
+  window.requestAnimationFrame(step)
+}
+
+const handleHeroAction = (slide) => {
+  if (slide?.target === 'products' || slide?.id) {
+    smoothScrollToProductNav()
+    return
+  }
+  if (slide?.cat) focusCategory(slide.cat)
+}
+
+
 const getImage = (id) => {
   return new URL(`../../assets/img/product${id}.jpg`, import.meta.url).href
 }
 
-const allProducts = [
-  // BOMBER
-  {id:1,name:"Áo Bomber Da Lộn DirtyWave",cat:"Bomber",price:649000,old:799000,tag:"AIRFLEX",img:img1},
-  {id:2,name:"Áo Bomber Dáng Lửng",cat:"Bomber",price:399000,old:null,tag:"New",img:img2},
-  {id:3,name:"Áo Bomber Giả Da DirtyWave",cat:"Bomber",price:329000,old:389000,tag:"Best",img:img3},
-  {id:4,name:"Áo Bomber Cotton DirtyWave",cat:"Bomber",price:459000,old:null,tag:"Office",img:img4},
+const products = ref([])
 
-  // HOODIE
-  {id:5,name:"Hoodie Zip Dáng Hộp DirtyWave",cat:"Hoodie",price:499000,old:599000,tag:"Daily",img:img5},
-  {id:6,name:"Hoodie Zip In Hình DirtyWave",cat:"Hoodie",price:699000,old:null,tag:"Layer",img:img6},
-  {id:7,name:"Hoodie Zip Jacket DirtyWave",cat:"Hoodie",price:559000,old:null,tag:"New",img:img7},
+const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11, img12, img13, img14, img15, img16, img17, img18, img19, img20]
 
-  // COACH JACKET
-  {id:8,name:"Coach Cách Nhiệt Timberland",cat:"Coach",price:799000,old:899000,tag:"Drop",img:img8},
-  {id:9,name:"Coach Da ASOS DirtyWave",cat:"Coach",price:899000,old:null,tag:"Premium",img:img9},
-  {id:10,name:"Coach Giả Da DirtyWave",cat:"Coach",price:699000,old:null,tag:"Trend",img:img10},
-  {id:11,name:"Coach Lông Cừu DirtyWave",cat:"Coach",price:399000,old:559000,tag:"399K",img:img11},
+const mappedFallbackByCodeNum = {
+  1: img1,
+  2: img2,
+  3: img3,
+  4: img4,
+  5: img5,
+  6: img6,
+  7: img7,
+  8: img8,
+  9: img9,
+  10: img10,
+  11: img11,
+  12: img12,
+  13: img13,
+  14: img14,
+  15: img15,
+  16: img16,
+  17: img17,
+  18: img18,
+  19: img19,
+  20: img20
+}
 
-  // BOMBER SALE
-  {id:12,name:"Bomber Dáng Lửng DirtyWave",cat:"Bomber",price:299000,old:459000,tag:"299K",img:img2},
-  {id:13,name:"Bomber Giả Da DirtyWave",cat:"Bomber",price:399000,old:559000,tag:"399K",img:img3},
-  {id:14,name:"Bomber Vải Cotton DirtyWave",cat:"Bomber",price:299000,old:429000,tag:"299K",img:img4},
+const mappedFallbackByCode = {
+  SP001: img1,   // Bomber da lộn
+  SP002: img2,   // Bomber dáng lửng
+  SP003: img3,   // Bomber da có túi
+  SP004: img4,   // Bomber cotton nhẹ
+  SP005: img5,   // Hoodie dáng hộp
+  SP006: img6,   // Hoodie in hình
+  SP007: img7,   // Hoodie kéo khoá
+  SP008: img8,   // Coach cách nhiệt
+  SP009: img9,   // Coach da trơn
+  SP010: img10,  // Coach giả da
+  SP011: img11,  // Coach lông cừu
+  SP012: img12,  // Bomber Astronaut
+  SP013: img13,  // Bomber Embroidered Fuzzy
+  SP014: img14,  // Bomber Windbreaker
+  SP015: img15,  // Coach Leopard
+  SP016: img16,  // Coach Longsleeve
+  SP017: img17,  // Coach Tiger Stripe
+  SP018: img18,  // Hoodie Camo
+  SP019: img19,  // Hoodie Zip Boxy
+  SP020: img20,  // Hoodie Zip Silk
+}
 
-  // OTHER PRODUCTS
-  {id:15,name:"Áo Thun Cotton 220gsm",cat:"Áo thun",price:329000,old:389000,tag:"Best",img:img5},
-  {id:16,name:"Polo Basic Dệt Mịn",cat:"Polo",price:399000,old:null,tag:"New",img:img6},
-  {id:17,name:"Jeans Slim Fit Co Giãn",cat:"Jeans",price:649000,old:799000,tag:"AIRFLEX",img:img8},
-  {id:18,name:"Quần Kaki Form Straight",cat:"Kaki/Chino",price:499000,old:599000,tag:"Daily",img:img9},
-  {id:19,name:"Quần Tây Minimal DirtyWave",cat:"Quần tây",price:559000,old:null,tag:"Office",img:img10},
-  {id:20,name:"Quần Jogger Street",cat:"Jogger",price:399000,old:459000,tag:"Trend",img:img7},
+const staticQuickImagesByCode = {
+  SP002: [img2, img3],
+  SP009: [img9, img10],
+  SP012: [img12, img12b],
+  SP013: [img13, img13b, img13c, img13d, img13e],
+  SP014: [img14, img14b, img14c],
+  SP016: [img16, img16b, img16c],
+  SP018: [img18, img18b],
+  SP019: [img19, img19b],
+  SP020: [img20, img20b, img20c]
+}
 
-  // NEW PRODUCTS FROM REORGANIZED FOLDERS
-  {id:21,name:"Bomber Astronaut DirtyWave",cat:"Bomber",price:549000,old:699000,tag:"Limited",img:img12},
-  {id:22,name:"Bomber Embroidered Fuzzy",cat:"Bomber",price:599000,old:749000,tag:"New",img:img13},
-  {id:23,name:"Bomber Windbreaker DirtyWave",cat:"Bomber",price:479000,old:599000,tag:"Hot",img:img14},
-  {id:24,name:"Coach Leopard DirtyWave",cat:"Coach",price:849000,old:999000,tag:"Premium",img:img15},
-  {id:25,name:"Coach Longsleeve DirtyWave",cat:"Coach",price:529000,old:649000,tag:"Sale",img:img16},
-  {id:26,name:"Coach Tiger Stripe DirtyWave",cat:"Coach",price:779000,old:899000,tag:"New",img:img17},
-  {id:27,name:"Hoodie Camo DirtyWave",cat:"Hoodie",price:459000,old:559000,tag:"Hot",img:img18},
-  {id:28,name:"Hoodie Zip Boxy DirtyWave",cat:"Hoodie",price:519000,old:629000,tag:"Trending",img:img19},
-  {id:29,name:"Hoodie Zip Silk DirtyWave",cat:"Hoodie",price:679000,old:799000,tag:"Luxury",img:img20},
+// Map Vietnamese color names to English keywords in static image filenames
+const colorKeywordMap = {
+  den: "black", do: "red", trang: "white", xam: "gray", xanh: "blue",
+  "xanh duong": "blue", "xanh la": "green", nau: "brown",
+  vang: "yellow", hong: "pink", tim: "purple", cam: "orange",
+  be: "beige", kem: "cream"
+}
+
+const mappedFallbackByName = [
+  { keywords: ["bomber", "da", "lon"], image: img1 },
+  { keywords: ["bomber", "dang", "lung"], image: img2 },
+  { keywords: ["bomber", "gia", "da"], image: img3 },
+  { keywords: ["bomber", "cotton"], image: img4 },
+  { keywords: ["hoodie", "dang", "hop"], image: img5 },
+  { keywords: ["hoodie", "in", "hinh"], image: img6 },
+  { keywords: ["hoodie", "keo", "khoa"], image: img7 },
+  { keywords: ["coach", "cach", "nhiet"], image: img8 },
+  { keywords: ["coach", "da", "asos"], image: img9 },
+  { keywords: ["coach", "gia", "da"], image: img10 },
+  { keywords: ["coach", "long", "cuu"], image: img11 },
+  { keywords: ["astronaut"], image: img12 },
+  { keywords: ["embroidered", "fuzzy"], image: img13 },
+  { keywords: ["windbreaker"], image: img14 },
+  { keywords: ["leopard"], image: img15 },
+  { keywords: ["longsleeve"], image: img16 },
+  { keywords: ["tiger", "stripe"], image: img17 },
+  { keywords: ["camo"], image: img18 },
+  { keywords: ["zip", "boxy"], image: img19 },
+  { keywords: ["zip", "silk"], image: img20 }
 ]
 
-const products = ref(allProducts)
+const normalizeProductKeyForImage = (value = "") =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+
+const normalizeSearchTextForImage = (value = "") =>
+  normalizeProductKeyForImage(value)
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+const stripTrailingBrandTokenForImage = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/[\s_-]*(dirty\s*wave|dirtywave)$/i, "")
+    .trim()
+
+const getMappedFallbackByName = (name = "") => {
+  const normalized = normalizeProductKeyForImage(name)
+  if (!normalized) return ""
+  const found = mappedFallbackByName.find((rule) =>
+    rule.keywords.every((keyword) => normalized.includes(keyword))
+  )
+  return found?.image || ""
+}
+
+const fallbackIndexByName = (name = "") => {
+  const normalized = normalizeSearchTextForImage(stripTrailingBrandTokenForImage(name))
+  if (!normalized) return -1
+  let hash = 0
+  for (let i = 0; i < normalized.length; i += 1) {
+    hash = ((hash << 5) - hash + normalized.charCodeAt(i)) | 0
+  }
+  return Math.abs(hash) % fallbackImages.length
+}
+
+const fallbackImageFor = (id, code = "", name = "") => {
+  const normalizedCode = String(code || "").trim().toUpperCase()
+  const allowCuratedCodeMap = /^ATID070-\d+$/i.test(normalizedCode) || /^SP\d+$/i.test(normalizedCode)
+
+  if (mappedFallbackByCode[normalizedCode]) {
+    return mappedFallbackByCode[normalizedCode]
+  }
+
+  if (allowCuratedCodeMap) {
+    const codeDigits = String(normalizedCode).replace(/\D+/g, "")
+    const codeNum = Number(codeDigits)
+    if (Number.isFinite(codeNum) && codeNum > 0 && mappedFallbackByCodeNum[codeNum]) {
+      return mappedFallbackByCodeNum[codeNum]
+    }
+  }
+
+  const mappedByName = getMappedFallbackByName(name)
+  if (mappedByName) return mappedByName
+
+  const numericId = Number(id)
+  if (Number.isFinite(numericId) && numericId > 0) {
+    if (allowCuratedCodeMap && mappedFallbackByCodeNum[numericId]) return mappedFallbackByCodeNum[numericId]
+    const nameIndex = fallbackIndexByName(name)
+    if (nameIndex >= 0) return fallbackImages[nameIndex] || img1
+    return fallbackImages[(numericId - 1) % fallbackImages.length]
+  }
+
+  const digits = String(code || "").replace(/\D+/g, "")
+  const codeNum = Number(digits)
+  if (Number.isFinite(codeNum) && codeNum > 0) {
+    if (allowCuratedCodeMap && mappedFallbackByCodeNum[codeNum]) return mappedFallbackByCodeNum[codeNum]
+    const nameIndex = fallbackIndexByName(name)
+    if (nameIndex >= 0) return fallbackImages[nameIndex] || img1
+    return fallbackImages[(codeNum - 1) % fallbackImages.length]
+  }
+
+  const nameIndex = fallbackIndexByName(name)
+  if (nameIndex >= 0) return fallbackImages[nameIndex] || img1
+  return fallbackImages[0] || img1
+}
 
 const isAbsoluteUrl = (value = '') => /^https?:\/\//i.test(value) || /^data:image\//i.test(value)
 
@@ -117,9 +355,33 @@ const toImageUrl = (value) => {
   return normalized
 }
 
+const normalizeImageKey = (value = '') => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const withoutQuery = raw.split('#')[0].split('?')[0]
+  const normalized = withoutQuery.replace(/\\/g, '/').toLowerCase()
+  try {
+    const url = new URL(normalized, window.location.origin)
+    return url.pathname.toLowerCase()
+  } catch {
+    return normalized
+  }
+}
+
+const isSameImage = (left = '', right = '') => {
+  const l = normalizeImageKey(left)
+  const r = normalizeImageKey(right)
+  return !!l && !!r && l === r
+}
+
+const isLogoLikeUrl = (url) => /logo/i.test(String(url || ''))
+
 const pickImageValue = (entry) => {
   if (!entry) return ''
-  if (typeof entry === 'string') return toImageUrl(entry)
+  if (typeof entry === 'string') {
+    const url = toImageUrl(entry)
+    return isLogoLikeUrl(url) ? '' : url
+  }
   if (Array.isArray(entry)) {
     for (const child of entry) {
       const found = pickImageValue(child)
@@ -128,7 +390,7 @@ const pickImageValue = (entry) => {
     return ''
   }
   if (typeof entry === 'object') {
-    const keys = ['anh', 'hinhAnh', 'image', 'imageUrl', 'images', 'listAnh', 'anhChinh', 'url', 'path']
+    const keys = ['anh', 'hinhAnh', 'image', 'imageUrl', 'images', 'listAnh', 'anhChinh', 'url', 'path', 'previewUrl', 'src']
     for (const key of keys) {
       const found = pickImageValue(entry[key])
       if (found) return found
@@ -137,24 +399,188 @@ const pickImageValue = (entry) => {
   return ''
 }
 
+const normalizeColorImageEntries = (entries = []) => {
+  const list = Array.isArray(entries)
+    ? entries
+    : (entries && typeof entries === 'object'
+      ? Object.entries(entries).map(([key, value], index) => {
+          if (value && typeof value === 'object') {
+            return {
+              ...value,
+              colorId: value.colorId ?? value.mauSacId ?? Number(key),
+              order: value.order ?? value.thuTu ?? index
+            }
+          }
+
+          return {
+            colorId: Number(key),
+            image: value,
+            order: index
+          }
+        })
+      : [])
+  return list
+    .map((entry, index) => {
+      const image = pickImageValue([
+        entry,
+        entry?.image,
+        entry?.previewUrl,
+        entry?.url,
+        entry?.path,
+        entry?.anh,
+        entry?.hinhAnh,
+        entry?.duongDanAnh
+      ])
+
+      const colorId = Number(
+        entry?.colorId
+        || entry?.mauSacId
+        || entry?.idMauSac
+        || entry?.id_mau_sac
+        || entry?.mauSac?.id
+        || entry?.mau?.id
+        || 0
+      )
+
+      const colorName = String(
+        entry?.colorName
+        || entry?.tenMau
+        || entry?.mauSac?.tenMau
+        || entry?.mauSac?.tenMauSac
+        || entry?.mau?.tenMau
+        || ''
+      ).trim()
+
+      const order = Number.isFinite(Number(entry?.order))
+        ? Number(entry.order)
+        : (Number.isFinite(Number(entry?.thuTu)) ? Number(entry.thuTu) : index)
+
+      return { colorId, colorName, image, order }
+    })
+    .filter((entry) => entry.image && (entry.colorId > 0 || entry.colorName))
+    .sort((left, right) => left.order - right.order)
+}
+
+const colorHexByName = (name = "") => {
+  const n = String(name || "").normalize("NFD").replace(/\p{M}/gu, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase().trim()
+  if (n === "den" || n === "black") return "#111827"
+  if (n === "trang" || n === "white") return "#e5dfd0"
+  if (n === "do" || n === "red") return "#dc2626"
+  if (n === "xanh duong" || n === "xanh" || n === "blue" || n === "navy") return "#2f4f75"
+  if (n === "xanh la" || n === "xanh la cay") return "#4f6f52"
+  if (n === "xam" || n === "ghi" || n === "gray" || n === "grey") return "#8c95a3"
+  if (n === "nau" || n === "brown") return "#8B5E3C"
+  if (n === "kem" || n === "be" || n === "cream") return "#d4c9a8"
+  if (n === "vang" || n === "yellow") return "#d4a017"
+  if (n === "hong" || n === "pink") return "#e8927c"
+  if (n === "cam" || n === "orange") return "#e07020"
+  if (n === "ruou" || n === "wine") return "#722f37"
+  return "#9ca3af"
+}
+
 const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
   const variants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
   const variantPrices = variants.map((variant) => Number(variant?.giaBan || 0)).filter((n) => n > 0)
-  const variantOldPrices = variants.map((variant) => Number(variant?.giaNhap || 0)).filter((n) => n > 0)
+  const variantWithPrice = variants
+    .map((variant) => ({
+      currentPrice: Number(variant?.giaBan || 0),
+      originalPrice: Number(variant?.giaBanGoc || 0),
+    }))
+    .filter((variant) => variant.currentPrice > 0)
   const id = Number(item?.id)
+  const code = String(item?.maSanPham || item?.ma || "").trim().toUpperCase()
+  const productName = String(item?.tenSanPham || item?.name || `Sản phẩm ${id || fallbackIndex + 1}`)
   const overrideImage = getProductImageOverride({ id, maSanPham: item?.maSanPham })[0]
 
   const variantStock = variants.reduce((sum, v) => sum + Number(v?.soLuong || 0), 0)
   const totalStock = variantStock > 0 ? variantStock : Number(item?.soLuong || 0)
 
+  const colors = [...new Set(
+    variants
+      .map((variant) => String(variant?.mauSac?.tenMau || variant?.mauSac?.tenMauSac || variant?.mauSac?.name || variant?.tenMau || variant?.tenMauSac || "").trim())
+      .filter(Boolean)
+  )].map((name) => ({ name, hex: colorHexByName(name) }))
+
+  const sizes = [...new Set(
+    variants
+      .map((variant) => String(variant?.kichThuoc?.tenKichThuoc || variant?.kichThuoc?.name || variant?.tenKichThuoc || variant?.size || "").trim())
+      .filter(Boolean)
+  )]
+
+  const colorImageEntries = [...new Map([
+    ...normalizeColorImageEntries(item?.colorImages || []).map((entry) => [`${entry.colorId}|${entry.image}`, entry]),
+    ...normalizeColorImageEntries(item?.mauSacHinhAnhs || []).map((entry) => [`${entry.colorId}|${entry.image}`, entry]),
+    ...normalizeColorImageEntries(item?.anhTheoMauSac || []).map((entry) => [`${entry.colorId}|${entry.image}`, entry]),
+    ...normalizeColorImageEntries(item?.hinhAnhTheoMauSac || []).map((entry) => [`${entry.colorId}|${entry.image}`, entry]),
+    ...normalizeColorImageEntries(item?.anhMauSac || []).map((entry) => [`${entry.colorId}|${entry.image}`, entry]),
+    ...variants
+      .map((variant, order) => {
+        const colorId = Number(variant?.mauSac?.id || 0)
+        const colorName = String(variant?.mauSac?.tenMau || variant?.mauSac?.tenMauSac || '').trim()
+        const image = pickImageValue([
+          variant,
+          variant?.anh,
+          variant?.hinhAnh,
+          variant?.image,
+          variant?.imageUrl,
+          variant?.duongDanAnh
+        ])
+        return { colorId, colorName, image, order }
+      })
+      .filter((entry) => entry.image && (entry.colorId > 0 || entry.colorName))
+      .map((entry) => [`${entry.colorId}|${entry.image}`, entry]),
+  ]).values()]
+
+  const sold = resolveSoldCount(item, variants)
+  const rawCategory = String(item?.loai?.tenLoai || item?.danhMuc?.tenDanhMuc || 'Thời trang nam')
+  const normalizedCategory = toCanonicalCategory(rawCategory) || inferCategoryFromName(productName) || rawCategory
+  const lowestPricedVariant = variantWithPrice.length
+    ? variantWithPrice.reduce((lowest, current) => (current.currentPrice < lowest.currentPrice ? current : lowest), variantWithPrice[0])
+    : null
+  const oldPriceFromCampaign = lowestPricedVariant && lowestPricedVariant.originalPrice > lowestPricedVariant.currentPrice
+    ? lowestPricedVariant.originalPrice
+    : null
+
+  const staticImages = code && staticQuickImagesByCode[code] ? staticQuickImagesByCode[code] : []
+
+  const galleryImages = staticImages.length
+    ? [...new Set([
+        overrideImage,
+        ...staticImages
+      ].map((entry) => String(entry || '').trim()).filter(Boolean))]
+    : [...new Set([
+        ...colorImageEntries.map((entry) => String(entry?.image || '').trim()).filter(Boolean),
+        ...variants.map((variant) => pickImageValue([
+          variant,
+          variant?.anh,
+          variant?.hinhAnh,
+          variant?.image,
+          variant?.imageUrl,
+          variant?.duongDanAnh
+        ])).filter(Boolean),
+        ...normalizeColorImageEntries(item?.images || []).map((entry) => entry.image).filter(Boolean),
+        pickImageValue([item, item?.anh, item?.hinhAnh, item?.images, item?.image, item?.listAnh]),
+        overrideImage
+      ].map((entry) => String(entry || '').trim()).filter(Boolean))]
+
+  const heroImage = overrideImage || galleryImages[0] || pickImageValue([item, variants]) || fallbackImageFor(id, code, productName)
+
   return {
     id,
-    name: String(item?.tenSanPham || item?.name || `Sản phẩm ${id || fallbackIndex + 1}`),
-    cat: String(item?.loai?.tenLoai || item?.danhMuc?.tenDanhMuc || 'Thời trang nam'),
+    name: productName,
+    cat: normalizedCategory,
     price: variantPrices.length ? Math.min(...variantPrices) : Number(item?.giaBan || item?.gia || 0),
-    old: variantOldPrices.length ? Math.max(...variantOldPrices) : Number(item?.giaGoc || 0) || null,
-    tag: totalStock > 0 ? 'New' : 'Sold out',
-    img: overrideImage || pickImageValue([item, variants]) || allProducts[fallbackIndex % allProducts.length]?.img || img1,
+    // Only show strikethrough price when campaign pricing is actually applied on this product.
+    old: oldPriceFromCampaign,
+    tag: totalStock > 0 ? '' : 'Sold out',
+    sold,
+    stock: totalStock,
+    img: heroImage,
+    images: galleryImages.length ? galleryImages : [heroImage],
+    colors,
+    sizes,
+    variants,
+    colorImageEntries,
   }
 }
 
@@ -183,6 +609,7 @@ onMounted(() => {
   })
 
   loadHomeBackendProducts()
+  loadQuickPromoVouchers()
 
   if (route.query.category) {
     activeFilter.value = String(route.query.category)
@@ -220,6 +647,11 @@ const filterBy = cat => {
   pulseSection("best")
 }
 
+const focusCategory = (cat) => {
+  filterBy(cat)
+  toast(`Đang lọc danh mục ${cat}`)
+}
+
 const clearFilter = () =>
   activeFilter.value = null
 
@@ -227,55 +659,19 @@ const openShop = () => {
   router.push("/san-pham")
 }
 
-const PRICE_TIERS = [
-  { label: "199K", value: 199000 },
-  { label: "299K", value: 299000 },
-  { label: "399K", value: 399000 }
-]
-
-const STYLE_MOODS = {
-  Minimal: { category: "Bomber", priceCap: 399000, desc: "Gọn, đứng phom, dễ phối hàng ngày." },
-  Street: { category: "Hoodie", priceCap: 499000, desc: "Năng động, layer ổn, hợp dạo phố." },
-  Office: { category: "Coach", priceCap: 799000, desc: "Lịch sự vừa đủ, vẫn giữ chất riêng." }
-}
-
-const outletBaseProducts = computed(() => products.value.filter(x => [11, 12, 13, 14].includes(x.id)))
-
-const filteredOutletProducts = computed(() => {
-  if (!selectedPriceTier.value) return outletBaseProducts.value
-  return outletBaseProducts.value.filter(product => product.price <= selectedPriceTier.value)
-})
-
-const moodDescription = computed(() => STYLE_MOODS[activeMood.value]?.desc || "")
-
-const applyPriceTier = (priceCap) => {
-  selectedPriceTier.value = priceCap
-  scrollToId("outlet")
-  pulseSection("outlet")
-}
-
-const clearPriceTier = () => {
-  selectedPriceTier.value = null
-}
-
-const applyMood = (mood) => {
-  activeMood.value = mood
-  const config = STYLE_MOODS[mood]
-  if (!config) return
-  activeFilter.value = config.category
-  selectedPriceTier.value = config.priceCap
-  scrollToId("best")
-  pulseSection("best")
-  toast(`Đang gợi ý phong cách ${mood}`)
-}
-
 const filteredBest = computed(() => {
   let productList = products.value
-  // Sort by newest (ID descending) so new products appear first
-  productList = [...productList].sort((a, b) => b.id - a.id)
+  productList = [...productList].sort((a, b) => {
+    const soldDiff = Number(b?.sold || 0) - Number(a?.sold || 0)
+    if (soldDiff !== 0) return soldDiff
+    return Number(b?.id || 0) - Number(a?.id || 0)
+  })
   
   if(!activeFilter.value) return productList
-  return productList.filter(p => p.cat === activeFilter.value)
+  return productList.filter((p) => {
+    const canonical = toCanonicalCategory(p?.cat) || inferCategoryFromName(p?.name)
+    return canonical === activeFilter.value
+  })
 })
 
 const toast = msg => {
@@ -294,13 +690,27 @@ const notifyCartUpdated = () => {
   window.dispatchEvent(new Event(CART_UPDATED_EVENT))
 }
 
-const addToCart = (id) => {
+const addToCart = (id, qty = 1, cartToastPayload = null) => {
   if (!cart.value[id]) cart.value[id] = 0
-  cart.value[id]++
+  cart.value[id] += Number(qty || 1)
 
   cart.value = { ...cart.value }   // force Vue update
   notifyCartUpdated()
-  toastSuccess('Đã thêm vào giỏ hàng')
+  if (cartToastPayload) {
+    try {
+      if (typeof toastCartAdded === 'function') {
+        toastCartAdded(cartToastPayload)
+      } else if (typeof window?.toast?.cartAdded === 'function') {
+        window.toast.cartAdded(cartToastPayload)
+      } else {
+        toastSuccess('Đã thêm vào giỏ hàng')
+      }
+    } catch {
+      toastSuccess('Đã thêm vào giỏ hàng')
+    }
+  } else {
+    toastSuccess('Đã thêm vào giỏ hàng')
+  }
 }
 
 watch(
@@ -310,11 +720,6 @@ watch(
   },
   { deep: true }
 )
-
-const copyVoucher = code => {
-  navigator.clipboard?.writeText(code)
-  toast("Đã sao chép mã: " + code)
-}
 
 const subscribe = () => {
   if(!email.value || !email.value.includes('@')) return toast('Nhập email hợp lệ')
@@ -326,10 +731,35 @@ const selectedProduct = ref(null)
 const quickQty = ref(1)
 const quickSize = ref("S")
 const quickColorIndex = ref(0)
+const quickImageIndex = ref(0)
+const quickImageAnimating = ref(false)
+const quickVouchers = ref([])
+const soldByProduct = ref({
+  byId: {},
+  byCode: {},
+  byName: {}
+})
 const homeBackendProducts = ref([])
 
 const normalizeKeyword = (value = '') =>
   String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+
+const toCanonicalCategory = (value = '') => {
+  const normalized = normalizeKeyword(value)
+  if (!normalized) return ''
+  if (normalized.includes('hoodie')) return 'Hoodie'
+  if (normalized.includes('bomber')) return 'Bomber'
+  if (normalized.includes('coach')) return 'Coach'
+  return ''
+}
+
+const inferCategoryFromName = (name = '') => {
+  const normalized = normalizeKeyword(name)
+  if (normalized.includes('hoodie')) return 'Hoodie'
+  if (normalized.includes('bomber')) return 'Bomber'
+  if (normalized.includes('coach')) return 'Coach'
+  return ''
+}
 
 const isActiveStatus = (value = '') => {
   const normalized = normalizeKeyword(value)
@@ -349,25 +779,148 @@ const isBackendProductActive = (item) => {
   return variants.some((variant) => isActiveStatus(variant?.trangThai || variant?.status))
 }
 
+const normalizeNameKey = (value = '') => String(value || '')
+  .normalize('NFD')
+  .replace(/\p{M}/gu, '')
+  .replace(/đ/g, 'd')
+  .replace(/Đ/g, 'D')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim()
+
+const loadSoldFromOrders = async () => {
+  try {
+    const response = await getAllHoaDon()
+    const orders = Array.isArray(response?.data) ? response.data : []
+
+    const byId = {}
+    const byCode = {}
+    const byName = {}
+
+    const addSold = (id, code, name, qty) => {
+      const amount = Math.max(Number(qty || 0), 0)
+      if (!amount) return
+
+      const numericId = Number(id || 0)
+      const normalizedCode = String(code || '').trim().toUpperCase()
+      const normalizedName = normalizeNameKey(name)
+
+      if (numericId > 0) byId[numericId] = Number(byId[numericId] || 0) + amount
+      if (normalizedCode) byCode[normalizedCode] = Number(byCode[normalizedCode] || 0) + amount
+      if (normalizedName) byName[normalizedName] = Number(byName[normalizedName] || 0) + amount
+    }
+
+    const isCanceledOrder = (order) => {
+      const status = String(order?.trangThai || order?.status || order?.state || '').toLowerCase()
+      return status.includes('huy') || status.includes('cancel')
+    }
+
+    const extractItemLists = (order) => {
+      return [
+        order?.items,
+        order?.chiTietHoaDons,
+        order?.hoaDonChiTiets,
+        order?.chiTietDonHang,
+        order?.details,
+        order?.lineItems
+      ].filter((list) => Array.isArray(list) && list.length)
+    }
+
+    const pendingDetailIds = []
+
+    for (const order of orders) {
+      if (isCanceledOrder(order)) continue
+
+      const itemLists = extractItemLists(order)
+
+      if (!itemLists.length) {
+        const id = Number(order?.id || order?.hoaDonId || 0)
+        if (id > 0) pendingDetailIds.push(id)
+      }
+
+      for (const itemList of itemLists) {
+        for (const item of itemList) {
+          const qty = Number(item?.soLuong || item?.quantity || item?.qty || 0)
+          const productId = Number(item?.sanPhamId || item?.idSanPham || item?.productId || item?.sanPham?.id || 0)
+          const productCode = String(item?.maSanPham || item?.productCode || item?.sanPham?.maSanPham || '').trim()
+          const productName = String(item?.tenSanPham || item?.productName || item?.sanPham?.tenSanPham || '').trim()
+          addSold(productId, productCode, productName, qty)
+        }
+      }
+    }
+
+    if (pendingDetailIds.length) {
+      const uniqueIds = [...new Set(pendingDetailIds)].slice(0, 120)
+      const detailResults = await Promise.allSettled(uniqueIds.map((id) => getHoaDonById(id)))
+      for (const result of detailResults) {
+        if (result.status !== 'fulfilled') continue
+        const order = result.value?.data || {}
+        if (isCanceledOrder(order)) continue
+        const itemLists = extractItemLists(order)
+        for (const itemList of itemLists) {
+          for (const item of itemList) {
+            const qty = Number(item?.soLuong || item?.quantity || item?.qty || 0)
+            const productId = Number(item?.sanPhamId || item?.idSanPham || item?.productId || item?.sanPham?.id || 0)
+            const productCode = String(item?.maSanPham || item?.productCode || item?.sanPham?.maSanPham || '').trim()
+            const productName = String(item?.tenSanPham || item?.productName || item?.sanPham?.tenSanPham || '').trim()
+            addSold(productId, productCode, productName, qty)
+          }
+        }
+      }
+    }
+
+    soldByProduct.value = { byId, byCode, byName }
+  } catch {
+    soldByProduct.value = { byId: {}, byCode: {}, byName: {} }
+  }
+}
+
+const resolveSoldCount = (item, variants = []) => {
+  const id = Number(item?.id || 0)
+  const code = String(item?.maSanPham || '').trim().toUpperCase()
+  const nameKey = normalizeNameKey(item?.tenSanPham || item?.name || '')
+
+  const byOrder = Math.max(
+    Number(soldByProduct.value.byId?.[id] || 0),
+    Number(soldByProduct.value.byCode?.[code] || 0),
+    Number(soldByProduct.value.byName?.[nameKey] || 0)
+  )
+
+  if (byOrder > 0) return byOrder
+
+  const rawSold = Number(item?.soLuongDaBan || item?.soldCount || 0)
+  if (rawSold > 0) return rawSold
+
+  return Math.max(0, variants.reduce((sum, variant) => sum + Number(variant?.soLuongDaBan || 0), 0))
+}
+
 const loadHomeBackendProducts = async () => {
   try {
+    await loadSoldFromOrders()
     const response = await getAllSanPham()
-    homeBackendProducts.value = Array.isArray(response?.data) ? response.data : []
+    const rawProducts = Array.isArray(response?.data) ? response.data : []
+    const withCampaignPrice = await Promise.all(rawProducts.map(async (item) => {
+      const variants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
+      if (!variants.length) return item
+      const pricedVariants = await applyCampaignPriceToVariants(variants, item.id)
+      return {
+        ...item,
+        sanPhamChiTiets: pricedVariants,
+      }
+    }))
+
+    homeBackendProducts.value = withCampaignPrice
     if (homeBackendProducts.value.length) {
       const backendProductsMapped = homeBackendProducts.value
         .filter((item) => isBackendProductActive(item))
         .map((item, index) => mapBackendProductToHomeCard(item, index))
         .filter((item) => Number.isFinite(item.id) && item.id > 0)
-      
-      // Add static products 12-20 that aren't already in backend
-      const existingIds = new Set(backendProductsMapped.map(p => Number(p.id)))
-      const staticProductsToAdd = allProducts.filter(p => p.id >= 12 && p.id <= 20 && !existingIds.has(p.id))
-      
-      products.value = [...backendProductsMapped, ...staticProductsToAdd]
+
+      products.value = backendProductsMapped.filter((item) => item.price > 0)
     }
   } catch {
     homeBackendProducts.value = []
-    products.value = allProducts
+    products.value = []
   }
 }
 
@@ -381,19 +934,16 @@ const getQuickProductCode = (product) => {
 }
 
 const QUICK_SIZES = ["S", "M", "L", "XL"]
-const QUICK_PALETTES = [
-  ["#a95d4e", "#111827", "#e6e0d4"],
-  ["#7b3f2d", "#0f172a", "#d1c5ae"],
-  ["#6f4f37", "#111111", "#d8d0c2"]
-]
-
-const getQuickPalette = (id) => QUICK_PALETTES[Number(id || 0) % QUICK_PALETTES.length]
 
 const openModal = (product) => {
   selectedProduct.value = product
   quickQty.value = 1
-  quickSize.value = "S"
+  quickSize.value = Array.isArray(product?.sizes) && product.sizes.length ? product.sizes[0] : "S"
   quickColorIndex.value = 0
+  quickImageIndex.value = 0
+  window.requestAnimationFrame(() => {
+    selectQuickColor(0)
+  })
 }
 
 const openProductDetail = (productId) => {
@@ -407,6 +957,161 @@ const closeModal = () => {
   selectedProduct.value = null
 }
 
+const quickPreviewImages = computed(() => {
+  const product = selectedProduct.value
+  if (!product) return []
+
+  const candidates = []
+
+  if (Array.isArray(product.images)) {
+    candidates.push(...product.images.map((img) => String(img || '').trim()).filter(Boolean))
+  }
+
+  // Include all static color variant images for this product
+  const code = getQuickProductCode(product)
+  const staticImages = code && staticQuickImagesByCode[code] ? staticQuickImagesByCode[code] : []
+  if (staticImages.length) {
+    candidates.push(...staticImages.map((img) => String(img || '').trim()).filter(Boolean))
+  }
+
+  if (Array.isArray(product.colors) && product.colors.length) {
+    for (const color of product.colors) {
+      const selectedColorName = String(color?.name || '').trim()
+      if (!selectedColorName) continue
+      const variant = findVariantFromQuickSelection(product, selectedColorName, quickSize.value)
+      const colorImage = resolveQuickVariantImage(product, variant, selectedColorName)
+      if (colorImage) {
+        candidates.push(colorImage)
+      }
+      // Always try fallback per color to ensure gallery has images for every color
+      const fbImg = fallbackImageForVariant({
+        id: product.id,
+        maSanPham: code,
+        tenSanPham: product.name,
+        tenMauSac: selectedColorName,
+      })
+      if (fbImg) candidates.push(fbImg)
+    }
+  }
+
+  if (product?.img) candidates.push(String(product.img))
+
+  return [...new Set(candidates.map((img) => String(img || '').trim()).filter(Boolean))]
+})
+
+const quickActiveImage = computed(() => {
+  const images = quickPreviewImages.value
+  if (!images.length) return selectedProduct.value?.img || ''
+  const safeIndex = ((quickImageIndex.value % images.length) + images.length) % images.length
+  return images[safeIndex]
+})
+
+const triggerQuickImageAnimation = () => {
+  quickImageAnimating.value = false
+  window.requestAnimationFrame(() => {
+    quickImageAnimating.value = true
+  })
+}
+
+const syncQuickColorWithImage = () => {
+  const product = selectedProduct.value
+  if (!product || !Array.isArray(product.colors) || !product.colors.length) return
+  const currentImage = quickActiveImage.value
+  if (!currentImage) return
+
+  const matchedIndex = product.colors.findIndex((color) => {
+    const selectedColorName = String(color?.name || '').trim()
+    if (!selectedColorName) return false
+    const variant = findVariantFromQuickSelection(product, selectedColorName, quickSize.value)
+    const image = resolveQuickVariantImage(product, variant, selectedColorName)
+    return isSameImage(image, currentImage)
+  })
+
+  if (matchedIndex >= 0) {
+    quickColorIndex.value = matchedIndex
+    return
+  }
+
+  const imageIndex = quickPreviewImages.value.findIndex((img) => isSameImage(img, currentImage))
+  if (imageIndex >= 0 && imageIndex < product.colors.length) {
+    quickColorIndex.value = imageIndex
+  }
+}
+
+const quickPrevImage = () => {
+  const total = quickPreviewImages.value.length
+  if (total <= 1) return
+  quickImageIndex.value = (quickImageIndex.value - 1 + total) % total
+  syncQuickColorWithImage()
+  triggerQuickImageAnimation()
+}
+
+const quickNextImage = () => {
+  const total = quickPreviewImages.value.length
+  if (total <= 1) return
+  quickImageIndex.value = (quickImageIndex.value + 1) % total
+  syncQuickColorWithImage()
+  triggerQuickImageAnimation()
+}
+
+const selectQuickColor = (index) => {
+  quickColorIndex.value = index
+  const product = selectedProduct.value
+  if (!product) return
+
+  const selectedColorName = String(product?.colors?.[index]?.name || '').trim()
+  if (!selectedColorName) {
+    if (index >= 0 && index < quickPreviewImages.value.length) {
+      quickImageIndex.value = index
+      triggerQuickImageAnimation()
+    }
+    return
+  }
+  const variant = findVariantFromQuickSelection(product, selectedColorName, quickSize.value)
+  let colorImage = resolveQuickVariantImage(product, variant, selectedColorName)
+  // If resolveQuickVariantImage returned the generic product image, try fallback per color
+  if (!colorImage || isSameImage(colorImage, product?.img)) {
+    const fbImg = fallbackImageForVariant({
+      id: product.id,
+      maSanPham: getQuickProductCode(product),
+      tenSanPham: product.name,
+      tenMauSac: selectedColorName,
+    })
+    if (fbImg) colorImage = fbImg
+  }
+  if (!colorImage) {
+    if (index >= 0 && index < quickPreviewImages.value.length) {
+      quickImageIndex.value = index
+      triggerQuickImageAnimation()
+    }
+    return
+  }
+
+  const imageIndex = quickPreviewImages.value.findIndex((img) => isSameImage(img, colorImage))
+  if (imageIndex >= 0) {
+    quickImageIndex.value = imageIndex
+    triggerQuickImageAnimation()
+    return
+  }
+
+  if (index >= 0 && index < quickPreviewImages.value.length) {
+    quickImageIndex.value = index
+    triggerQuickImageAnimation()
+  }
+}
+
+watch(quickPreviewImages, (images) => {
+  if (!images.length) {
+    quickImageIndex.value = 0
+    return
+  }
+  if (quickImageIndex.value >= images.length) quickImageIndex.value = 0
+})
+
+watch(quickImageIndex, () => {
+  syncQuickColorWithImage()
+})
+
 const quickDecrease = () => {
   quickQty.value = Math.max(1, quickQty.value - 1)
 }
@@ -415,28 +1120,191 @@ const quickIncrease = () => {
   quickQty.value += 1
 }
 
+const isSameColor = (left = '', right = '') => {
+  const normalize = (value = '') => String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+
+  return normalize(left) === normalize(right)
+}
+
+const findVariantFromQuickSelection = (product, selectedColorName, selectedSizeName) => {
+  const variants = Array.isArray(product?.variants) ? product.variants : []
+  if (!variants.length) return null
+
+  const exact = variants.find((variant) => {
+    const variantColor = String(variant?.mauSac?.tenMau || variant?.mauSac?.tenMauSac || variant?.mauSac?.name || variant?.tenMau || variant?.tenMauSac || '').trim()
+    const variantSize = String(variant?.kichThuoc?.tenKichThuoc || variant?.kichThuoc?.name || variant?.tenKichThuoc || variant?.size || '').trim()
+    const sameColor = !selectedColorName || isSameColor(variantColor, selectedColorName)
+    const sameSize = !selectedSizeName || variantSize === selectedSizeName
+    return sameColor && sameSize
+  })
+  if (exact) return exact
+
+  return variants.find((variant) => {
+    const variantSize = String(variant?.kichThuoc?.tenKichThuoc || variant?.kichThuoc?.name || variant?.tenKichThuoc || variant?.size || '').trim()
+    return selectedSizeName && variantSize === selectedSizeName
+  }) || variants[0]
+}
+
+const resolveQuickVariantImage = (product, variant, selectedColorName = '') => {
+  const variantImage = pickImageValue([
+    variant,
+    variant?.anh,
+    variant?.hinhAnh,
+    variant?.image,
+    variant?.imageUrl,
+    variant?.duongDanAnh
+  ])
+  if (variantImage) return variantImage
+
+  if (Array.isArray(product?.colorImageEntries) && product.colorImageEntries.length) {
+    const byId = product.colorImageEntries.find((entry) => Number(entry?.colorId) === Number(variant?.mauSac?.id || 0))
+    if (byId?.image) return byId.image
+
+    const byName = product.colorImageEntries.find((entry) => isSameColor(entry?.colorName || '', selectedColorName))
+    if (byName?.image) return byName.image
+  }
+
+  if (selectedColorName && Array.isArray(product?.colors)) {
+    const idx = product.colors.findIndex((color) => isSameColor(color?.name || '', selectedColorName))
+    if (idx >= 0 && Array.isArray(product?.images) && product.images[idx]) {
+      return product.images[idx]
+    }
+  }
+
+  // Fallback: match color name to static image filenames by keyword
+  if (selectedColorName) {
+    const code = getQuickProductCode(product)
+    const staticImages = code && staticQuickImagesByCode[code] ? staticQuickImagesByCode[code] : []
+    if (staticImages.length) {
+      const normalizedColor = isSameColor.normalize
+        ? selectedColorName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+        : String(selectedColorName || '').toLowerCase().trim()
+      const keyword = colorKeywordMap[normalizedColor]
+        || Object.entries(colorKeywordMap).find(([k]) => normalizedColor.includes(k))?.[1]
+        || ''
+      if (keyword) {
+        const matched = staticImages.find((img) => String(img || '').toLowerCase().includes(keyword))
+        if (matched) return matched
+      }
+    }
+  }
+
+  return String(product?.images?.[0] || product?.img || '').trim() || fallbackImageFor(product?.id, getQuickProductCode(product), product?.name)
+}
+
 const quickAddToCart = () => {
   if (!selectedProduct.value?.id) return
-  addToCart(selectedProduct.value.id)
+
+  const selectedColorName = Array.isArray(selectedProduct.value.colors)
+    ? String(selectedProduct.value.colors[quickColorIndex.value]?.name || '').trim()
+    : ''
+  const selectedSizeName = String(quickSize.value || '').trim()
+  const selectedVariant = findVariantFromQuickSelection(selectedProduct.value, selectedColorName, selectedSizeName)
+
+  if (Array.isArray(selectedProduct.value.colors) && selectedProduct.value.colors.length > 0 && !selectedColorName) {
+    toast('Vui lòng chọn màu trước khi thêm vào giỏ')
+    return
+  }
+
+  if (Array.isArray(selectedProduct.value.sizes) && selectedProduct.value.sizes.length > 0 && !selectedSizeName) {
+    toast('Vui lòng chọn size trước khi thêm vào giỏ')
+    return
+  }
+
+  let variantImage = ''
+  try {
+    variantImage = resolveQuickVariantImage(selectedProduct.value, selectedVariant, selectedColorName)
+  } catch {
+    variantImage = selectedProduct.value?.img || ''
+  }
+  // Use fallbackImageForVariant only when no variant image was resolved
+  if (!variantImage) {
+    const fbImg = fallbackImageForVariant({
+      id: selectedProduct.value.id,
+      maSanPham: getQuickProductCode(selectedProduct.value),
+      tenSanPham: selectedProduct.value.name,
+      tenMauSac: selectedColorName,
+    })
+    variantImage = fbImg || selectedProduct.value?.img || ''
+  }
+  const cartKey = (selectedColorName || selectedSizeName)
+    ? `${selectedProduct.value.id}__${selectedColorName}__${selectedSizeName}`
+    : String(selectedProduct.value.id)
+
+  addToCart(cartKey, quickQty.value, {
+    image: variantImage,
+    name: selectedProduct.value.name,
+    color: selectedColorName,
+    size: selectedSizeName,
+    price: Number(selectedVariant?.giaBan || selectedVariant?.price || selectedProduct.value.price || 0),
+    actionLabel: 'Xem giỏ hàng'
+  })
+
+  const variantsObj = readCartVariantsObject()
+  variantsObj[cartKey] = {
+    color: selectedColorName,
+    size: selectedSizeName,
+    spctId: selectedVariant?.id || null,
+    image: variantImage
+  }
+  writeCartVariantsObject(variantsObj)
+
+  notifyCartUpdated()
+  closeModal()
 }
+
+const loadQuickPromoVouchers = async () => {
+  try {
+    const normalizeVoucher = (voucher) => ({
+      ...normalizeVoucherData(voucher),
+      id: voucher?.id ?? voucher?.phieuGiamGiaId ?? voucher?.maPhieuGiamGia ?? voucher?.maPhieu
+    })
+
+    let payload = []
+    try {
+      const response = await getActiveVouchers()
+      const data = response?.data
+      payload = Array.isArray(data) ? data : (Array.isArray(data?.content) ? data.content : [])
+      if (!payload.length) {
+        const fallbackResponse = await getAllVouchers()
+        const fallbackData = fallbackResponse?.data
+        payload = Array.isArray(fallbackData) ? fallbackData : (Array.isArray(fallbackData?.content) ? fallbackData.content : [])
+      }
+    } catch {
+      const response = await getAllVouchers()
+      const data = response?.data
+      payload = Array.isArray(data) ? data : (Array.isArray(data?.content) ? data.content : [])
+    }
+
+    quickVouchers.value = payload.map(normalizeVoucher).filter((voucher) => voucher.maPhieuGiamGia)
+  } catch {
+    quickVouchers.value = []
+  }
+}
+
+const quickPromoLines = computed(() => {
+  return quickVouchers.value.slice(0, 3).map((voucher) => {
+    const val = Number(voucher.giaTriGiamGia || 0)
+    const discountLabel = voucher.hinhThucGiam
+      ? `giảm ${val}%`
+      : `giảm ${val >= 1000 ? Math.round(val / 1000) + 'K' : val + 'đ'}`
+    return {
+      code: voucher.maPhieuGiamGia,
+      discountLabel,
+      minLabel: VND(voucher.hoaDonToiThieu || 0)
+    }
+  })
+})
 
 onUnmounted(() => {
   if (toastTimer) {
     clearTimeout(toastTimer)
     toastTimer = null
-  }
-})
-
-onMounted(() => {
-  // Get customer email from localStorage or auth context
-  try {
-    const authData = localStorage.getItem('authContext')
-    if (authData) {
-      const parsed = JSON.parse(authData)
-      customerEmail.value = parsed.email || ''
-    }
-  } catch (e) {
-    console.log('Could not load customer email')
   }
 })
 
@@ -448,170 +1316,135 @@ onMounted(() => {
 
 <SiteNav :cart-count="cartCount" @require-filter="filterBy" @require-anchor="handleNavAnchor" />
 
-<!-- Hero -->
-<main class="hero">
-<div class="container">
-<div class="hero-wrap">
-
-<div class="hero-card">
-<div class="hero-visual"></div>
-<div class="content">
-<button class="pill interactive-pill" @click="scrollToId('style-lab')">
-Ưu đãi theo mốc đơn • Freeship
-</button>
-
-<h1>
-Tủ đồ tối giản cho nam giới<br/>
-ưu tiên phom, chất liệu và độ bền mặc
-</h1>
-
-<div class="row">
-<button class="btn primary"
-@click="scrollToId('best')">
-Mua bán chạy
-</button>
-
-<button class="btn"
-@click="scrollToId('new')">
-Xem Hàng Mới Về
-</button>
-
-<button class="btn ghost"
-@click="scrollToId('outlet')">
-Vào Cửa Hàng
-</button>
-</div>
-
-<div class="row" style="margin-top:12px">
-<button class="pill interactive-pill" @click="toast('Hỗ trợ đổi size trong 7 ngày')">Đổi size nhanh</button>
-<button class="pill interactive-pill" @click="toast('Hỗ trợ COD toàn quốc')">COD toàn quốc</button>
-<button class="pill interactive-pill" @click="scrollToId('stores')">Hỗ trợ mỗi ngày</button>
-</div>
-
-</div>
-</div>
-
-<div class="hero-side">
-
-<div class="mini-card reveal" @click="scrollToId('new')">
-<span class="badge">NEW</span>
-<div class="bg"></div>
-<h3>Hàng Mới Về</h3>
-<p>Drop mới theo mùa, giữ tinh thần gọn và dễ phối.</p>
-<div style="margin-top:12px">
-<button class="btn"
-@click.stop="scrollToId('new')">
-Xem ngay →
-</button>
-</div>
-</div>
-
-<div class="mini-card reveal" @click="scrollToId('outlet')">
-<span class="badge">CỬA HÀNG</span>
-<div class="bg"></div>
-<h3>Giá tốt</h3>
-<p>Khung giá rõ ràng cho các món nên có trong tủ đồ hằng ngày.</p>
-<div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap">
-<button class="pill interactive-pill" @click.stop="applyPriceTier(199000)">199K</button>
-<button class="pill interactive-pill" @click.stop="applyPriceTier(299000)">299K</button>
-<button class="pill interactive-pill" @click.stop="applyPriceTier(399000)">399K</button>
-</div>
-<div style="margin-top:12px">
-<button class="btn"
-@click.stop="scrollToId('outlet')">
-Vào Cửa Hàng →
-</button>
-</div>
-</div>
-
-</div>
-
-</div>
-</div>
-</main>
+<!-- Hero Banner -->
+<section class="dw-hero">
+  <div class="container">
+    <div class="dw-hero__viewport">
+      <div class="dw-hero__track">
+        <Transition :name="heroTransitionName" mode="out-in">
+          <article v-if="activeHeroSlide" :key="activeHeroSlide.id" class="dw-hero__slide is-active">
+            <div class="dw-hero__content">
+              <div class="dw-hero__copy">
+                <span class="dw-hero__tag">{{ activeHeroSlide.tag }}</span>
+                <h1>
+                  <template v-if="activeHeroSlide.titleMain && activeHeroSlide.titleDrop">
+                    <span class="dw-hero__title-main">{{ activeHeroSlide.titleMain }}</span>
+                    <span class="dw-hero__title-drop">{{ activeHeroSlide.titleDrop }}</span>
+                  </template>
+                  <template v-else>
+                    {{ activeHeroSlide.title }}
+                  </template>
+                </h1>
+                <p>{{ activeHeroSlide.subtitle }}</p>
+                <button class="dw-hero__cta" type="button" @click="handleHeroAction(activeHeroSlide)">Khám phá ngay →</button>
+              </div>
+              <div class="dw-hero__media" aria-hidden="true">
+                <div class="dw-hero__main-tile">
+                  <img :src="activeHeroSlide.heroMain" :alt="activeHeroSlide.title" class="dw-hero__img" />
+                </div>
+                <div class="dw-hero__side-tiles">
+                  <img :src="activeHeroSlide.heroSideTop" :alt="`${activeHeroSlide.title} top`" class="dw-hero__img dw-hero__img--side" />
+                  <img :src="activeHeroSlide.heroSideBottom" :alt="`${activeHeroSlide.title} bottom`" class="dw-hero__img dw-hero__img--side" />
+                </div>
+              </div>
+            </div>
+          </article>
+        </Transition>
+        <button class="dw-hero__arrow dw-hero__arrow--prev" type="button" @click="prevHeroSlide" aria-label="Banner trước">
+          ←
+        </button>
+        <button class="dw-hero__arrow dw-hero__arrow--next" type="button" @click="nextHeroSlide" aria-label="Banner tiếp theo">
+          →
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="container dw-hero-benefits" aria-label="Lợi ích mua sắm">
+    <article v-for="item in heroBenefits" :key="item.title" class="dw-hero-benefit-card">
+      <span class="dw-hero-benefit-icon">
+        <component :is="item.icon" :size="18" />
+      </span>
+      <div>
+        <h3>{{ item.title }}</h3>
+        <p>{{ item.text }}</p>
+      </div>
+    </article>
+  </div>
+</section>
 
 <!-- Categories -->
 <section id="category">
 <div class="container">
 
-<div class="section-head">
-<div>
-<h2>Danh mục nổi bật</h2>
-</div>
-<button class="btn" @click="openShop">
-Xem tất cả →
-</button>
-</div>
+<h2 class="dw-heading">Danh mục nổi bật</h2>
 
-<div class="tiles featured-cats">
+<div class="dw-category-grid">
+  <button class="dw-category-card" type="button" @click="focusCategory('Hoodie')">
+    <img :src="img20" alt="Hoodie" />
+    <span class="dw-category-label">Hoodie</span>
+  </button>
 
-<a class="tile" @click.prevent="filterBy('Hoodie')">
-  <img :src="img20" class="cat-img">
-  <div class="tile-text">
-    <h3>Hoodie</h3>
-    <span>Luxury • lộng lẫy</span>
+  <button class="dw-category-card" type="button" @click="focusCategory('Bomber')">
+    <img :src="img13" alt="Bomber" />
+    <span class="dw-category-label">Bomber</span>
+  </button>
+
+  <button class="dw-category-card" type="button" @click="focusCategory('Coach')">
+    <img :src="img17" alt="Coach" />
+    <span class="dw-category-label">Coach</span>
+  </button>
+</div>
+</div>
+</section>
+
+<!-- Voucher / Promo Section -->
+<section id="voucher-promo" class="voucher-section">
+  <div class="container">
+    <h2 class="dw-heading">Ưu đãi dành cho bạn</h2>
+    <div class="voucher-cards" v-if="quickVouchers.length">
+      <div v-for="voucher in quickVouchers.slice(0, 4)" :key="voucher.maPhieuGiamGia" class="voucher-card">
+        <div class="voucher-left">
+          <div class="voucher-discount">
+            {{ voucher.hinhThucGiam ? `${Number(voucher.giaTriGiamGia || 0)}%` : `${Number(voucher.giaTriGiamGia || 0) >= 1000 ? Math.round(Number(voucher.giaTriGiamGia || 0) / 1000) + 'K' : Number(voucher.giaTriGiamGia || 0) + 'đ'}` }}
+          </div>
+          <div class="voucher-label">GIẢM</div>
+        </div>
+        <div class="voucher-right">
+          <div class="voucher-code">{{ voucher.maPhieuGiamGia }}</div>
+          <div class="voucher-condition">Đơn từ {{ VND(voucher.hoaDonToiThieu || 0) }}</div>
+        </div>
+      </div>
+    </div>
+    <div v-else class="voucher-empty">
+      <p>Hiện chưa có ưu đãi khả dụng. Hãy quay lại sau nhé!</p>
+    </div>
   </div>
-</a>
-
-<a class="tile" @click.prevent="filterBy('Bomber')">
-  <img :src="img13" class="cat-img">
-  <div class="tile-text">
-    <h3>Bomber</h3>
-    <span>Embroidered • đẳng cấp</span>
-  </div>
-</a>
-
-<a class="tile" @click.prevent="filterBy('Coach')">
-  <img :src="img17" class="cat-img">
-  <div class="tile-text">
-    <h3>Coach Jacket</h3>
-    <span>Tiger Stripe • mạnh mẽ</span>
-  </div>
-</a>
-
-</div>
-</div>
 </section>
 
 <!-- Best sellers -->
 <section id="best" :class="{ 'section-pulse': sectionPulse === 'best' }">
 <div class="container">
 
-<div class="section-head">
-<div>
-<h2>Sản phẩm bán chạy</h2>
-</div>
-
-<div style="display:flex; gap:10px; flex-wrap:wrap">
-
-<button class="btn" @click="clearFilter()">
-Tất cả
-</button>
-
-<button class="btn" @click="filterBy('Hoodie')">
-Hoodie
-</button>
-
-<button class="btn" @click="filterBy('Bomber')">
-Bomber
-</button>
-
-<button class="btn" @click="filterBy('Coach')">
-Coach
-</button>
-
+<div class="dw-section-header">
+<h2 class="dw-heading">Sản phẩm bán chạy</h2>
+<div id="sanpham-nav" class="dw-filters">
+<button :class="['dw-filter', { active: !activeFilter }]" @click="clearFilter()">Tất cả</button>
+<button :class="['dw-filter', { active: activeFilter === 'Hoodie' }]" @click="focusCategory('Hoodie')">Hoodie</button>
+<button :class="['dw-filter', { active: activeFilter === 'Bomber' }]" @click="focusCategory('Bomber')">Bomber</button>
+<button :class="['dw-filter', { active: activeFilter === 'Coach' }]" @click="focusCategory('Coach')">Coach</button>
 </div>
 </div>
 
 <div class="cards">
 <article
-v-for="p in filteredBest.slice(0, 8)"
+v-for="(p, index) in filteredBest"
 :key="p.id"
 class="card">
 
 <div class="thumb">
   <img :src="p.img" alt="" />
-  <span class="thumb-badge">{{ p.tag }}</span>
+  <span v-if="index < 3" class="top-seller-badge">TOP #{{ index + 1 }}</span>
+  <span v-if="p.tag" class="thumb-badge">{{ p.tag }}</span>
   <div class="overlay">
     <button class="overlay-icon-btn" type="button" @click.stop="openModal(p)" aria-label="Xem nhanh">
       <Eye :size="16" />
@@ -625,23 +1458,18 @@ class="card">
 <div class="body">
 <div class="title">{{ p.name }}</div>
 <div class="meta">
-<span>{{ p.cat }}</span>
+<span class="cat-label">{{ p.cat }}</span>
 <span class="price">
 <b>{{ VND(p.price) }}</b>
-<span v-if="p.old"
-class="strike">
-{{ VND(p.old) }}
-</span>
+<span v-if="p.old" class="strike">{{ VND(p.old) }}</span>
+<span v-if="p.old" class="discount-badge">-{{ Math.round(100 - (p.price / p.old) * 100) }}%</span>
 </span>
 </div>
 </div>
 
 <div class="footer">
-<span class="chip">{{ p.tag }}</span>
-<button class="btn"
-@click="addToCart(p.id)">
-Thêm giỏ
-</button>
+<span v-if="p.tag" class="chip">{{ p.tag }}</span>
+<span class="sold-count">Đã bán {{ p.sold > 999 ? (p.sold / 1000).toFixed(1) + 'k' : (p.sold || 0) }}</span>
 </div>
 
 </article>
@@ -650,212 +1478,6 @@ Thêm giỏ
 </div>
 </section>
 
-<!-- Style Lab -->
-<section id="style-lab" class="style-lab">
-  <div class="container">
-    <div class="style-lab-wrap reveal">
-      <div>
-        <div class="pill">Style Lab</div>
-        <h3>Chọn mood, nhận gợi ý outfit trong 1 chạm</h3>
-        <p>{{ moodDescription }}</p>
-      </div>
-
-      <div class="style-moods">
-        <button class="btn" :class="{ primary: activeMood === 'Minimal' }" @click="applyMood('Minimal')">Minimal</button>
-        <button class="btn" :class="{ primary: activeMood === 'Street' }" @click="applyMood('Street')">Street</button>
-        <button class="btn" :class="{ primary: activeMood === 'Office' }" @click="applyMood('Office')">Office</button>
-      </div>
-
-      <div class="style-lab-actions">
-        <button class="btn primary" @click="copyVoucher('STYLELAB15')">Sao chép mã: STYLELAB15</button>
-        <button class="btn" @click="openShop">Vào cửa hàng đầy đủ</button>
-      </div>
-    </div>
-  </div>
-</section>
-
-
-<!-- New arrivals -->
-<section id="new">
-  <div class="container">
-    <div class="section-head">
-      <div>
-        <h2>Hàng Mới Về</h2>
-      </div>
-      <button class="btn" @click="openShop">Xem thêm →</button>
-    </div>
-
-    <div class="cards">
-      <article
-        v-for="p in products.filter(x => [7,8,9,10].includes(x.id))"
-        :key="p.id"
-        class="card"
-      >
-        <div class="thumb">
-          <img :src="p.img" alt="" />
-          <span class="thumb-badge">{{ p.tag }}</span>
-          <div class="overlay">
-            <button class="overlay-icon-btn" type="button" @click.stop="openModal(p)" aria-label="Xem nhanh">
-              <Eye :size="16" />
-            </button>
-            <button class="overlay-icon-btn" type="button" @click.stop="openProductDetail(p.id)" aria-label="Mở chi tiết sản phẩm">
-              <ShoppingCart :size="16" />
-            </button>
-          </div>
-        </div>
-        <div class="body">
-          <div class="title">{{ p.name }}</div>
-          <div class="meta">
-            <span>{{ p.cat }}</span>
-            <span class="price">
-              <b>{{ VND(p.price) }}</b>
-              <span v-if="p.old" class="strike">
-                {{ VND(p.old) }}
-              </span>
-            </span>
-          </div>
-        </div>
-        <div class="footer">
-          <span class="chip">{{ p.tag }}</span>
-          <button class="btn" @click="addToCart(p.id)">
-            Thêm giỏ
-          </button>
-        </div>
-      </article>
-    </div>
-  </div>
-</section>
-
-<!-- Outlet -->
-<section id="outlet" :class="{ 'section-pulse': sectionPulse === 'outlet' }">
-  <div class="container">
-    <div class="section-head">
-      <div>
-        <h2>Cửa Hàng</h2>
-      </div>
-      <div class="tier-row">
-        <button
-          v-for="tier in PRICE_TIERS"
-          :key="tier.value"
-          class="pill interactive-pill"
-          :class="{ active: selectedPriceTier === tier.value }"
-          @click="applyPriceTier(tier.value)"
-        >
-          {{ tier.label }}
-        </button>
-        <button v-if="selectedPriceTier" class="pill interactive-pill" @click="clearPriceTier">
-          Bỏ lọc
-        </button>
-      </div>
-    </div>
-
-    <div class="cards">
-      <article
-        v-for="p in filteredOutletProducts"
-        :key="p.id"
-        class="card"
-      >
-        <div class="thumb">
-          <img :src="p.img" alt="" />
-          <span class="thumb-badge">{{ p.tag }}</span>
-          <div class="overlay">
-            <button class="overlay-icon-btn" type="button" @click.stop="openModal(p)" aria-label="Xem nhanh">
-              <Eye :size="16" />
-            </button>
-            <button class="overlay-icon-btn" type="button" @click.stop="openProductDetail(p.id)" aria-label="Mở chi tiết sản phẩm">
-              <ShoppingCart :size="16" />
-            </button>
-          </div>
-        </div>
-        <div class="body">
-          <div class="title">{{ p.name }}</div>
-          <div class="meta">
-            <span>{{ p.cat }}</span>
-            <span class="price">
-              <b>{{ VND(p.price) }}</b>
-              <span v-if="p.old" class="strike">
-                {{ VND(p.old) }}
-              </span>
-            </span>
-          </div>
-        </div>
-        <div class="footer">
-          <span class="chip">{{ p.tag }}</span>
-          <button class="btn" @click="addToCart(p.id)">
-            Thêm giỏ
-          </button>
-        </div>
-      </article>
-    </div>
-  </div>
-</section>
-
-<!-- Stores + Membership -->
-<section id="stores">
-  <div class="container">
-    <div class="split">
-
-      <div class="panel">
-        <h3>Hệ thống cửa hàng</h3>
-        <div style="margin-top:12px; display:grid; gap:10px">
-          <div class="panel" style="padding:12px">
-            <b>TP. HCM</b>
-            <div style="color:var(--muted); font-size:13px">
-              Quận 1 • Quận 3 • Quận 7…
-            </div>
-          </div>
-          <div class="panel" style="padding:12px">
-            <b>Hà Nội</b>
-            <div style="color:var(--muted); font-size:13px">
-              Cầu Giấy / Đống Đa…
-            </div>
-          </div>
-          <div style="display:flex; gap:10px; flex-wrap:wrap">
-            <button class="btn"
-              @click="toast('Demo: trang store locator')">
-              Xem tất cả cửa hàng
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel" id="member">
-        <h3>Membership & Newsletter</h3>
-
-        <div class="form">
-          <input v-model="email"
-                 type="email"
-                 placeholder="Email của anh..." />
-          <button class="btn primary"
-                  @click="subscribe">
-            Đăng ký
-          </button>
-        </div>
-
-        <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap">
-          <span class="pill">Ưu đãi thành viên</span>
-          <span class="pill">Thông báo drops</span>
-          <span class="pill">Early access</span>
-        </div>
-
-        <div class="panel" style="margin-top:14px">
-          <h3 style="margin:0 0 6px">Hỗ trợ nhanh</h3>
-          <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap">
-            <button class="btn"
-              @click="toast('Demo: mở chat')">
-              Chat ngay
-            </button>
-            <button class="btn ghost"
-              @click="toast('Demo: hotline')">
-              Gọi hotline : 0123.456.789
-            </button>
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </div>
-</section>
 
 <CustomerFooter />
 
@@ -873,9 +1495,9 @@ Thêm giỏ
     <button class="quick-close" @click="closeModal">✕</button>
 
     <div class="quick-image-side">
-      <img :src="selectedProduct.img" class="quick-image" />
-      <button class="quick-nav quick-prev" type="button" aria-label="Ảnh trước">‹</button>
-      <button class="quick-nav quick-next" type="button" aria-label="Ảnh sau">›</button>
+      <img :key="quickActiveImage" :src="quickActiveImage" class="quick-image" :class="{ 'is-switching': quickImageAnimating }" />
+      <button v-if="quickPreviewImages.length > 1" class="quick-nav quick-prev" type="button" aria-label="Ảnh trước" @click="quickPrevImage">‹</button>
+      <button v-if="quickPreviewImages.length > 1" class="quick-nav quick-next" type="button" aria-label="Ảnh sau" @click="quickNextImage">›</button>
     </div>
 
     <div class="quick-info-side">
@@ -884,30 +1506,30 @@ Thêm giỏ
 
       <div class="quick-price">{{ VND(selectedProduct.price) }}</div>
 
-      <div class="quick-row">
+      <div v-if="Array.isArray(selectedProduct.colors) && selectedProduct.colors.length >= 1" class="quick-row">
         <span>Màu sắc:</span>
-        <b>Đỏ-{{ String(selectedProduct.id).padStart(3, '0') }}</b>
+        <b>{{ selectedProduct.colors[quickColorIndex]?.name || '' }}</b>
       </div>
-      <div class="quick-swatches">
+      <div v-if="Array.isArray(selectedProduct.colors) && selectedProduct.colors.length >= 1" class="quick-swatches">
         <button
-          v-for="(color, index) in getQuickPalette(selectedProduct.id)"
-          :key="`${selectedProduct.id}-${color}`"
+          v-for="(color, index) in selectedProduct.colors"
+          :key="`${selectedProduct.id}-${color.name}`"
           class="quick-swatch"
           :class="{ active: quickColorIndex === index }"
-          :style="{ background: color }"
-          @click="quickColorIndex = index"
+          :style="{ background: color.hex }"
+          @click="selectQuickColor(index)"
         ></button>
       </div>
 
       <div class="quick-row"><span>Kích thước:</span> <b>{{ quickSize }}</b></div>
       <div class="quick-sizes">
         <button
-          v-for="size in QUICK_SIZES"
+          v-for="size in (Array.isArray(selectedProduct.sizes) && selectedProduct.sizes.length ? selectedProduct.sizes : QUICK_SIZES)"
           :key="size"
           type="button"
           class="quick-size"
           :class="{ active: quickSize === size }"
-          @click="quickSize = size"
+          @click="quickSize = size; selectQuickColor(quickColorIndex)"
         >
           {{ size }}
         </button>
@@ -916,9 +1538,10 @@ Thêm giỏ
       <div class="quick-promo-box">
         <div class="quick-promo-title">ƯU ĐÃI ONLINE</div>
         <ul>
-          <li>Nhập mã <b>PGG001</b> giảm 20K đơn từ 299K</li>
-          <li>Nhập mã <b>PGG002</b> giảm 50K đơn từ 699K</li>
-          <li>Nhập mã <b>PGG003</b> giảm 80K đơn từ 999K</li>
+          <li v-for="line in quickPromoLines" :key="line.code">
+            Nhập mã <b>{{ line.code }}</b> {{ line.discountLabel }} đơn từ {{ line.minLabel }}
+          </li>
+          <li v-if="!quickPromoLines.length" class="quick-promo-empty">Hiện chưa có ưu đãi online khả dụng.</li>
         </ul>
       </div>
 

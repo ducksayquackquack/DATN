@@ -329,17 +329,17 @@ const login = async () => {
 }
 
 .brand-d-icon {
-  width: 1.06em;
-  height: 1.06em;
+  width: 1.4em;
+  height: 1.4em;
   margin-right: -0.04em;
+  margin-top: -0.15em;
   object-fit: contain;
   filter:
     sepia(1)
-    saturate(14)
+    saturate(20)
     hue-rotate(326deg)
-    brightness(0.98)
-    contrast(1.16)
-    drop-shadow(0 3px 8px rgba(197, 22, 45, 0.22));
+    brightness(1.3)
+    contrast(1.1);
 }
 
 .brand-rest {

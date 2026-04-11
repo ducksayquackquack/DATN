@@ -1,6 +1,6 @@
 ﻿<script setup>
 import { computed, onMounted, ref, watch } from "vue"
-import { useRouter } from "vue-router"
+import { useRoute, useRouter } from "vue-router"
 import logo from "../../assets/img/logo/new logo.png?url"
 import CustomerFooter from "../../components/customer/CustomerFooter.vue"
 import momo from "../../assets/img/payments/momo.png?url"
@@ -12,22 +12,64 @@ import { createVnpayPayment } from "../../services/vnpayService"
 import { createBackendCheckoutOrder, loadCheckoutContext } from "../../services/checkoutOrderService"
 import { quoteShippingFeeAll } from "../../services/shippingQuoteService"
 import { getAllSanPham } from "../../services/sanPhamService"
+import { applyCampaignPriceToVariants } from "../../services/campaignPricingService"
 import {
   calculateVoucherDiscount,
+  findBestVoucher,
   getAllVouchers,
   getActiveVouchers,
-  isVoucherApplicable
+  isVoucherApplicable,
+  normalizeVoucherData
 } from "../../services/khuyenMaiService"
 import { useToast } from "../../composables/useToast"
+import { useConfirm } from "../../composables/useConfirm"
 import {
   readCheckoutCartArray,
   writeCheckoutCartArray,
   clearCheckoutCartArray,
   clearCartObject
 } from "../../utils/cartStorage"
+import { cleanLegacyVoucherStorage } from "../../utils/voucherSelectionStorage"
+import { getProductImageConfig, getProductImageOverride } from "../../utils/productImageOverrides"
+import { fallbackImageForVariant } from "../../utils/productImageFallback"
+import img1 from "../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
+import img2 from "../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
+import img3 from "../../assets/img/Jackets/bomber/bomber-gia-da.jpg?url"
+import img4 from "../../assets/img/Jackets/bomber/bomber-nhe-cotton.jpg?url"
+import img5 from "../../assets/img/Jackets/hoodie/hoodie-dang-hop.jpg?url"
+import img6 from "../../assets/img/Jackets/hoodie/hoodie-in-hinh.jpg?url"
+import img7 from "../../assets/img/Jackets/hoodie/hoodie-keo-khoa.jpg?url"
+import img8 from "../../assets/img/Jackets/coach/coach-cach-nhiet.jpg?url"
+import img9 from "../../assets/img/Jackets/coach/coach-da-asos.jpg?url"
+import img10 from "../../assets/img/Jackets/coach/coach-gia-da.jpg?url"
+import img11 from "../../assets/img/Jackets/coach/coach-long-cuu.jpg?url"
+import img12 from "../../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-black.PNG?url"
+import img13 from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-black.PNG?url"
+import img14 from "../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-black.PNG?url"
+import img15 from "../../assets/img/Jackets/coach/coach-leopard/coach-leopard.PNG?url"
+import img16 from "../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-black.PNG?url"
+import img17 from "../../assets/img/Jackets/coach/coach-tiger-stripe/coach-tiger-stripe.PNG?url"
+import img18 from "../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-black.PNG?url"
+import img19 from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-blue.PNG?url"
+import img20 from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-black.PNG?url"
+import img12b from "../../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-blue.PNG?url"
+import img13b from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-green.PNG?url"
+import img13c from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-brown.PNG?url"
+import img13d from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-red.PNG?url"
+import img13e from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-white.PNG?url"
+import img14b from "../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-blue.PNG?url"
+import img14c from "../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-green.PNG?url"
+import img16b from "../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-red.PNG?url"
+import img16c from "../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-white.PNG?url"
+import img18b from "../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-white.PNG?url"
+import img19b from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-white.PNG?url"
+import img20b from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-gray.PNG?url"
+import img20c from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-red.PNG?url"
 
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
+const { askConfirm } = useConfirm()
 const year = new Date().getFullYear()
 
 const submitting = ref(false)
@@ -36,7 +78,6 @@ const errorMsg = ref("")
 const voucherCode = ref("")
 const voucherHint = ref("")
 const vouchers = ref([])
-const selectedVoucher = ref(null)
 const loadingVouchers = ref(false)
 const paymentMethod = ref("COD")
 const vnpayChannel = ref("AUTO")
@@ -56,10 +97,127 @@ const restoreCheckoutPaymentState = () => {
   } catch {}
 }
 const checkoutVoucherDrawerOpen = ref(false)
+const activeVoucherItemKey = ref("")
+const itemVoucherSelections = ref({})
+const selectedOrderVoucher = ref(null)
+const autoBestVoucherSignature = ref("")
+const CHECKOUT_ITEM_VOUCHER_SELECTIONS_KEY = "checkoutItemVoucherSelections"
+const CHECKOUT_PENDING_ITEM_VOUCHERS_KEY = "checkoutPendingItemVoucherSelections"
+const ORDER_ITEM_VOUCHER_SNAPSHOTS_KEY = "orderItemVoucherSnapshots"
 
 const cart = ref(readCheckoutCartArray())
 const customerId = ref(null)
 const variantCatalog = ref({})
+
+// ── Name/code-based image fallback (mirrors HomeView + CartPage) ──
+const nameFallbackRules = [
+  { keywords: ["bomber", "da", "lon"], image: img1 },
+  { keywords: ["bomber", "dang", "lung"], image: img2 },
+  { keywords: ["bomber", "gia", "da"], image: img3 },
+  { keywords: ["bomber", "cotton"], image: img4 },
+  { keywords: ["hoodie", "dang", "hop"], image: img5 },
+  { keywords: ["hoodie", "in", "hinh"], image: img6 },
+  { keywords: ["hoodie", "keo", "khoa"], image: img7 },
+  { keywords: ["coach", "cach", "nhiet"], image: img8 },
+  { keywords: ["coach", "da", "asos"], image: img9 },
+  { keywords: ["coach", "gia", "da"], image: img10 },
+  { keywords: ["coach", "long", "cuu"], image: img11 },
+  { keywords: ["astronaut"], image: img12 },
+  { keywords: ["embroidered", "fuzzy"], image: img13 },
+  { keywords: ["windbreaker"], image: img14 },
+  { keywords: ["leopard"], image: img15 },
+  { keywords: ["longsleeve"], image: img16 },
+  { keywords: ["tiger", "stripe"], image: img17 },
+  { keywords: ["camo"], image: img18 },
+  { keywords: ["zip", "boxy"], image: img19 },
+  { keywords: ["zip", "silk"], image: img20 },
+]
+const codeFallbackMap = {
+  SP001: img1, SP002: img2, SP003: img3, SP004: img4, SP005: img5,
+  SP006: img6, SP007: img7, SP008: img8, SP009: img9, SP010: img10,
+  SP011: img11, SP012: img12, SP013: img13, SP014: img14, SP015: img15,
+  SP016: img16, SP017: img17, SP018: img18, SP019: img19, SP020: img20,
+}
+const getNameFallbackImage = (name = "") => {
+  const normalized = String(name || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()
+  if (!normalized) return ""
+  const found = nameFallbackRules.find((rule) => rule.keywords.every((kw) => normalized.includes(kw)))
+  return found?.image || ""
+}
+const getCodeFallbackImage = (code = "") => {
+  const upper = String(code || "").trim().toUpperCase()
+  return codeFallbackMap[upper] || ""
+}
+
+const colorImageFallbacks = {
+  2: { 'Đỏ': img2, 'Do': img2, 'Xanh dương': img3, 'Xanh Duong': img3 },
+  9: { 'Kem': img9, 'Nâu': img10, 'Nau': img10 },
+  12: { 'Đen': img12, 'Xanh dương': img12b },
+  13: { 'Đen': img13, 'Xanh lá': img13b, 'Nâu': img13c, 'Đỏ': img13d, 'Trắng': img13e },
+  14: { 'Đen': img14, 'Xanh dương': img14b, 'Xanh lá': img14c },
+  16: { 'Đen': img16, 'Đỏ': img16b, 'Trắng': img16c },
+  18: { 'Đen': img18, 'Trắng': img18b },
+  19: { 'Xanh dương': img19, 'Trắng': img19b },
+  20: { 'Đen': img20, 'Xám': img20b, 'Đỏ': img20c },
+}
+
+const resolveColorImage = (productId, color) => {
+  const map = colorImageFallbacks[Number(productId)]
+  if (map && color && map[color]) return map[color]
+  return ''
+}
+
+const normalizeVariantToken = (value) => {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+}
+
+const normalizeImage = (value) => String(value || "").trim()
+
+const resolveVariantBackendImage = (variant) => {
+  return normalizeImage(
+    variant?.image
+    || variant?.anh
+    || variant?.hinhAnh
+    || variant?.mauSac?.anh
+    || ""
+  )
+}
+
+const resolveProductImage = (product) => {
+  const id = Number(product?.id)
+  const code = String(product?.maSanPham || product?.ma || "").trim()
+  const name = String(product?.tenSanPham || product?.name || "")
+  const override = getProductImageOverride({ id, maSanPham: code })[0]
+  if (override) return override
+  const raw = product?.anh || product?.hinhAnh || product?.images?.[0] || ""
+  if (raw && /^https?:\/\//i.test(String(raw))) return raw
+  return getCodeFallbackImage(code) || getNameFallbackImage(name) || ""
+}
+
+const resolveOverrideColorImage = (item, variants = []) => {
+  const productId = Number(item?.id)
+  if (!Number.isFinite(productId) || productId <= 0) return ""
+
+  const cfg = getProductImageConfig({ id: productId })
+  const colorImages = Array.isArray(cfg?.colorImages) ? cfg.colorImages : []
+  if (!colorImages.length) return ""
+
+  const matched =
+    variants.find((variant) => Number(variant?.spctId) === Number(item?.spctId))
+    || variants.find((variant) => normalizeVariantToken(variant?.color) === normalizeVariantToken(item?.color)
+      && normalizeVariantToken(variant?.size) === normalizeVariantToken(item?.size))
+    || variants.find((variant) => normalizeVariantToken(variant?.color) === normalizeVariantToken(item?.color))
+
+  const colorId = Number(matched?.colorId || 0)
+  if (!Number.isFinite(colorId) || colorId <= 0) return ""
+
+  const overrideEntry = colorImages.find((entry) => Number(entry?.colorId) === colorId)
+  return normalizeImage(overrideEntry?.image)
+}
 
 /* ===================== DELIVERY ===================== */
 const delivery = ref({
@@ -71,12 +229,64 @@ const delivery = ref({
   addressDetail: ""
 })
 
+/* ===================== SAVED ADDRESSES ===================== */
+const savedAddresses = ref([])
+const selectedSavedAddress = ref(null)
+
 /* ===================== ADDRESS DATA ===================== */
 const provinces = ref([])
 const districts = ref([])
 const wards = ref([])
 
 /* ===================== ADDRESS LOGIC ===================== */
+const applyAddress = async (addr) => {
+  if (!addr) return
+  selectedSavedAddress.value = addr
+  delivery.value.addressDetail = addr.diaChiCuThe || ""
+
+  const matchedProvince = matchAddressName(provinces.value, addr.tinhThanh)
+  if (matchedProvince) {
+    delivery.value.province = matchedProvince.name
+    try {
+      const pRes = await fetch(`https://provinces.open-api.vn/api/p/${matchedProvince.code}?depth=2`)
+      const pData = await pRes.json()
+      districts.value = pData.districts || []
+      const matchedDistrict = matchAddressName(districts.value, addr.quanHuyen)
+      if (matchedDistrict) {
+        delivery.value.district = matchedDistrict.name
+        try {
+          const dRes = await fetch(`https://provinces.open-api.vn/api/d/${matchedDistrict.code}?depth=2`)
+          const dData = await dRes.json()
+          wards.value = dData.wards || []
+          const matchedWard = matchAddressName(wards.value, addr.phuongXa)
+          if (matchedWard) delivery.value.ward = matchedWard.name
+        } catch {}
+      }
+    } catch {}
+  } else {
+    delivery.value.province = addr.tinhThanh || ""
+    delivery.value.district = addr.quanHuyen || ""
+    delivery.value.ward = addr.phuongXa || ""
+  }
+  await fetchShippingQuote()
+}
+
+const clearAddressForManualEntry = () => {
+  selectedSavedAddress.value = null
+  delivery.value.province = ""
+  delivery.value.district = ""
+  delivery.value.ward = ""
+  delivery.value.addressDetail = ""
+  districts.value = []
+  wards.value = []
+}
+
+const revertToDefaultAddress = async () => {
+  if (savedAddresses.value.length > 0) {
+    await applyAddress(savedAddresses.value[0])
+  }
+}
+
 const onProvinceChange = async () => {
   delivery.value.district = ""
   delivery.value.ward = ""
@@ -124,6 +334,11 @@ const shippingSpec = ref({
 const VND = (n) => new Intl.NumberFormat("vi-VN").format(Number(n || 0)) + "₫"
 
 const deliveryAddress = computed(() => {
+  if (selectedSavedAddress.value) {
+    const a = selectedSavedAddress.value
+    return [a.diaChiCuThe, a.phuongXa, a.quanHuyen, a.tinhThanh]
+      .map(p => String(p || "").trim()).filter(Boolean).join(", ")
+  }
   return [
     delivery.value.addressDetail,
     delivery.value.ward,
@@ -136,9 +351,36 @@ const deliveryAddress = computed(() => {
 })
 
 const shipping = computed(() => Number(shippingQuote.value?.fee || 0))
+const getItemKey = (item) => {
+  const id = String(item?.id || "").trim()
+  const color = String(item?.color || "").trim()
+  const size = String(item?.size || "").trim()
+  const voucherCode = String(item?.voucherCode || "").trim().toUpperCase()
+  return `${id}__${color}__${size}__${voucherCode}`
+}
+
+const getLineSubtotal = (item) => Number(item?.price || 0) * Number(item?.quantity || 0)
+
+const getSelectedVoucherForItem = (item) => {
+  const key = getItemKey(item)
+  const selected = itemVoucherSelections.value[key] || null
+  if (selected) return selected
+
+  const voucherCode = String(item?.voucherCode || "").trim().toUpperCase()
+  if (!voucherCode) return null
+  return vouchers.value.find((voucher) => String(voucher?.maPhieuGiamGia || "").trim().toUpperCase() === voucherCode) || null
+}
+
+const getItemVoucherDiscount = (item, voucherOverride = null) => {
+  return 0
+}
+
+const getLineTotalAfterVoucher = (item) => getLineSubtotal(item)
+
 const voucherDiscount = computed(() => {
-  if (!selectedVoucher.value) return 0
-  return calculateVoucherDiscount(selectedVoucher.value, subtotal.value)
+  if (!selectedOrderVoucher.value) return 0
+  if (!isVoucherApplicable(selectedOrderVoucher.value, subtotal.value, customerId.value)) return 0
+  return calculateVoucherDiscount(selectedOrderVoucher.value, subtotal.value)
 })
 
 const subtotal = computed(() => {
@@ -154,9 +396,60 @@ const estimatedWeightByCart = computed(() => {
 const total = computed(() => Math.max(subtotal.value + shipping.value - voucherDiscount.value, 0))
 const cartCount = computed(() => cart.value.reduce((sum, item) => sum + Number(item.quantity || 0), 0))
 
+const bestVoucherId = computed(() => {
+  const best = findBestVoucher(vouchers.value, subtotal.value, customerId.value)
+  return best?.id || best?.maPhieuGiamGia || null
+})
+
 const displayVouchers = computed(() => {
-  // Show all loaded vouchers; applicability is shown via applyVoucherFromDrawer toast
-  return vouchers.value.slice(0, 8)
+  const all = vouchers.value.slice(0, 8)
+  const bestId = bestVoucherId.value
+  if (!bestId) return all
+  const bestIdx = all.findIndex(v => v.id === bestId || v.maPhieuGiamGia === bestId)
+  if (bestIdx <= 0) return all
+  const copy = [...all]
+  const [best] = copy.splice(bestIdx, 1)
+  copy.unshift(best)
+  return copy
+})
+
+const applyGlobalVoucher = (voucher) => {
+  if (!voucher) return
+  if (!isVoucherApplicable(voucher, subtotal.value, customerId.value)) {
+    const needed = Number(voucher?.hoaDonToiThieu || 0) - subtotal.value
+    if (needed > 0) {
+      toast.error(`Cần thêm ${VND(needed)} để áp dụng voucher này`)
+    } else {
+      toast.error('Voucher không khả dụng')
+    }
+    return
+  }
+  selectedOrderVoucher.value = voucher
+  voucherCode.value = String(voucher?.maPhieuGiamGia || '')
+  voucherHint.value = `Đã áp dụng ${voucherCode.value} cho toàn bộ đơn hàng`
+  localStorage.setItem('checkoutSelectedVoucher', JSON.stringify(voucher))
+  toast.success(`Đã áp dụng voucher ${voucherCode.value}`)
+  if (checkoutVoucherDrawerOpen.value) {
+    closeCheckoutVoucherDrawer()
+  }
+}
+
+const clearGlobalVoucher = () => {
+  selectedOrderVoucher.value = null
+  voucherCode.value = ''
+  voucherHint.value = ''
+  localStorage.removeItem('checkoutSelectedVoucher')
+}
+
+const activeVoucherItem = computed(() => {
+  const key = String(activeVoucherItemKey.value || "")
+  if (!key) return null
+  return cart.value.find((item) => getItemKey(item) === key) || null
+})
+
+const activeVoucherItemSubtotal = computed(() => {
+  if (!activeVoucherItem.value) return 0
+  return getLineSubtotal(activeVoucherItem.value)
 })
 
 const persistCheckoutCart = () => {
@@ -167,6 +460,65 @@ const clearCartStorage = () => {
   cart.value = []
   clearCartObject()
   clearCheckoutCartArray()
+  localStorage.removeItem(CHECKOUT_ITEM_VOUCHER_SELECTIONS_KEY)
+}
+
+const loadItemVoucherSelections = () => {
+  try {
+    const raw = localStorage.getItem(CHECKOUT_ITEM_VOUCHER_SELECTIONS_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    itemVoucherSelections.value = parsed && typeof parsed === "object" ? parsed : {}
+  } catch {
+    itemVoucherSelections.value = {}
+  }
+}
+
+const persistItemVoucherSelections = () => {
+  try {
+    localStorage.setItem(CHECKOUT_ITEM_VOUCHER_SELECTIONS_KEY, JSON.stringify(itemVoucherSelections.value || {}))
+  } catch {}
+}
+
+const mergePendingProductDetailVouchers = () => {
+  try {
+    const rawPending = localStorage.getItem(CHECKOUT_PENDING_ITEM_VOUCHERS_KEY)
+    if (!rawPending) return
+
+    const parsedPending = JSON.parse(rawPending)
+    const pendingMap = parsedPending && typeof parsedPending === "object" ? parsedPending : {}
+    const nextSelections = { ...itemVoucherSelections.value }
+
+    for (const [pendingKey, payload] of Object.entries(pendingMap)) {
+      const voucherCandidate = payload?.voucher || payload
+      const target = payload?.target || {}
+      const voucher = normalizeVoucherData(voucherCandidate)
+      if (!voucher?.maPhieuGiamGia) continue
+
+      let matchedItem = cart.value.find((item) => getItemKey(item) === pendingKey)
+      if (!matchedItem && target?.productId) {
+        matchedItem = cart.value.find((item) => {
+          const sameProduct = Number(item?.id || 0) === Number(target.productId || 0)
+          if (!sameProduct) return false
+          const sameColor = !target?.color || String(item?.color || "") === String(target.color)
+          const sameSize = !target?.size || String(item?.size || "") === String(target.size)
+          const sameVoucher = !target?.voucherCode || String(item?.voucherCode || "").trim().toUpperCase() === String(target.voucherCode || "").trim().toUpperCase()
+          return sameColor && sameSize && sameVoucher
+        })
+      }
+
+      if (!matchedItem) continue
+      const lineSubtotal = getLineSubtotal(matchedItem)
+      if (!isVoucherApplicable(voucher, lineSubtotal, customerId.value)) continue
+
+      nextSelections[getItemKey(matchedItem)] = voucher
+    }
+
+    itemVoucherSelections.value = nextSelections
+    persistItemVoucherSelections()
+    localStorage.removeItem(CHECKOUT_PENDING_ITEM_VOUCHERS_KEY)
+  } catch {
+    // no-op
+  }
 }
 
 const normalizeCartItemQuantity = (item) => {
@@ -188,11 +540,18 @@ const decreaseItemQuantity = (item) => {
 }
 
 const removeCartItem = (item) => {
+  const itemKey = getItemKey(item)
+  if (itemKey in itemVoucherSelections.value) {
+    const next = { ...itemVoucherSelections.value }
+    delete next[itemKey]
+    itemVoucherSelections.value = next
+  }
   cart.value = cart.value.filter((entry) => {
     return !(
       String(entry?.id) === String(item?.id)
       && String(entry?.size || "") === String(item?.size || "")
       && String(entry?.color || "") === String(item?.color || "")
+      && String(entry?.voucherCode || "").trim().toUpperCase() === String(item?.voucherCode || "").trim().toUpperCase()
     )
   })
   persistCheckoutCart()
@@ -233,23 +592,45 @@ const syncItemVariant = (item) => {
   item.color = matched.color || item.color || ""
   item.size = matched.size || item.size || ""
   item.price = Number(matched.price || item.price || 0)
+  item.basePrice = Number(matched.basePrice || item.basePrice || item.price || 0)
+  item.dotGiamGiaPhanTram = Number(matched.dotGiamGiaPhanTram || item.dotGiamGiaPhanTram || 0)
   item.spctId = matched.spctId || item.spctId
-  if (matched.image) item.image = matched.image
+  const overrideImg = resolveOverrideColorImage(item, variants)
+  const colorImg = resolveColorImage(Number(item.id), item.color)
+  // matched.image already includes fallbackImageForVariant from loadVariantCatalog
+  const nextImage = overrideImg || matched.image || colorImg || getNameFallbackImage(item.name) || item.image
+  item.image = nextImage
 }
 
 const updateItemColor = (item, color) => {
+  const oldKey = getItemKey(item)
   item.color = color
   const sizeOptions = getSizeOptions(item)
   if (!sizeOptions.includes(item.size)) {
     item.size = sizeOptions[0] || ""
   }
   syncItemVariant(item)
+  const newKey = getItemKey(item)
+  if (oldKey !== newKey && itemVoucherSelections.value[oldKey]) {
+    const next = { ...itemVoucherSelections.value }
+    next[newKey] = next[oldKey]
+    delete next[oldKey]
+    itemVoucherSelections.value = next
+  }
   persistCheckoutCart()
 }
 
 const updateItemSize = (item, size) => {
+  const oldKey = getItemKey(item)
   item.size = size
   syncItemVariant(item)
+  const newKey = getItemKey(item)
+  if (oldKey !== newKey && itemVoucherSelections.value[oldKey]) {
+    const next = { ...itemVoucherSelections.value }
+    next[newKey] = next[oldKey]
+    delete next[oldKey]
+    itemVoucherSelections.value = next
+  }
   persistCheckoutCart()
 }
 
@@ -261,14 +642,33 @@ const loadVariantCatalog = async () => {
 
     for (const product of products) {
       const productId = String(product?.id || "")
+      const numId = Number(productId)
       const variants = Array.isArray(product?.sanPhamChiTiets) ? product.sanPhamChiTiets : []
-      catalog[productId] = variants.map((variant) => ({
-        spctId: variant?.id,
-        color: String(variant?.mauSac?.tenMau || "").trim(),
-        size: String(variant?.kichThuoc?.tenKichThuoc || "").trim(),
-        price: Number(variant?.giaBan || 0),
-        image: product?.anh || product?.hinhAnh || product?.images?.[0] || ""
-      }))
+      const pricedVariants = await applyCampaignPriceToVariants(variants, product.id)
+
+      catalog[productId] = pricedVariants.map((variant) => {
+        const varColor = String(variant?.mauSac?.tenMau || "").trim()
+        const varImg = resolveVariantBackendImage(variant)
+          || resolveColorImage(numId, varColor)
+          || fallbackImageForVariant({
+            id: numId,
+            maSanPham: product?.maSanPham,
+            tenSanPham: product?.tenSanPham,
+            tenMauSac: varColor,
+            maChiTietSanPham: variant?.ma,
+          })
+        const finalPrice = Number(variant?.giaBanSauDotGiamGia ?? variant?.giaBan ?? 0)
+        return {
+          spctId: variant?.id,
+          colorId: variant?.mauSac?.id,
+          color: varColor,
+          size: String(variant?.kichThuoc?.tenKichThuoc || "").trim(),
+          price: finalPrice,
+          basePrice: Number(variant?.giaBanGoc ?? variant?.giaBan ?? 0),
+          dotGiamGiaPhanTram: Number(variant?.dotGiamGiaPhanTram || 0),
+          image: varImg
+        }
+      })
     }
 
     variantCatalog.value = catalog
@@ -278,15 +678,6 @@ const loadVariantCatalog = async () => {
     console.error("Load variant catalog failed:", error)
   }
 }
-
-const bestVoucher = computed(() => {
-  if (!displayVouchers.value.length) return null
-  return displayVouchers.value.reduce((best, current) => {
-    const bDisc = calculateVoucherDiscount(best, subtotal.value)
-    const cDisc = calculateVoucherDiscount(current, subtotal.value)
-    return cDisc > bDisc ? current : best
-  }, displayVouchers.value[0])
-})
 
 const canSubmit = computed(() => {
   if (submitting.value) return false
@@ -301,19 +692,29 @@ const checkoutVoucherChipLabel = (v) => {
   return String(v?.maPhieuGiamGia || "")
 }
 
-const openCheckoutVoucherDrawer = () => {
+const openCheckoutVoucherDrawer = (item = null) => {
+  if (item) {
+    activeVoucherItemKey.value = getItemKey(item)
+  }
   checkoutVoucherDrawerOpen.value = true
   document.body.style.overflow = 'hidden'
 }
 
 const closeCheckoutVoucherDrawer = () => {
   checkoutVoucherDrawerOpen.value = false
+  activeVoucherItemKey.value = ""
   document.body.style.overflow = ''
 }
 
 const applyVoucherFromDrawer = (v) => {
-  if (!isVoucherApplicable(v, subtotal.value, customerId.value)) {
-    const needed = Number(v.hoaDonToiThieu || 0) - subtotal.value
+  if (!activeVoucherItem.value) {
+    toast.error('Vui lòng chọn sản phẩm cần áp voucher')
+    return
+  }
+
+  const lineSubtotal = activeVoucherItemSubtotal.value
+  if (!isVoucherApplicable(v, lineSubtotal, customerId.value)) {
+    const needed = Number(v.hoaDonToiThieu || 0) - lineSubtotal
     if (needed > 0) {
       toast.error(`Cần thêm ${VND(needed)} để áp dụng voucher này`)
     } else {
@@ -321,10 +722,46 @@ const applyVoucherFromDrawer = (v) => {
     }
     return
   }
-  selectedVoucher.value = v
+
+  const key = getItemKey(activeVoucherItem.value)
+  itemVoucherSelections.value = {
+    ...itemVoucherSelections.value,
+    [key]: v,
+  }
   voucherCode.value = v.maPhieuGiamGia
-  voucherHint.value = `Đã áp dụng ${v.maPhieuGiamGia}`
+  voucherHint.value = `Đã áp dụng ${v.maPhieuGiamGia} cho ${activeVoucherItem.value?.name || 'sản phẩm'}`
   closeCheckoutVoucherDrawer()
+}
+
+const clearItemVoucher = (item) => {
+  const key = getItemKey(item)
+  if (!(key in itemVoucherSelections.value)) return
+  const next = { ...itemVoucherSelections.value }
+  delete next[key]
+  itemVoucherSelections.value = next
+}
+
+const persistOrderVoucherSnapshot = ({ keys = [], itemVouchers = [] } = {}) => {
+  const normalizedKeys = Array.isArray(keys)
+    ? keys.map((key) => String(key || "").trim()).filter(Boolean)
+    : []
+  if (!normalizedKeys.length) return
+
+  try {
+    const raw = localStorage.getItem(ORDER_ITEM_VOUCHER_SNAPSHOTS_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    const snapshots = parsed && typeof parsed === "object" ? parsed : {}
+    const payload = {
+      createdAt: new Date().toISOString(),
+      itemVouchers: Array.isArray(itemVouchers) ? itemVouchers : [],
+    }
+    for (const key of normalizedKeys) {
+      snapshots[key] = payload
+    }
+    localStorage.setItem(ORDER_ITEM_VOUCHER_SNAPSHOTS_KEY, JSON.stringify(snapshots))
+  } catch {
+    // no-op
+  }
 }
 
 const showDemoToast = (message) => {
@@ -341,45 +778,8 @@ const loadVouchers = async () => {
   loadingVouchers.value = true
   try {
     const normalizeVoucher = (voucher) => ({
-      ...voucher,
-      id: voucher?.id ?? voucher?.phieuGiamGiaId ?? voucher?.maPhieuGiamGia ?? voucher?.maPhieu ?? voucher?.code,
-
-      maPhieuGiamGia: String(
-        voucher?.maPhieuGiamGia ||
-        voucher?.maPhieu ||
-        voucher?.maKhuyenMai ||
-        voucher?.code ||
-        ""
-      ).trim(),
-
-      tenPhieuGiamGia: String(
-        voucher?.tenPhieuGiamGia ||
-        voucher?.tenKhuyenMai ||
-        voucher?.tenPhieu ||
-        voucher?.name ||
-        ""
-      ).trim(),
-
-      giaTriGiamGia: Number(
-        voucher?.giaTriGiamGia ??
-        voucher?.giaTriGiam ??
-        voucher?.discountValue ??
-        0
-      ),
-
-      hoaDonToiThieu: Number(
-        voucher?.hoaDonToiThieu ??
-        voucher?.donToiThieu ??
-        voucher?.dieuKienToiThieu ??
-        voucher?.minOrderValue ??
-        0
-      ),
-
-      soTienGiamToiDa: Number(
-        voucher?.soTienGiamToiDa ??
-        voucher?.maxDiscount ??
-        0
-      )
+      ...normalizeVoucherData(voucher),
+      id: voucher?.id ?? voucher?.phieuGiamGiaId ?? voucher?.maPhieuGiamGia ?? voucher?.maPhieu ?? voucher?.code
     })
 
     let payload = []
@@ -409,11 +809,7 @@ const loadVouchers = async () => {
         : (Array.isArray(fullData?.content) ? fullData.content : [])
     }
 
-    // ✅ FIX QUAN TRỌNG: KHÔNG filter theo maPhieu nữa
     vouchers.value = payload.map(normalizeVoucher)
-    autoSelectBestVoucher()
-
-    console.log("VOUCHERS:", vouchers.value)
 
   } catch (error) {
     vouchers.value = []
@@ -424,38 +820,26 @@ const loadVouchers = async () => {
 }
 
 const applyVoucherCode = () => {
-  voucherHint.value = ""
-
-  if (!voucherCode.value.trim()) {
-    selectedVoucher.value = null
+  const keyword = String(voucherCode.value || "").trim().toUpperCase()
+  if (!keyword) {
+    toast.error("Vui lòng nhập mã voucher")
     return
   }
 
-  const normalizedCode = voucherCode.value.trim().toLowerCase()
-  const found = vouchers.value.find(
-    (voucher) => String(voucher?.maPhieuGiamGia || "").trim().toLowerCase() === normalizedCode
-  )
+  const found = vouchers.value.find((voucher) => {
+    return String(voucher?.maPhieuGiamGia || "").trim().toUpperCase() === keyword
+  })
 
   if (!found) {
-    selectedVoucher.value = null
-    voucherHint.value = "Không tìm thấy mã voucher hợp lệ"
+    toast.error("Không tìm thấy voucher phù hợp")
     return
   }
 
-  if (!isVoucherApplicable(found, subtotal.value, customerId.value)) {
-    selectedVoucher.value = null
-    voucherHint.value = "Voucher chưa đủ điều kiện áp dụng cho đơn hiện tại"
-    return
-  }
-
-  selectedVoucher.value = found
-  voucherHint.value = `Đã áp dụng ${found.maPhieuGiamGia}`
+  applyGlobalVoucher(found)
 }
 
 const removeVoucher = () => {
-  selectedVoucher.value = null
-  voucherCode.value = ""
-  voucherHint.value = ""
+  clearGlobalVoucher()
 }
 
 const normalizeAddressText = (value = "") => {
@@ -605,9 +989,14 @@ const validateCheckout = () => {
 
   if (!delivery.value.name.trim()) return "Vui lòng nhập họ tên người nhận"
   if (!isValidPhone(delivery.value.phone)) return "Số điện thoại không hợp lệ"
-  if (!String(delivery.value.province || "").trim()) return "Vui lòng chọn Tỉnh/Thành phố nhận hàng"
-  if (!String(delivery.value.district || "").trim()) return "Vui lòng nhập Quận/Huyện nhận hàng"
-  if (String(delivery.value.addressDetail || "").trim().length < 6) return "Địa chỉ cụ thể cần chi tiết hơn"
+
+  if (selectedSavedAddress.value) {
+    if (!String(selectedSavedAddress.value.diaChiCuThe || "").trim()) return "Địa chỉ cụ thể cần chi tiết hơn"
+  } else {
+    if (!String(delivery.value.province || "").trim()) return "Vui lòng chọn Tỉnh/Thành phố nhận hàng"
+    if (!String(delivery.value.district || "").trim()) return "Vui lòng nhập Quận/Huyện nhận hàng"
+    if (String(delivery.value.addressDetail || "").trim().length < 6) return "Địa chỉ cụ thể cần chi tiết hơn"
+  }
 
   return ""
 }
@@ -642,38 +1031,41 @@ const formatExpiry = (dateStr) => {
     }
 }
 
-const selectVoucherCard = (v) => {
-    if (selectedVoucher.value?.id === v.id) {
-      removeVoucher()
-      return
-    }
-    if (!isVoucherApplicable(v, subtotal.value, customerId.value)) {
-      toast.error("Voucher chưa đủ điều kiện áp dụng cho đơn hiện tại")
-      return
-    }
-    selectedVoucher.value = v
-    voucherCode.value = v.maPhieuGiamGia
-    voucherHint.value = `Đã áp dụng ${v.maPhieuGiamGia}`
+const selectVoucherCard = (voucher) => {
+  applyGlobalVoucher(voucher)
 }
 
-const autoSelectBestVoucher = () => {
-  const best = vouchers.value
-    .filter((voucher) => isVoucherApplicable(voucher, subtotal.value, customerId.value))
-    .sort((a, b) => calculateVoucherDiscount(b, subtotal.value) - calculateVoucherDiscount(a, subtotal.value))[0]
-
-  if (!best) {
-    selectedVoucher.value = null
-    voucherCode.value = ""
-    voucherHint.value = ""
+const autoSelectBestVoucher = (silent = false) => {
+  if (!Array.isArray(vouchers.value) || !vouchers.value.length || subtotal.value <= 0) {
     return
   }
 
-  if (selectedVoucher.value?.id === best.id) return
+  const bestVoucher = findBestVoucher(vouchers.value, subtotal.value, customerId.value)
+  if (!bestVoucher) {
+    return
+  }
 
-  selectedVoucher.value = best
-  voucherCode.value = best.maPhieuGiamGia
-  voucherHint.value = `Đã tự động áp dụng voucher tốt nhất: ${best.maPhieuGiamGia}`
-  toast.success(voucherHint.value)
+  const current = selectedOrderVoucher.value
+  const currentCode = String(current?.maPhieuGiamGia || "").trim().toUpperCase()
+  const bestCode = String(bestVoucher?.maPhieuGiamGia || "").trim().toUpperCase()
+  if (!bestCode || currentCode === bestCode) return
+
+  const currentDiscount = current && isVoucherApplicable(current, subtotal.value, customerId.value)
+    ? calculateVoucherDiscount(current, subtotal.value)
+    : 0
+  const bestDiscount = calculateVoucherDiscount(bestVoucher, subtotal.value)
+  if (bestDiscount <= currentDiscount) return
+
+  selectedOrderVoucher.value = bestVoucher
+  voucherCode.value = bestVoucher.maPhieuGiamGia
+  voucherHint.value = `Tự động chọn voucher tốt nhất: ${bestVoucher.maPhieuGiamGia}`
+  localStorage.setItem("checkoutSelectedVoucher", JSON.stringify(bestVoucher))
+
+  const signature = `${bestCode}::${Math.floor(subtotal.value / 10000)}`
+  if (!silent && autoBestVoucherSignature.value !== signature) {
+    autoBestVoucherSignature.value = signature
+    toast.success(`Đã tự động áp dụng voucher tốt nhất ${bestVoucher.maPhieuGiamGia}`)
+  }
 }
 
 const loadProfile = async () => {
@@ -681,6 +1073,13 @@ const loadProfile = async () => {
   try {
     const context = await loadCheckoutContext()
     customerId.value = context.customer?.id || null
+    savedAddresses.value = Array.isArray(context.addresses) ? context.addresses : []
+
+    if (savedAddresses.value.length > 0) {
+      delivery.value.name = context.delivery?.name || ""
+      delivery.value.phone = context.delivery?.phone || ""
+      await applyAddress(savedAddresses.value[0])
+    } else {
     const addr = context.delivery
 
     delivery.value.name = addr.name || ""
@@ -737,6 +1136,7 @@ const loadProfile = async () => {
         }
       } catch { /* district load failed */ }
     }
+    } // end else (no saved addresses)
   } catch (error) {
     console.error("Load checkout profile failed:", error)
   } finally {
@@ -760,12 +1160,19 @@ const submitOrder = async () => {
     return
   }
 
+  const ok = await askConfirm(
+    `Bạn có chắc chắn muốn đặt hàng với tổng thanh toán ${VND(total.value)}?`,
+    { title: "Xác nhận đặt hàng", confirmText: "Đặt hàng", cancelText: "Hủy" }
+  )
+  if (!ok) return
+
   errorMsg.value = ""
   submitting.value = true
 
   try {
     const orderId = `DH${Date.now()}`
     const normalizedPaymentMethod = paymentMethod.value === "COD" ? "COD" : "VNPAY"
+    const itemVoucherPayload = []
 
     localStorage.setItem(
       "currentOrder",
@@ -784,13 +1191,8 @@ const submitOrder = async () => {
         },
         shipping: shipping.value,
         discount: voucherDiscount.value,
-        voucher: selectedVoucher.value
-          ? {
-              id: selectedVoucher.value.id,
-              code: selectedVoucher.value.maPhieuGiamGia,
-              value: voucherDiscount.value
-            }
-          : null,
+        voucher: selectedOrderVoucher.value,
+        itemVouchers: itemVoucherPayload,
         items: cart.value,
         total: total.value,
         paymentMethod: normalizedPaymentMethod,
@@ -801,7 +1203,7 @@ const submitOrder = async () => {
 
     if (normalizedPaymentMethod === "COD") {
       try {
-        await createBackendCheckoutOrder({
+        const codResult = await createBackendCheckoutOrder({
           cartItems: cart.value,
           delivery: {
             name: delivery.value.name.trim(),
@@ -816,8 +1218,24 @@ const submitOrder = async () => {
           discount: voucherDiscount.value,
           total: total.value,
           paymentMethod: "COD",
-          voucherCode: selectedVoucher.value?.maPhieuGiamGia || ""
+          voucherCode: String(selectedOrderVoucher.value?.maPhieuGiamGia || "")
         })
+
+        // Use real maHoaDon from backend if available
+        const backendMaHoaDon = codResult?.order?.maHoaDon || ""
+        const backendOrderId = codResult?.orderId || ""
+        if (backendMaHoaDon || backendOrderId) {
+          const saved = JSON.parse(localStorage.getItem("currentOrder") || "{}")
+          saved.id = backendMaHoaDon || backendOrderId
+          saved.maHoaDon = backendMaHoaDon
+          saved.backendId = backendOrderId
+          localStorage.setItem("currentOrder", JSON.stringify(saved))
+
+          persistOrderVoucherSnapshot({
+            keys: [saved.id, saved.maHoaDon, saved.backendId],
+            itemVouchers: itemVoucherPayload,
+          })
+        }
       } catch (backendError) {
         console.warn("COD backend checkout fallback activated:", backendError)
         const pendingKey = "pendingOfflineOrders"
@@ -837,7 +1255,8 @@ const submitOrder = async () => {
           },
           shipping: shipping.value,
           discount: voucherDiscount.value,
-          voucherCode: selectedVoucher.value?.maPhieuGiamGia || "",
+          voucherCode: String(selectedOrderVoucher.value?.maPhieuGiamGia || ""),
+          itemVouchers: itemVoucherPayload,
           items: cart.value,
           total: total.value,
           paymentMethod: "COD",
@@ -875,6 +1294,7 @@ const submitOrder = async () => {
 }
 
 onMounted(async () => {
+  cleanLegacyVoucherStorage()
   const res = await fetch("https://provinces.open-api.vn/api/?depth=1")
   provinces.value = await res.json()
 
@@ -883,30 +1303,48 @@ onMounted(async () => {
   persistCheckoutCart()
   shippingSpec.value.weightGram = estimatedWeightByCart.value
   await Promise.all([loadProfile(), loadVouchers()])
-  loadVariantCatalog()
+  await loadVariantCatalog()
+  loadItemVoucherSelections()
+  mergePendingProductDetailVouchers()
+
+  const existingKeys = new Set(cart.value.map((item) => getItemKey(item)))
+  const filteredSelections = Object.fromEntries(
+    Object.entries(itemVoucherSelections.value || {}).filter(([key]) => existingKeys.has(key))
+  )
+  itemVoucherSelections.value = filteredSelections
+  persistItemVoucherSelections()
+
   await fetchShippingQuote()
 
-  // Pre-apply voucher selected from ProductDetail page
+  // Pre-apply voucher selected from ProductDetail page (order-level voucher)
+  const shouldOpenVoucherDrawer = String(route.query?.openVoucher || "") === "1"
   const savedVoucher = localStorage.getItem('checkoutSelectedVoucher')
   if (savedVoucher) {
     try {
       localStorage.removeItem('checkoutSelectedVoucher')
       const preSelected = JSON.parse(savedVoucher)
+      const voucherSeed = preSelected?.voucher || preSelected
       const found = vouchers.value.find(v =>
-        v.id === preSelected.id || v.maPhieuGiamGia === preSelected.maPhieuGiamGia
+        v.id === voucherSeed?.id || v.maPhieuGiamGia === voucherSeed?.maPhieuGiamGia
       )
+
       if (found && isVoucherApplicable(found, subtotal.value, customerId.value)) {
-        selectedVoucher.value = found
+        selectedOrderVoucher.value = found
         voucherCode.value = found.maPhieuGiamGia
-        voucherHint.value = `Đã áp dụng ${found.maPhieuGiamGia}`
+        voucherHint.value = `Đã áp dụng ${found.maPhieuGiamGia} cho toàn bộ đơn hàng`
       }
     } catch {}
   }
+
+  if (shouldOpenVoucherDrawer) {
+    openCheckoutVoucherDrawer()
+    router.replace({ path: "/checkout" })
+  }
+
+  autoSelectBestVoucher(true)
 })
 
-watch([subtotal, customerId], () => {
-  autoSelectBestVoucher()
-})
+watch(itemVoucherSelections, persistItemVoucherSelections, { deep: true })
 
 watch(estimatedWeightByCart, (nextWeight) => {
   if (!shippingSpec.value.manualWeight) {
@@ -931,22 +1369,18 @@ watch(
   }
 )
 
+watch(
+  () => [subtotal.value, vouchers.value.length, customerId.value],
+  () => {
+    autoSelectBestVoucher()
+  }
+)
+
 </script>
 
 <template>
   <div class="checkout-page page-shell">
     <SiteNav />
-
-    <div class="checkout-breadcrumb-wrap">
-      <div class="checkout-breadcrumb-inner">
-        <div class="breadcrumbs breadcrumbs-standalone">
-          <button class="crumb" @click="goHome">Trang chủ</button>
-          <span>/</span>
-          <span class="crumb-active">Checkout</span>
-          <button class="crumb back-home" @click="goHome">Quay về trang chủ</button>
-        </div>
-      </div>
-    </div>
 
     <main class="checkout-shell">
       <section class="checkout-left">
@@ -959,6 +1393,36 @@ watch(
             <input v-model="delivery.name" type="text" placeholder="Họ và tên" />
             <input v-model="delivery.phone" type="text" placeholder="Số điện thoại" />
 
+            <!-- Saved address list -->
+            <div v-if="savedAddresses.length" class="saved-addresses">
+              <div class="saved-address-list">
+                <button
+                  v-for="(addr, i) in savedAddresses"
+                  :key="addr.id"
+                  type="button"
+                  class="saved-address-btn"
+                  :class="{ active: selectedSavedAddress?.id === addr.id }"
+                  @click="applyAddress(addr)"
+                >
+                  {{ [addr.diaChiCuThe, addr.phuongXa, addr.quanHuyen, addr.tinhThanh].filter(Boolean).join(', ') }}
+                </button>
+              </div>
+              <button
+                v-if="selectedSavedAddress"
+                type="button"
+                class="btn-link-small"
+                @click="clearAddressForManualEntry"
+              >Nhập địa chỉ khác</button>
+              <button
+                v-if="!selectedSavedAddress"
+                type="button"
+                class="btn-link-small"
+                @click="revertToDefaultAddress"
+              >Quay lại địa chỉ mặc định</button>
+            </div>
+
+            <!-- Address dropdowns + detail — only visible when no saved address selected -->
+            <template v-if="!selectedSavedAddress">
             <div class="address-row">
               <select v-model="delivery.province" @change="onProvinceChange">
                 <option value="">Chọn Tỉnh / Thành phố</option>
@@ -987,6 +1451,7 @@ watch(
               type="text"
               placeholder="Địa chỉ cụ thể (số nhà, tên đường)"
             />
+            </template>
           </div>
 
           <div class="address-note" v-if="loadingProfile">Đang tải thông tin giao hàng...</div>
@@ -996,7 +1461,7 @@ watch(
           <h3>Phương thức vận chuyển</h3>
           <label class="option-card option-card-active">
             <div class="option-main">
-              <span class="option-icon">🚚</span>
+              <span class="option-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18h2a1 1 0 0 0 1-1v-3.28a1 1 0 0 0-.684-.948l-1.923-.641a1 1 0 0 1-.684-.948V8a2 2 0 0 1 2-2h1.382a1 1 0 0 1 .894.553l1.448 2.894A1 1 0 0 0 21.382 10H22a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-1"/><circle cx="7" cy="18" r="2"/><circle cx="19" cy="18" r="2"/></svg></span>
               <div>
                 <strong>Đơn vị vận chuyển</strong>
                 <p>{{ shippingLoading ? 'Đang tính phí vận chuyển...' : `Phí vận chuyển ${VND(shipping)}` }}</p>
@@ -1092,8 +1557,9 @@ watch(
                 <strong>{{ item.name }}</strong>
                 <button class="remove-btn" type="button" @click="removeCartItem(item)">×</button>
               </div>
-
-              <div class="delivery-tag">Đổi ý 15 ngày</div>
+              <div v-if="Number(item.dotGiamGiaPhanTram || 0) > 0" class="campaign-tag">
+                🏷️ Đợt khuyến mãi -{{ Math.round(item.dotGiamGiaPhanTram) }}%
+              </div>
 
               <div class="variant-line">
                 <select class="variant-select" :value="item.color || ''" @change="updateItemColor(item, $event.target.value)">
@@ -1116,36 +1582,44 @@ watch(
                   <b>{{ item.quantity }}</b>
                   <button type="button" class="qty-btn" @click="increaseItemQuantity(item)">+</button>
                 </div>
-                <div class="cart-price">{{ VND(item.price * item.quantity) }}</div>
+                <div class="cart-price-wrap">
+                  <div class="cart-price">{{ VND(getLineSubtotal(item)) }}</div>
+                </div>
               </div>
             </div>
           </div>
 
-          <div class="promo-box">
-            <div class="promo-title">Ưu Đãi Dành Cho Bạn</div>
-
-            <!-- Voucher chips row: click any to open selector drawer -->
-            <div v-if="vouchers.length && !loadingVouchers" class="promo-chips-row">
+          <section class="order-voucher-box">
+            <div class="order-voucher-head">
+              <h3>Ưu đãi dành cho bạn</h3>
+              <div class="order-voucher-actions">
+                <button type="button" class="order-voucher-open" @click="openCheckoutVoucherDrawer()">Voucher chi tiết</button>
+                <button
+                  v-if="selectedOrderVoucher"
+                  type="button"
+                  class="order-voucher-clear"
+                  @click="clearGlobalVoucher"
+                >Bỏ voucher</button>
+              </div>
+            </div>
+            <div class="voucher-picker">
               <button
-                v-for="v in vouchers"
+                v-for="v in displayVouchers"
                 :key="v.id || v.maPhieuGiamGia"
                 type="button"
-                class="promo-chip"
-                :class="{ 'is-selected': selectedVoucher?.maPhieuGiamGia === v.maPhieuGiamGia }"
-                @click="openCheckoutVoucherDrawer"
+                class="voucher-chip"
+                :class="{ 'voucher-chip-selected': selectedOrderVoucher?.maPhieuGiamGia === v.maPhieuGiamGia }"
+                @click="selectVoucherCard(v)"
               >
-                {{ checkoutVoucherChipLabel(v) }}
+                <span v-if="(v.id === bestVoucherId || v.maPhieuGiamGia === bestVoucherId)" class="vc-badge vc-badge-best">LỰA CHỌN TỐT NHẤT</span>
+                <span v-else class="vc-badge">ƯU ĐÃI ONLINE</span>
+                <div class="vc-code">{{ checkoutVoucherChipLabel(v) }}</div>
+                <div class="vc-desc">{{ getVoucherDescription(v) }}</div>
+                <div class="vc-expiry">HSD: {{ formatExpiry(v.ngayKetThuc) }}</div>
               </button>
             </div>
-
-            <div class="promo-select-row">
-              <button type="button" class="promo-select-btn" :disabled="loadingVouchers || !vouchers.length" @click="openCheckoutVoucherDrawer">
-                {{ selectedVoucher ? `Đổi voucher (${selectedVoucher.maPhieuGiamGia})` : 'Chọn voucher từ danh sách' }}
-              </button>
-            </div>
-            <small v-if="voucherHint" :class="{ 'promo-ok': selectedVoucher, 'promo-error': !selectedVoucher }">{{ voucherHint }}</small>
-            <small v-if="!loadingVouchers && !vouchers.length" class="promo-muted">Hiện chưa có voucher theo dữ liệu khuyến mãi.</small>
-          </div>
+            <p v-if="voucherHint" class="order-voucher-hint">{{ voucherHint }}</p>
+          </section>
 
           <div class="checkout-totals">
             <div class="checkout-total-row">
@@ -1189,7 +1663,8 @@ watch(
           <div class="co-drawer__head">
             <div>
               <small>Voucher giảm giá - áp dụng online</small>
-              <h3>Chọn voucher</h3>
+              <h3>Chọn voucher cho toàn đơn hàng</h3>
+              <p class="co-drawer__target">Tạm tính đơn: {{ VND(subtotal) }}</p>
             </div>
             <button type="button" class="co-drawer__close" @click="closeCheckoutVoucherDrawer">✕</button>
           </div>
@@ -1198,21 +1673,23 @@ watch(
               v-for="v in vouchers"
               :key="v.id || v.maPhieuGiamGia"
               class="co-drawer__voucher"
-              :class="{ 'is-selected': selectedVoucher?.maPhieuGiamGia === v.maPhieuGiamGia }"
+              :class="{ 'is-selected': selectedOrderVoucher?.maPhieuGiamGia === v.maPhieuGiamGia }"
             >
               <div class="co-drawer__info">
                 <span class="co-drawer__label">{{ v.tenPhieuGiamGia || 'Voucher' }}</span>
                 <strong class="co-drawer__amount">{{ VND(calculateVoucherDiscount(v, subtotal)) }}</strong>
                 <p class="co-drawer__min">Đơn từ {{ VND(v.hoaDonToiThieu || 0) }}</p>
+                <p v-if="v.soTienGiamToiDa > 0" class="co-drawer__min">Giảm tối đa {{ VND(v.soTienGiamToiDa) }}</p>
+                <p class="co-drawer__min">Còn {{ v.soLuongSuDung ?? 0 }} • Đã dùng {{ v.soLuongDaDung ?? 0 }}</p>
                 <p class="co-drawer__code">Mã: <b>{{ v.maPhieuGiamGia }}</b></p>
               </div>
               <button
                 type="button"
                 class="co-apply-btn"
-                :class="{ 'is-applied': selectedVoucher?.maPhieuGiamGia === v.maPhieuGiamGia }"
-                @click="applyVoucherFromDrawer(v)"
+                :class="{ 'is-applied': selectedOrderVoucher?.maPhieuGiamGia === v.maPhieuGiamGia }"
+                @click="applyGlobalVoucher(v)"
               >
-                {{ selectedVoucher?.maPhieuGiamGia === v.maPhieuGiamGia ? '✓ Đã chọn' : 'Áp dụng' }}
+                {{ selectedOrderVoucher?.maPhieuGiamGia === v.maPhieuGiamGia ? '✓ Đã chọn' : 'Áp dụng' }}
               </button>
             </article>
             <p v-if="!vouchers.length" class="co-drawer__empty">Hiện không có phiếu giảm giá đang hoạt động.</p>
@@ -1302,9 +1779,10 @@ watch(
 .cart-panel {
   background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
+  border-radius: 14px;
+  padding: 22px;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
+  transition: box-shadow 0.2s;
 }
 
 .section-card + .section-card {
@@ -1346,8 +1824,9 @@ watch(
   border: 1px solid #d1d5db;
   border-radius: 10px;
   min-height: 44px;
-  padding: 10px 12px;
+  padding: 10px 14px;
   font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .form-grid input:focus,
@@ -1369,11 +1848,12 @@ watch(
 .shipping-grid input,
 .shipping-grid select {
   width: 100%;
-  border: 1px solid #cbd5e1;
-  border-radius: 4px;
-  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  padding: 10px 14px;
   font-size: 14px;
   background: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .shipping-auto-note {
@@ -1394,16 +1874,24 @@ watch(
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 4px;
-  padding: 14px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
   background: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+}
+
+.option-card:hover,
+.payment-card:hover {
+  border-color: #d1d5db;
 }
 
 .option-card-active,
 .payment-card.active {
   border-color: #dc2626;
-  box-shadow: inset 0 0 0 1px #dc2626;
+  box-shadow: 0 0 0 1px #dc2626;
+  background: #fff;
 }
 
 .payment-card + .payment-card {
@@ -1416,12 +1904,12 @@ watch(
 
 .payment-card-cod.active {
   border-color: #b91c1c;
-  box-shadow: inset 0 0 0 1px #b91c1c;
+  box-shadow: 0 0 0 1px #b91c1c;
 }
 
 .payment-card-vnpay.active {
   border-color: #dc2626;
-  box-shadow: inset 0 0 0 1px #dc2626;
+  box-shadow: 0 0 0 1px #dc2626;
 }
 
 .payment-card-momo {
@@ -1444,6 +1932,9 @@ watch(
 
 .option-icon {
   font-size: 20px;
+  display: flex;
+  align-items: center;
+  color: #111;
 }
 
 .option-main p,
@@ -1585,7 +2076,7 @@ watch(
 .co-drawer-overlay {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 200;
   display: flex;
   justify-content: flex-end;
   background: rgba(17, 24, 39, 0.32);
@@ -1617,6 +2108,12 @@ watch(
 .co-drawer__head h3 {
   margin: 4px 0 0;
   font-size: 18px;
+}
+
+.co-drawer__target {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 12px;
 }
 
 .co-drawer__close {
@@ -1706,12 +2203,12 @@ watch(
 
 .co-drawer-enter-active,
 .co-drawer-leave-active {
-  transition: opacity 0.22s ease;
+  transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .co-drawer-enter-active .co-drawer,
 .co-drawer-leave-active .co-drawer {
-  transition: transform 0.22s ease;
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .co-drawer-enter-from,
@@ -1796,18 +2293,80 @@ watch(
 }
 
 .voucher-chip {
-  min-width: 220px;
+  min-width: 240px;
   border: 1px solid #fecaca;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 12px 14px;
-  background: #fff5f5;
+  background: linear-gradient(180deg, #fff5f5 0%, #fff 100%);
   cursor: pointer;
   position: relative;
+  text-align: left;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.voucher-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(185, 28, 28, 0.12);
 }
 
 .voucher-chip-selected {
   border-color: #dc2626;
-  box-shadow: inset 0 0 0 1px #dc2626;
+  box-shadow: inset 0 0 0 1px #dc2626, 0 8px 20px rgba(185, 28, 28, 0.16);
+}
+
+.order-voucher-box {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #e5e7eb;
+}
+
+.order-voucher-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  gap: 10px;
+}
+
+.order-voucher-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.order-voucher-clear {
+  border: 0;
+  background: transparent;
+  color: #b91c1c;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.order-voucher-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.order-voucher-open {
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  background: #fff;
+  color: #991b1b;
+  font-weight: 700;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.order-voucher-open:hover {
+  border-color: #dc2626;
+}
+
+.order-voucher-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #374151;
 }
 
 .vc-badge {
@@ -1822,6 +2381,10 @@ watch(
   padding: 2px 6px;
   max-width: calc(100% - 16px);
   white-space: nowrap;
+}
+
+.vc-badge-best {
+  background: #16a34a;
 }
 
 .vc-code {
@@ -1889,6 +2452,20 @@ watch(
   padding: 2px 8px;
 }
 
+.campaign-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  border: 1px solid #dc2626;
+  color: #b91c1c;
+  background: #fff1f2;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+}
+
 .variant-line {
   margin-top: 8px;
   display: flex;
@@ -1896,13 +2473,66 @@ watch(
   flex-wrap: wrap;
 }
 
+.item-voucher-row {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.item-voucher-btn {
+  flex: 1;
+  min-height: 32px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fff7f7;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.item-voucher-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.item-voucher-clear {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  min-height: 32px;
+  padding: 0 10px;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.item-voucher-detail {
+  margin-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #fff5f5;
+  border: 1px dashed #fca5a5;
+}
+
+.item-voucher-code {
+  font-size: 12px;
+  font-weight: 800;
+  color: #b91c1c;
+}
+
 .variant-select {
   min-width: 120px;
   min-height: 32px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 0 10px;
-  background: #f8fafc;
+  padding: 0 34px 0 10px;
+  background-color: #f8fafc;
   color: #475569;
   font-size: 13px;
 }
@@ -1925,6 +2555,10 @@ watch(
   gap: 10px;
   color: #475569;
   font-size: 14px;
+}
+
+.cart-price-wrap {
+  text-align: right;
 }
 
 .qty-btn {
@@ -1966,6 +2600,17 @@ watch(
 .cart-price {
   font-size: 24px;
   font-weight: 700;
+}
+
+.cart-price--discounted {
+  color: #b91c1c;
+}
+
+.cart-price-before {
+  margin-top: 2px;
+  color: #9ca3af;
+  font-size: 12px;
+  text-decoration: line-through;
 }
 
 .checkout-totals {
@@ -2037,13 +2682,20 @@ watch(
   width: 100%;
   margin-top: 16px;
   border: none;
-  border-radius: 4px;
-  background: #dc2626;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
   color: #fff;
-  padding: 12px 16px;
+  padding: 14px 16px;
   font-size: 16px;
   font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 4px 14px rgba(185, 28, 28, 0.25);
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.submit-btn:hover:not(:disabled) {
+  box-shadow: 0 6px 20px rgba(185, 28, 28, 0.35);
+  transform: translateY(-1px);
 }
 
 .submit-btn:disabled {
@@ -2231,6 +2883,79 @@ watch(
   }
 }
 
+.saved-addresses {
+  margin-top: 8px;
+}
+.saved-address-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.saved-address-btn {
+  position: relative;
+  padding: 10px 16px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .2s, background .2s, box-shadow .2s;
+}
+.saved-address-btn:hover {
+  border-color: #9ca3af;
+  background: #f9fafb;
+}
+.saved-address-btn.active {
+  border-color: #dc2626;
+  background: #fff1f2;
+  color: #111;
+  font-weight: 500;
+  box-shadow: 0 0 0 1px #dc2626;
+}
+.addr-default-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.btn-link-small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 6px 14px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-link-small:hover {
+  border-color: #111;
+  background: #f9fafb;
+  color: #111;
+}
+.edit-address-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #374151;
+}
+
 .address-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2241,13 +2966,17 @@ watch(
 .address-row select {
   width: 100%;
   min-height: 44px;
-  padding: 10px 12px;
-  border-radius: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
   border: 1px solid #d1d5db;
   background: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 @media (max-width: 768px) {
   .address-row {
+    flex-direction: column;
+  }
+  .saved-address-list {
     flex-direction: column;
   }
 }

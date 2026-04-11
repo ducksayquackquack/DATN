@@ -177,9 +177,12 @@ const save = async () => {
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid #d8dee9;
-  background: #fff;
+  background-color: #fff;
   font-size: 14px;
   transition: 0.2s ease;
+}
+select.input {
+  padding-right: 34px;
 }
 
 .input:focus {
@@ -187,14 +190,14 @@ const save = async () => {
   border-color: #4f46e5;
 }
 .status-ok {
-  background: #dcfce7;
+  background-color: #dcfce7;
   color: #166534;
   border-color: #86efac;
   font-weight: 500;
 }
 
 .status-bad {
-  background: #fee2e2;
+  background-color: #fee2e2;
   color: #991b1b;
   border-color: #fca5a5;
   font-weight: 500;

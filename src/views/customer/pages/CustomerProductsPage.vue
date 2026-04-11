@@ -18,15 +18,15 @@ import img9 from "../../../assets/img/Jackets/coach/coach-da-asos.jpg?url"
 import img10 from "../../../assets/img/Jackets/coach/coach-gia-da.jpg?url"
 import img11 from "../../../assets/img/Jackets/coach/coach-long-cuu.jpg?url"
 // New products
-import img12 from "../../../assets/img/Jackets/bomber/bomber-astronaut/IMG_4435.PNG?url"
-import img13 from "../../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4437.PNG?url"
-import img14 from "../../../assets/img/Jackets/bomber/bomber-windbreaker/IMG_4432.PNG?url"
-import img15 from "../../../assets/img/Jackets/coach/coach-leopard/IMG_4445.PNG?url"
-import img16 from "../../../assets/img/Jackets/coach/coach-longsleeve/IMG_4442.PNG?url"
-import img17 from "../../../assets/img/Jackets/coach/coach-tiger-stripe/IMG_4446.PNG?url"
-import img18 from "../../../assets/img/Jackets/hoodie/hoodie-camo/IMG_4450.PNG?url"
-import img19 from "../../../assets/img/Jackets/hoodie/hoodie-zip-boxy/IMG_4452.PNG?url"
-import img20 from "../../../assets/img/Jackets/hoodie/hoodie-zip-silk/IMG_4447.PNG?url"
+import img12 from "../../../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-black.PNG?url"
+import img13 from "../../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-black.PNG?url"
+import img14 from "../../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-black.PNG?url"
+import img15 from "../../../assets/img/Jackets/coach/coach-leopard/coach-leopard.PNG?url"
+import img16 from "../../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-black.PNG?url"
+import img17 from "../../../assets/img/Jackets/coach/coach-tiger-stripe/coach-tiger-stripe.PNG?url"
+import img18 from "../../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-black.PNG?url"
+import img19 from "../../../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-blue.PNG?url"
+import img20 from "../../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-black.PNG?url"
 
 const route = useRoute()
 const router = useRouter()
@@ -42,8 +42,79 @@ const selectedCategories = ref([])
 const inStockOnly = ref(false)
 const minPrice = ref("")
 const maxPrice = ref("")
+const currentPage = ref(1)
+const pageSize = ref(12)
 
-const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11]
+const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11, img12, img13, img14, img15, img16, img17, img18, img19, img20]
+
+const mappedFallbackByCodeNum = {
+  1: img1,
+  2: img2,
+  3: img3,
+  4: img4,
+  5: img5,
+  6: img6,
+  7: img7,
+  8: img8,
+  9: img9,
+  10: img10,
+  11: img11,
+  12: img12,
+  13: img13,
+  14: img14,
+  15: img15,
+  16: img16,
+  17: img17,
+  18: img18,
+  19: img19,
+  20: img20
+}
+
+const mappedFallbackByCode = {
+  SP001: img1,   // Bomber da lộn
+  SP002: img2,   // Bomber dáng lửng
+  SP003: img3,   // Bomber da có túi
+  SP004: img4,   // Bomber cotton nhẹ
+  SP005: img5,   // Hoodie dáng hộp
+  SP006: img6,   // Hoodie in hình
+  SP007: img7,   // Hoodie kéo khoá
+  SP008: img8,   // Coach cách nhiệt
+  SP009: img9,   // Coach da trơn
+  SP010: img10,  // Coach giả da
+  SP011: img11,  // Coach lông cừu
+  SP012: img12,  // Bomber Astronaut
+  SP013: img13,  // Bomber Embroidered Fuzzy
+  SP014: img14,  // Bomber Windbreaker
+  SP015: img15,  // Coach Leopard
+  SP016: img16,  // Coach Longsleeve
+  SP017: img17,  // Coach Tiger Stripe
+  SP018: img18,  // Hoodie Camo
+  SP019: img19,  // Hoodie Zip Boxy
+  SP020: img20,  // Hoodie Zip Silk
+}
+
+const mappedFallbackByName = [
+  { keywords: ["bomber", "da", "lon"], image: img1 },
+  { keywords: ["bomber", "dang", "lung"], image: img2 },
+  { keywords: ["bomber", "gia", "da"], image: img3 },
+  { keywords: ["bomber", "cotton"], image: img4 },
+  { keywords: ["hoodie", "dang", "hop"], image: img5 },
+  { keywords: ["hoodie", "in", "hinh"], image: img6 },
+  { keywords: ["hoodie", "keo", "khoa"], image: img7 },
+  { keywords: ["coach", "cach", "nhiet"], image: img8 },
+  { keywords: ["coach", "da", "asos"], image: img9 },
+  { keywords: ["coach", "gia", "da"], image: img10 },
+  { keywords: ["coach", "long", "cuu"], image: img11 },
+  { keywords: ["astronaut"], image: img12 },
+  { keywords: ["embroidered", "fuzzy"], image: img13 },
+  { keywords: ["windbreaker"], image: img14 },
+  { keywords: ["leopard"], image: img15 },
+  { keywords: ["longsleeve"], image: img16 },
+  { keywords: ["tiger", "stripe"], image: img17 },
+  { keywords: ["camo"], image: img18 },
+  { keywords: ["zip", "boxy"], image: img19 },
+  { keywords: ["zip", "silk"], image: img20 }
+]
 
 const sortOptions = [
   { value: "newest", label: "Mới nhất trước" },
@@ -58,6 +129,43 @@ const toNumber = (value) => {
 }
 
 const normalizeText = (value) => String(value || "").trim().toLowerCase()
+
+const normalizeProductKey = (value = "") =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+
+const normalizeSearchText = (value = "") =>
+  normalizeProductKey(value)
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+const stripTrailingBrandTokenForImage = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/[\s_-]*(dirty\s*wave|dirtywave)$/i, "")
+    .trim()
+
+const getMappedFallbackByName = (name = "") => {
+  const normalized = normalizeProductKey(name)
+  if (!normalized) return ""
+  const found = mappedFallbackByName.find((rule) =>
+    rule.keywords.every((keyword) => normalized.includes(keyword))
+  )
+  return found?.image || ""
+}
+
+const fallbackIndexByName = (name = "") => {
+  const normalized = normalizeSearchText(stripTrailingBrandTokenForImage(name))
+  if (!normalized) return -1
+  let hash = 0
+  for (let i = 0; i < normalized.length; i += 1) {
+    hash = ((hash << 5) - hash + normalized.charCodeAt(i)) | 0
+  }
+  return Math.abs(hash) % fallbackImages.length
+}
 
 const resolveProductId = (item) => {
   const id = Number(item?.id ?? item?.idSanPham ?? item?.sanPhamId ?? item?.productId)
@@ -124,16 +232,60 @@ const pickImageValue = (entry) => {
   return ""
 }
 
-const fallbackImageFor = (id) => {
+const fallbackImageFor = (id, code = "", name = "") => {
+  const normalizedCode = String(code || "").trim().toUpperCase()
+  const allowCuratedCodeMap = /^ATID070-\d+$/i.test(normalizedCode) || /^SP\d+$/i.test(normalizedCode)
+
+  if (mappedFallbackByCode[normalizedCode]) {
+    return mappedFallbackByCode[normalizedCode]
+  }
+
+  if (allowCuratedCodeMap) {
+    const codeDigits = String(normalizedCode).replace(/\D+/g, "")
+    const codeNum = Number(codeDigits)
+    if (Number.isFinite(codeNum) && codeNum > 0 && mappedFallbackByCodeNum[codeNum]) {
+      return mappedFallbackByCodeNum[codeNum]
+    }
+  }
+
+  const mappedByName = getMappedFallbackByName(name)
+  if (mappedByName) return mappedByName
+
   const normalizedId = Number(id)
-  const safeIndex = Number.isFinite(normalizedId) && normalizedId > 0
-    ? (normalizedId - 1) % fallbackImages.length
-    : 0
-  return fallbackImages[safeIndex]
+  if (Number.isFinite(normalizedId) && normalizedId > 0) {
+    if (allowCuratedCodeMap && mappedFallbackByCodeNum[normalizedId]) return mappedFallbackByCodeNum[normalizedId]
+    const nameIndex = fallbackIndexByName(name)
+    if (nameIndex >= 0) return fallbackImages[nameIndex] || fallbackImages[0]
+    return fallbackImages[(normalizedId - 1) % fallbackImages.length]
+  }
+
+  const digits = String(code || "").replace(/\D+/g, "")
+  const codeNum = Number(digits)
+  if (Number.isFinite(codeNum) && codeNum > 0) {
+    if (allowCuratedCodeMap && mappedFallbackByCodeNum[codeNum]) return mappedFallbackByCodeNum[codeNum]
+    const nameIndex = fallbackIndexByName(name)
+    if (nameIndex >= 0) return fallbackImages[nameIndex] || fallbackImages[0]
+    return fallbackImages[(codeNum - 1) % fallbackImages.length]
+  }
+
+  const nameIndex = fallbackIndexByName(name)
+  if (nameIndex >= 0) return fallbackImages[nameIndex] || fallbackImages[0]
+  return fallbackImages[0]
+}
+
+const isActiveStatus = (value = "") => {
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+  return !normalized.includes("ngung") && !normalized.includes("inactive")
 }
 
 const normalizeProduct = (item) => {
-  const variants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
+  const allVariants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
+  const variants = allVariants.filter((variant) => isActiveStatus(variant?.trangThai || variant?.status))
   const variantPrices = variants.map((v) => toNumber(v?.giaBan)).filter((v) => v > 0)
 
   let price = toNumber(item?.giaBan || item?.gia || 0)
@@ -159,21 +311,23 @@ const normalizeProduct = (item) => {
   const code = String(item?.maSanPham || item?.ma || "")
   const category = String(item?.danhMuc?.tenDanhMuc || item?.loai?.tenLoai || "Thời trang nam")
   const overrideImage = getProductImageOverride({ id, maSanPham: code })[0]
+  const active = isActiveStatus(item?.trangThai || item?.status) && variants.length > 0
 
   return {
     id,
     name: String(item?.tenSanPham || item?.name || "Sản phẩm"),
     code,
-    image: overrideImage || imageCandidate || fallbackImageFor(id),
+    image: overrideImage || imageCandidate || fallbackImageFor(id, code, item?.tenSanPham || item?.name),
     category,
     categoryKey: normalizeText(category),
     price,
     stock,
     sold: toNumber(item?.daBan || item?.luotBan || item?.soLuongBan || 0),
+    active,
   }
 }
 
-const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(toNumber(value)) + "đ"
+const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(toNumber(value)) + "₫"
 
 const categoryOptions = computed(() => {
   const set = new Set()
@@ -212,7 +366,7 @@ const maxPriceValue = computed(() => {
 
 const filteredProducts = computed(() => {
   const keyword = normalizeText(search.value)
-  let list = [...products.value]
+  let list = products.value.filter((item) => item.active)
 
   if (keyword) {
     list = list.filter((item) => {
@@ -247,6 +401,22 @@ const filteredProducts = computed(() => {
 
   return list
 })
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredProducts.value.length / pageSize.value)))
+
+const paginatedProducts = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredProducts.value.slice(start, start + pageSize.value)
+})
+
+const goToPage = (page) => {
+  currentPage.value = Math.max(1, Math.min(page, totalPages.value))
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+watch([search, sortBy, selectedCategories, inStockOnly, minPrice, maxPrice], () => {
+  currentPage.value = 1
+}, { deep: true })
 
 const toggleCategory = (category) => {
   const key = normalizeText(category)
@@ -285,116 +455,7 @@ const loadProducts = async () => {
       .map((item) => String(item?.tenDanhMuc || item?.name || '').trim())
       .filter(Boolean)
 
-    // Load backend products
-    let allProducts = source.map(normalizeProduct)
-    
-    // Add static products 12-20
-    const staticProducts = [
-      {
-        id: 12,
-        name: "Bomber Astronaut DirtyWave",
-        code: "ATID070-12",
-        image: img12,
-        category: "Bomber",
-        categoryKey: "bomber",
-        price: 549000,
-        stock: 50,
-        sold: 0
-      },
-      {
-        id: 13,
-        name: "Bomber Embroidered Fuzzy DirtyWave",
-        code: "ATID070-13",
-        image: img13,
-        category: "Bomber",
-        categoryKey: "bomber",
-        price: 599000,
-        stock: 45,
-        sold: 0
-      },
-      {
-        id: 14,
-        name: "Bomber Windbreaker DirtyWave",
-        code: "ATID070-14",
-        image: img14,
-        category: "Bomber",
-        categoryKey: "bomber",
-        price: 479000,
-        stock: 60,
-        sold: 0
-      },
-      {
-        id: 15,
-        name: "Coach Leopard DirtyWave",
-        code: "ATID070-15",
-        image: img15,
-        category: "Coach",
-        categoryKey: "coach",
-        price: 849000,
-        stock: 30,
-        sold: 0
-      },
-      {
-        id: 16,
-        name: "Coach Longsleeve DirtyWave",
-        code: "ATID070-16",
-        image: img16,
-        category: "Coach",
-        categoryKey: "coach",
-        price: 529000,
-        stock: 40,
-        sold: 0
-      },
-      {
-        id: 17,
-        name: "Coach Tiger Stripe DirtyWave",
-        code: "ATID070-17",
-        image: img17,
-        category: "Coach",
-        categoryKey: "coach",
-        price: 779000,
-        stock: 35,
-        sold: 0
-      },
-      {
-        id: 18,
-        name: "Hoodie Camo DirtyWave",
-        code: "ATID070-18",
-        image: img18,
-        category: "Hoodie",
-        categoryKey: "hoodie",
-        price: 459000,
-        stock: 55,
-        sold: 0
-      },
-      {
-        id: 19,
-        name: "Hoodie Zip Boxy DirtyWave",
-        code: "ATID070-19",
-        image: img19,
-        category: "Hoodie",
-        categoryKey: "hoodie",
-        price: 519000,
-        stock: 42,
-        sold: 0
-      },
-      {
-        id: 20,
-        name: "Hoodie Zip Silk DirtyWave",
-        code: "ATID070-20",
-        image: img20,
-        category: "Hoodie",
-        categoryKey: "hoodie",
-        price: 679000,
-        stock: 25,
-        sold: 0
-      }
-    ]
-    
-    // Merge backend and static products, avoid duplicates by ID
-    const existingIds = new Set(allProducts.map(p => p.id))
-    const newStaticProducts = staticProducts.filter(p => !existingIds.has(p.id))
-    products.value = [...allProducts, ...newStaticProducts]
+    products.value = source.map(normalizeProduct)
   } catch {
     products.value = []
     danhMucOptions.value = []
@@ -526,13 +587,13 @@ onMounted(loadProducts)
 
         <div class="cp-meta">
           <span v-if="loading">Đang tải sản phẩm...</span>
-          <span v-else>Hiển thị {{ filteredProducts.length }} / {{ products.length }} sản phẩm</span>
+          <span v-else>Hiển thị {{ (currentPage - 1) * pageSize + 1 }}–{{ Math.min(currentPage * pageSize, filteredProducts.length) }} / {{ filteredProducts.length }} sản phẩm</span>
         </div>
 
         <div v-if="errorMessage" class="cp-alert">{{ errorMessage }}</div>
 
         <section v-if="!loading" class="cp-grid">
-          <article v-for="item in filteredProducts" :key="item.id" class="cp-card">
+          <article v-for="item in paginatedProducts" :key="item.id" class="cp-card">
             <div class="cp-card-image">
               <img v-if="item.image" :src="item.image" :alt="item.name" />
               <div v-else class="cp-image-fallback">DirtyWave</div>
@@ -557,6 +618,18 @@ onMounted(loadProducts)
             <button class="cp-btn cp-btn-outline" type="button" @click="resetFilters">Xóa bộ lọc</button>
           </article>
         </section>
+
+        <nav v-if="totalPages > 1" class="cp-pagination">
+          <button type="button" :disabled="currentPage <= 1" @click="goToPage(currentPage - 1)">‹</button>
+          <button
+            v-for="page in totalPages"
+            :key="page"
+            type="button"
+            :class="{ active: page === currentPage }"
+            @click="goToPage(page)"
+          >{{ page }}</button>
+          <button type="button" :disabled="currentPage >= totalPages" @click="goToPage(currentPage + 1)">›</button>
+        </nav>
       </section>
     </div>
   </CustomerPageLayout>
@@ -693,7 +766,10 @@ onMounted(loadProducts)
   border-radius: 12px;
   padding: 0 14px;
   font: inherit;
-  background: #fff;
+  background-color: #fff;
+}
+.cp-toolbar select {
+  padding-right: 34px;
 }
 
 .cp-meta {
@@ -728,7 +804,7 @@ onMounted(loadProducts)
 }
 
 .cp-card-image {
-  height: 210px;
+  height: 300px;
   background: #f8f1f3;
 }
 
@@ -736,6 +812,7 @@ onMounted(loadProducts)
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center top;
 }
 
 .cp-image-fallback {
@@ -866,6 +943,36 @@ onMounted(loadProducts)
   .cp-toolbar {
     grid-template-columns: 1fr;
   }
+}
+
+.cp-pagination {
+  margin-top: 24px;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.cp-pagination button {
+  min-width: 38px;
+  height: 38px;
+  border: 1px solid #e8d8db;
+  border-radius: 10px;
+  background: #fff;
+  color: #3a3437;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+}
+
+.cp-pagination button.active {
+  background: linear-gradient(135deg, #c5162d 0%, #8f1121 100%);
+  color: #fff;
+  border-color: transparent;
+}
+
+.cp-pagination button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 @media (max-width: 640px) {

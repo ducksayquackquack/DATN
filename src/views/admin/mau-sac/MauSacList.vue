@@ -44,6 +44,7 @@
             <tr>
               <th style="width:90px">Mã</th>
               <th>Tên màu</th>
+              <th>Mô tả</th>
               <th style="width:170px">Ngày tạo</th>
               <th style="width:170px">Ngày sửa</th>
               <th style="width:140px">Trạng thái</th>
@@ -59,6 +60,10 @@
 
               <td>
                 <b>{{ item.name }}</b>
+              </td>
+
+              <td>
+                <span class="muted" style="font-size:13px">{{ item.description || '-' }}</span>
               </td>
 
               <td>{{ formatDateTime(item.createdAt) }}</td>
@@ -80,7 +85,7 @@
                     class="iconbtn"
                     @click="router.push(`/admin/mau-sac/form/${item.id}`)"
                   >
-                    <Pencil size="16" />
+                    <span class="material-icons-outlined">visibility</span>
                   </button>
 
                   <button
@@ -117,7 +122,7 @@ import {
   getAllMauSac,
   deleteMauSac
 } from "../../../services/mauSacService"
-import { Pencil, Trash2 } from "lucide-vue-next"
+import { Trash2 } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel } from "../../../utils/adminStatus"
 
 const router = useRouter()
@@ -139,6 +144,7 @@ async function loadData() {
     id: item.id,
     code: item.maMau,
     name: item.tenMau,
+    description: item.moTa || item.ghiChu || '',
     createdAt: item.ngayTao,
     updatedAt: item.ngaySua,
     status: normalizeAdminStatusLabel(item.trangThai)
@@ -162,6 +168,8 @@ const filteredList = computed(() => {
 })
 
 async function remove(id) {
+  const ok = await window.confirmDialog?.("Xóa màu sắc này?") ?? confirm("Xóa màu sắc này?")
+  if (!ok) return
   await deleteMauSac(id)
   loadData()
 }

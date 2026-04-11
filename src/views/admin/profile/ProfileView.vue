@@ -518,8 +518,11 @@ onMounted(loadProfile)
   border: 1px solid #d4dde9;
   border-radius: 10px;
   padding: 10px 12px;
-  background: #fff !important;
+  background-color: #fff !important;
   min-height: 42px;
+}
+.account-wrap select {
+  padding-right: 34px;
 }
 
 input:disabled {

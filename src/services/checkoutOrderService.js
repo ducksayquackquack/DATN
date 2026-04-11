@@ -4,6 +4,7 @@ import { getDiaChiByKhachHang } from "./diaChiService"
 import { addHoaDonItem, createHoaDon } from "./hoaDonService"
 import { getAllSanPham } from "./sanPhamService"
 import { getAllNhanVien } from "./nhanVienService"
+import { applyCampaignPriceToVariants } from "./campaignPricingService"
 
 const COMMON_WORDS = new Set(["ao", "quan", "dirtywave", "nam"])
 
@@ -376,7 +377,15 @@ export async function createBackendCheckoutOrder({ cartItems, delivery, shipping
   }
 
   const productRes = await getAllSanPham()
-  const products = Array.isArray(productRes?.data) ? productRes.data : []
+  const rawProducts = Array.isArray(productRes?.data) ? productRes.data : []
+  const products = await Promise.all(rawProducts.map(async (product) => {
+    const variants = Array.isArray(product?.sanPhamChiTiets) ? product.sanPhamChiTiets : []
+    if (!variants.length) return product
+    return {
+      ...product,
+      sanPhamChiTiets: await applyCampaignPriceToVariants(variants, product.id)
+    }
+  }))
   const variants = flattenVariants(products)
   const resolvedItems = safeItems.map((item) => ({
     ...item,

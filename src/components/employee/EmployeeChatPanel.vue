@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue"
+import { useInternalAssistant } from "../../composables/useInternalAssistant"
+import { computed, onBeforeUnmount, onMounted, ref, watchEffect } from "vue"
 import {
   getEmployeeChatMessages,
   getEmployeeChatSessions,
@@ -15,8 +16,16 @@ const replyText = ref("")
 const loadingSessions = ref(false)
 const loadingMessages = ref(false)
 const sending = ref(false)
-
+const { context: assistantContext, role: assistantRole } = useInternalAssistant()
 let pollingTimer = null
+
+function handleAssistantInsert(event) {
+  const text = event?.detail?.text || "";
+  if (!text) return;
+
+  // đổi replyMessage thành đúng biến input của anh
+  replyText.value = text;
+}
 
 const currentEmployee = {
   id: String(
@@ -206,6 +215,9 @@ async function loadSessions(showLoading = false) {
     }
   } catch (error) {
     console.error("Không tải được danh sách chat", error)
+    if (error?.response?.status === 401) {
+alert("Phiên đăng nhập của nhân viên đã hết hạn. Vui lòng đăng nhập lại.")
+    }
   } finally {
     if (showLoading) loadingSessions.value = false
   }
@@ -294,7 +306,7 @@ async function sendReply() {
       content
     })
 
-    replyText.value = ""
+    replyText.value = "";
     await loadSessions()
     await loadMessages(selectedSession.value.id)
   } catch (error) {
@@ -346,6 +358,44 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   stopPolling()
+})
+
+onMounted(() => {
+  window.addEventListener("assistant:insert-customer-reply", handleAssistantInsert);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("assistant:insert-customer-reply", handleAssistantInsert);
+});
+
+watchEffect(() => {
+  const lastCustomerMessage = [...messages.value]
+    .slice()
+    .reverse()
+    .find((m) => String(m?.senderType || "").toUpperCase() === "CUSTOMER")
+
+  assistantRole.value = "EMPLOYEE"
+
+  assistantContext.value = {
+    pageType: "CUSTOMER_CHAT",
+    route: "/employee/chat",
+    sessionId: selectedSession.value?.id || null,
+    sessionCode: selectedSession.value?.sessionCode || "",
+    customerName: selectedSession.value
+      ? getCustomerDisplayName(selectedSession.value)
+      : "",
+    customerEmail:
+      selectedSession.value?.customerEmail ||
+      selectedSession.value?.email ||
+      "",
+    customerPhone:
+      selectedSession.value?.customerPhone ||
+      selectedSession.value?.phone ||
+      "",
+    lastCustomerMessage: lastCustomerMessage?.content || "",
+    currentReplyDraft: replyText.value || "",
+    status: selectedSession.value?.status || ""
+  }
 })
 </script>
 

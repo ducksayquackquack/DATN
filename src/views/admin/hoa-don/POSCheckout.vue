@@ -307,8 +307,7 @@ const submitPosOrder = async () => {
       diaChiNhanHang: "Mua tại quầy",
       phiShip: 0,
       phuongThucThanhToan: paymentMethod.value,
-      orderType: "POS",
-      orderStatusCode: "CHO_LAY_HANG"
+      orderType: "POS"
     })
     const orderId = createRes?.data?.hoaDon?.id ?? createRes?.data?.id
     if (!orderId) throw new Error("Không lấy được mã hóa đơn bán tại quầy")
@@ -321,25 +320,37 @@ const submitPosOrder = async () => {
     const isVnpay = paymentMethod.value.toUpperCase() === "VNPAY"
 
     // Bước 4: cập nhật thông tin & ghi chú
-    await updateHoaDon(orderId, {
-      nhanVienId: Number(cashierId.value),
-      khachHangId: selectedCustomer?.id ?? null,
-      soDienThoaiNhanHang: selectedCustomer?.soDienThoai || "",
-      diaChiNhanHang: "Mua tại quầy",
-      phiShip: 0,
-      giaSauGiamGia: Number(discount.value || 0),
-      thanhTien: Number(grandTotal.value || 0),
-      phuongThucThanhToan: paymentMethod.value,
-      orderType: "POS",
-      // VNPay: gắn tag để hệ thống biết nhân viên đã xác nhận, chờ khách thanh toán
-      statusNote: isVnpay
-        ? appendPaymentFlowTag(
-            `[POS] ${orderNote.value || "Đơn bán tại quầy"}`,
-            PAYMENT_FLOW_TAGS.VN_PAY_EMPLOYEE_CONFIRMED,
-            "Nhân viên thu ngân đã xác nhận thanh toán VNPay tại quầy"
-          )
-        : `[POS] ${orderNote.value || "Đơn bán tại quầy"}`
-    })
+    try {
+      await updateHoaDon(orderId, {
+        nhanVienId: Number(cashierId.value),
+        khachHangId: selectedCustomer?.id ?? null,
+        soDienThoaiNhanHang: selectedCustomer?.soDienThoai || "",
+        diaChiNhanHang: "Mua tại quầy",
+        phiShip: 0,
+        giaSauGiamGia: Number(discount.value || 0),
+        thanhTien: Number(grandTotal.value || 0),
+        phuongThucThanhToan: paymentMethod.value,
+        orderType: "POS",
+        // VNPay: gắn tag để hệ thống biết nhân viên đã xác nhận, chờ khách thanh toán
+        statusNote: isVnpay
+          ? appendPaymentFlowTag(
+              `[POS] ${orderNote.value || "Đơn bán tại quầy"}`,
+              PAYMENT_FLOW_TAGS.VN_PAY_EMPLOYEE_CONFIRMED,
+              "Nhân viên thu ngân đã xác nhận thanh toán VNPay tại quầy"
+            )
+          : `[POS] ${orderNote.value || "Đơn bán tại quầy"}`
+      })
+    } catch (updateErr) {
+      console.warn("updateHoaDon failed, retrying without extra fields:", updateErr)
+      try {
+        await updateHoaDon(orderId, {
+          nhanVienId: Number(cashierId.value),
+          khachHangId: selectedCustomer?.id ?? null,
+          phuongThucThanhToan: paymentMethod.value,
+          statusNote: `[POS] ${orderNote.value || "Đơn bán tại quầy"}`
+        })
+      } catch { /* order was already created, continue */ }
+    }
 
     // Bước 5: chuyển trạng thái cuối
     if (!isVnpay) {

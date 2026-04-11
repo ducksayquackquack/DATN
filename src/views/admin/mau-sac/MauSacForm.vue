@@ -89,7 +89,8 @@ const id = route.params.id
 const form = reactive({
   code: "",
   name: "",
-  status: "Active"
+  status: "Hoạt động",
+  note: ""
 })
 
 onMounted(async () => {
@@ -99,6 +100,7 @@ onMounted(async () => {
     if (res.data) {
       form.code = res.data.maMau || ""
       form.name = res.data.tenMau || ""
+      form.note = res.data.moTa || res.data.ghiChu || ""
       form.status =
         res.data.trangThai === "Ngừng hoạt động"
           ? "Ngừng hoạt động"
@@ -108,13 +110,13 @@ onMounted(async () => {
 })
 
 async function save() {
-  const action = id ? "update" : "create"
-  const confirmed = await window.confirm(`Do you really wanna change it? (${action} color)`)
+  const confirmed = await window.confirmDialog?.(id ? "Bạn có chắc muốn cập nhật màu sắc này?" : "Bạn có chắc muốn tạo màu sắc mới?") ?? confirm(id ? "Cập nhật màu sắc?" : "Tạo màu sắc mới?")
   if (!confirmed) return
 
   const payload = {
     maMau: form.code,
     tenMau: form.name,
+    moTa: form.note,
     trangThai:
       form.status === "Ngừng hoạt động"
         ? "Ngừng hoạt động"

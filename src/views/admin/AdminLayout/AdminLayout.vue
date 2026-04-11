@@ -8,8 +8,7 @@ import {
   Tag,
   BookOpen,
   Layers,
-  Ruler,
-  Palette,
+  SlidersHorizontal,
   CreditCard,
   Users,
   UserCog,
@@ -18,7 +17,9 @@ import {
   Search,
   BarChart3,
   ChevronDown,
-  ShoppingCart
+  ShoppingCart,
+  Menu,
+  PanelLeftClose
 } from "lucide-vue-next"
 import taiKhoanService from '../../../services/taiKhoanService'
 import { getAllNhanVien, getNhanVienByTaiKhoanId } from '../../../services/nhanVienService'
@@ -42,16 +43,19 @@ const openSections = ref({
   taikhoan: true
 })
 
+const sidebarCollapsed = ref(false)
+function toggleSidebar() { sidebarCollapsed.value = !sidebarCollapsed.value }
+
 const currentTime = ref(new Date())
 const globalSearchText = ref("")
 const openUserMenu = ref(false)
 const userAvatar = ref('')
 const userDisplayName = ref('Admin')
 const userRole = ref('Quản trị viên')
-const { unreadCount: notificationCount } = useNotifications('admin')
-const notificationToastShown = ref(false)
-let notificationToastBootstrapTimer = null
-const NOTIFICATION_TOAST_SESSION_KEY = 'ops:notification-toast-shown:admin'
+const { notifications, unreadCount: notificationCount, refresh: refreshNotifications } = useNotifications('admin')
+const lastToastSignature = ref('')
+let notificationPollTimer = null
+const NOTIFICATION_TOAST_SESSION_KEY = 'ops:notification-toast-signature:admin'
 
 const avatarInitials = computed(() => {
   const name = String(userDisplayName.value || 'AD').trim()
@@ -132,57 +136,54 @@ const handleAuthContextChanged = () => {
   loadTopbarUser()
 }
 
-const readNotificationToastShownSession = () => {
+const readNotificationToastSignatureSession = () => {
   try {
-    return sessionStorage.getItem(NOTIFICATION_TOAST_SESSION_KEY) === '1'
+    return String(sessionStorage.getItem(NOTIFICATION_TOAST_SESSION_KEY) || '')
   } catch {
-    return false
+    return ''
   }
 }
 
-const writeNotificationToastShownSession = (value) => {
+const writeNotificationToastSignatureSession = (value) => {
   try {
-    if (value) {
-      sessionStorage.setItem(NOTIFICATION_TOAST_SESSION_KEY, '1')
-    } else {
-      sessionStorage.removeItem(NOTIFICATION_TOAST_SESSION_KEY)
-    }
+    const nextValue = String(value || '')
+    if (!nextValue) sessionStorage.removeItem(NOTIFICATION_TOAST_SESSION_KEY)
+    else sessionStorage.setItem(NOTIFICATION_TOAST_SESSION_KEY, nextValue)
   } catch {
     // Ignore storage failures.
   }
 }
 
-const maybeToastNotifications = (count) => {
-  if (!Number(count)) {
-    notificationToastShown.value = false
-    writeNotificationToastShownSession(false)
+const unreadSignature = computed(() => {
+  return notifications.value
+    .filter((item) => !item?.read)
+    .map((item) => String(item?.id || ''))
+    .filter(Boolean)
+    .join('|')
+})
+
+const maybeToastNotifications = () => {
+  const count = Number(notificationCount.value || 0)
+  const signature = String(unreadSignature.value || '')
+
+  if (!count || !signature) {
+    lastToastSignature.value = ''
+    writeNotificationToastSignatureSession('')
     return
   }
 
-  if (notificationToastShown.value || readNotificationToastShownSession()) return
-  notificationToastShown.value = true
-  writeNotificationToastShownSession(true)
+  if (signature === lastToastSignature.value) return
+
+  lastToastSignature.value = signature
+  writeNotificationToastSignatureSession(signature)
   window.toast?.info?.(`Bạn có ${count} thông báo cần xử lý`, 4500)
 }
 
-const startNotificationToastBootstrap = () => {
-  const startedAt = Date.now()
-  if (notificationToastBootstrapTimer) clearInterval(notificationToastBootstrapTimer)
-
-  notificationToastBootstrapTimer = setInterval(() => {
-    const count = Number(notificationCount.value || 0)
-    if (count > 0) {
-      maybeToastNotifications(count)
-      clearInterval(notificationToastBootstrapTimer)
-      notificationToastBootstrapTimer = null
-      return
-    }
-
-    if (Date.now() - startedAt > 7000) {
-      clearInterval(notificationToastBootstrapTimer)
-      notificationToastBootstrapTimer = null
-    }
-  }, 300)
+const startNotificationPolling = () => {
+  if (notificationPollTimer) clearInterval(notificationPollTimer)
+  notificationPollTimer = setInterval(() => {
+    refreshNotifications()
+  }, 12000)
 }
 
 const syncOpsToastOffset = (isOpen) => {
@@ -193,13 +194,8 @@ const syncOpsToastOffset = (isOpen) => {
   document.body.style.setProperty('--ops-toast-top', topValue)
 }
 
-watch(notificationCount, (count) => {
-  if (!Number(count)) {
-    notificationToastShown.value = false
-    writeNotificationToastShownSession(false)
-    return
-  }
-  maybeToastNotifications(count)
+watch(unreadSignature, () => {
+  maybeToastNotifications()
 }, { immediate: true })
 
 watch(openUserMenu, (isOpen) => {
@@ -257,11 +253,12 @@ function closeUserMenu(event) {
 }
 
 onMounted(() => {
-  notificationToastShown.value = readNotificationToastShownSession()
+  lastToastSignature.value = readNotificationToastSignatureSession()
   document.addEventListener("click", closeUserMenu)
   window.addEventListener(AUTH_CONTEXT_CHANGED_EVENT, handleAuthContextChanged)
   loadTopbarUser()
-  startNotificationToastBootstrap()
+  refreshNotifications()
+  startNotificationPolling()
   syncOpsToastOffset(false)
 })
 
@@ -270,9 +267,9 @@ onUnmounted(() => {
   window.removeEventListener(AUTH_CONTEXT_CHANGED_EVENT, handleAuthContextChanged)
   document.body.classList.remove(OPS_TOAST_SHIFT_CLASS)
   document.body.style.removeProperty('--ops-toast-top')
-  if (notificationToastBootstrapTimer) {
-    clearInterval(notificationToastBootstrapTimer)
-    notificationToastBootstrapTimer = null
+  if (notificationPollTimer) {
+    clearInterval(notificationPollTimer)
+    notificationPollTimer = null
   }
 })
 
@@ -293,11 +290,44 @@ function handleGlobalSearch() {
     query: { keyword }
   })
 }
+
+const prefix = computed(() => route.path.startsWith('/employee/') ? '/employee' : '/admin')
+
+/** Generic sidebar active check: true when route is in the same module as the link */
+function isModuleActive(linkTo) {
+  if (!linkTo) return false
+  const p = route.path
+  const normalizedLink = String(linkTo).replace(/\/+$/, "")
+
+  if (p === normalizedLink) return true
+  if (p.startsWith(`${normalizedLink}/`)) return true
+
+  if (normalizedLink.endsWith('/list')) {
+    const moduleBase = normalizedLink.slice(0, -5)
+    if (p === moduleBase) return true
+    if (p.startsWith(`${moduleBase}/`)) return true
+  }
+
+  return false
+}
+
+const isSanPhamActive = computed(() => {
+  const p = route.path
+  if (p === `${prefix.value}/san-pham/bien-the`) return true
+  if (p.startsWith(`${prefix.value}/san-pham/form`)) {
+    return true
+  }
+  return false
+})
 </script>
 
 <template>
-  <div class="app">
+  <div class="app" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <aside class="sidebar">
+      <div class="sidebar-toggle" @click="toggleSidebar">
+        <PanelLeftClose v-if="!sidebarCollapsed" :size="20" />
+        <Menu v-else :size="20" />
+      </div>
       <div class="brand admin-brand">
         <span class="admin-brand__wordmark">
           <img :src="logo" alt="D" class="admin-brand__d-icon" />
@@ -341,26 +371,19 @@ function handleGlobalSearch() {
           
           <transition name="dropdown">
             <div v-show="openSections.vanhanh" class="navgrp-content">
-              <RouterLink to="/admin/hoa-don/list">
+              <RouterLink to="/admin/hoa-don/list" :class="{ 'router-link-active': isModuleActive('/admin/hoa-don/list') }">
                 <span class="left">
                   <FileText class="icon" /> Hoá đơn
                 </span>
               </RouterLink>
 
-              <RouterLink to="/admin/san-pham/list">
+              <RouterLink to="/admin/san-pham/bien-the" :class="{ 'router-link-active': isSanPhamActive }">
                 <span class="left">
                   <Shirt class="icon" /> Sản phẩm
                 </span>
               </RouterLink>
 
-              <RouterLink to="/admin/san-pham/bien-the">
-                <span class="left">
-                  <span class="material-icons-outlined icon-material">tune</span>
-                  Biến thể sản phẩm
-                </span>
-              </RouterLink>
-
-              <RouterLink to="/admin/khuyen-mai/list">
+              <RouterLink to="/admin/khuyen-mai/list" :class="{ 'router-link-active': isModuleActive('/admin/khuyen-mai/list') }">
                 <span class="left">
                   <Tag class="icon" /> Khuyến mãi
                 </span>
@@ -411,31 +434,19 @@ function handleGlobalSearch() {
 
           <transition name="dropdown">
             <div v-show="openSections.danhmuc" class="navgrp-content">
-              <RouterLink to="/admin/danh-muc/list">
-                <span class="left">
-                  <BookOpen class="icon" /> Danh mục
-                </span>
-              </RouterLink>
-
-              <RouterLink to="/admin/loai/list">
+              <RouterLink to="/admin/loai/list" :class="{ 'router-link-active': isModuleActive('/admin/loai/list') }">
                 <span class="left">
                   <Layers class="icon" /> Loại
                 </span>
               </RouterLink>
 
-              <RouterLink to="/admin/kich-thuoc/list">
+              <RouterLink to="/admin/thuoc-tinh" :class="{ 'router-link-active': isModuleActive('/admin/thuoc-tinh') }">
                 <span class="left">
-                  <Ruler class="icon" /> Kích thước
+                  <SlidersHorizontal class="icon" /> Thuộc tính
                 </span>
               </RouterLink>
 
-              <RouterLink to="/admin/mau-sac/list">
-                <span class="left">
-                  <Palette class="icon" /> Màu sắc
-                </span>
-              </RouterLink>
-
-              <RouterLink to="/admin/phuong-thuc-thanh-toan/list">
+              <RouterLink to="/admin/phuong-thuc-thanh-toan/list" :class="{ 'router-link-active': isModuleActive('/admin/phuong-thuc-thanh-toan/list') }">
                 <span class="left">
                   <CreditCard class="icon" /> Phương thức TT
                 </span>
@@ -453,13 +464,13 @@ function handleGlobalSearch() {
 
           <transition name="dropdown">
             <div v-show="openSections.taikhoan" class="navgrp-content">
-              <RouterLink to="/admin/khach-hang/list">
+              <RouterLink to="/admin/khach-hang/list" :class="{ 'router-link-active': isModuleActive('/admin/khach-hang/list') }">
                 <span class="left">
                   <Users class="icon" /> Khách hàng
                 </span>
               </RouterLink>
 
-              <RouterLink to="/admin/nhan-vien/list">
+              <RouterLink to="/admin/nhan-vien/list" :class="{ 'router-link-active': isModuleActive('/admin/nhan-vien/list') }">
                 <span class="left">
                   <UserCog class="icon" /> Nhân viên
                 </span>
@@ -473,6 +484,9 @@ function handleGlobalSearch() {
     <div class="content">
       <div class="topbar">
         <div class="row">
+          <button v-if="sidebarCollapsed" class="topbar-hamburger" @click="toggleSidebar" aria-label="Mở sidebar">
+            <Menu :size="22" />
+          </button>
           <div class="search topbar-search">
             <button class="search-icon-btn" type="button" @click="handleGlobalSearch" aria-label="Tìm kiếm">
               <Search size="18" />
@@ -563,41 +577,40 @@ function handleGlobalSearch() {
 }
 
 .admin-brand__d-icon {
-  width: 1.08em;
-  height: 1.08em;
+  width: 1.4em;
+  height: 1.4em;
   object-fit: contain;
   margin-right: -0.04em;
+  margin-top: -0.15em;
   filter:
     sepia(1)
-    saturate(14)
+    saturate(20)
     hue-rotate(326deg)
-    brightness(0.98)
-    contrast(1.16)
-    drop-shadow(0 3px 8px rgba(197, 22, 45, 0.24));
+    brightness(1.3)
+    contrast(1.1);
   transition: transform 0.25s ease, filter 0.25s ease;
 }
 
 .admin-brand:hover .admin-brand__d-icon {
-  transform: scale(1.08) rotate(-3deg);
+  transform: scale(1.1) rotate(-3deg);
   filter:
     sepia(1)
-    saturate(15)
+    saturate(22)
     hue-rotate(326deg)
-    brightness(1.03)
-    contrast(1.18)
-    drop-shadow(0 4px 12px rgba(197, 22, 45, 0.32));
+    brightness(1.4)
+    contrast(1.12);
 }
 
 .admin-brand__rest {
   font-size: 1em;
   font-weight: 800;
   letter-spacing: -0.035em;
-  color: #111827;
+  color: #ffffff;
   transition: color 0.25s ease;
 }
 
 .admin-brand:hover .admin-brand__rest {
-  color: #c5162d;
+  color: #ff6b6b;
 }
 
 .icon-material {
@@ -627,7 +640,7 @@ function handleGlobalSearch() {
 }
 
 .navgrp-header:hover {
-  background: #f1f5f9;
+  background: rgba(255,255,255,0.06);
 }
 
 .navgrp-header h4 {
@@ -635,12 +648,12 @@ function handleGlobalSearch() {
   font-size: 12px;
   letter-spacing: 0.4px;
   text-transform: uppercase;
-  color: #64748b;
+  color: rgba(255,255,255,0.4);
 }
 
 .chevron {
   transition: transform 0.3s ease;
-  color: #94a3b8;
+  color: rgba(255,255,255,0.3);
 }
 
 .chevron.open {
@@ -659,12 +672,14 @@ function handleGlobalSearch() {
   margin: 2px 0;
   border-radius: 10px;
   transition: all 0.25s ease;
+  color: rgba(255,255,255,0.7);
 }
 
 .nav a:hover,
 .nav-single:hover {
-  background: #f1f5f9;
+  background: rgba(255,255,255,0.06);
   transform: translateX(4px);
+  color: #ffffff;
 }
 
 .nav a:hover .icon,
@@ -675,8 +690,9 @@ function handleGlobalSearch() {
 
 .nav a.router-link-active,
 .nav-single.router-link-active {
-  background: rgba(220,38,38,.10);
+  background: rgba(220,38,38,0.18);
   border-left: 3px solid #dc2626;
+  color: #ff6b6b;
 }
 
 .nav-sales {
@@ -684,8 +700,9 @@ function handleGlobalSearch() {
 }
 
 .nav-sales.router-link-active {
-  background: rgba(220,38,38,.10);
+  background: rgba(220,38,38,0.18);
   border-left: 3px solid #dc2626;
+  color: #ff6b6b;
 }
 
 .avatar-wrapper {

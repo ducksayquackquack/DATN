@@ -6,7 +6,7 @@ import {
   deleteKhachHang,
   getHoaDonByKhachHang
 } from "../../../services/khachHangService"
-import { Pencil, Trash2 } from "lucide-vue-next"
+import { Trash2 } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel } from "../../../utils/adminStatus"
 
 const router = useRouter()
@@ -163,7 +163,7 @@ const remove = async () => {
                   class="iconbtn"
                   @click="goToEdit(kh.id)"
                 >
-                  <Pencil size="16"/>
+                  <span class="material-icons-outlined">visibility</span>
                 </button>
 
               <button

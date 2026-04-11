@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from "vue"
+import { computed, onMounted, ref, watch } from "vue"
 import { getAllSanPham } from "../../../services/sanPhamService"
 import { getAdminStatusTone, normalizeAdminStatusLabel } from "../../../utils/adminStatus"
 
@@ -67,15 +67,31 @@ const filteredList = computed(() => {
   })
 })
 
+const currentPage = ref(1)
+const pageSize = ref(20)
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredList.value.length / pageSize.value)))
+
+const paginatedList = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredList.value.slice(start, start + pageSize.value)
+})
+
 const groupedProducts = computed(() => {
   const groups = {}
-  filteredList.value.forEach((item) => {
+  paginatedList.value.forEach((item) => {
     const key = item.loai || "Khác"
     if (!groups[key]) groups[key] = []
     groups[key].push(item)
   })
   return groups
 })
+
+function goToPage(page) {
+  if (page >= 1 && page <= totalPages.value) currentPage.value = page
+}
+
+watch(search, () => { currentPage.value = 1 })
 </script>
 
 <template>
@@ -156,6 +172,16 @@ const groupedProducts = computed(() => {
       <div v-if="!loading && filteredList.length === 0" class="empty">
         Không có dữ liệu phù hợp
       </div>
+
+      <nav v-if="totalPages > 1" class="ep-pagination">
+        <button :disabled="currentPage <= 1" @click="goToPage(currentPage - 1)">&laquo;</button>
+        <button
+          v-for="p in totalPages" :key="p"
+          :class="{ active: p === currentPage }"
+          @click="goToPage(p)"
+        >{{ p }}</button>
+        <button :disabled="currentPage >= totalPages" @click="goToPage(currentPage + 1)">&raquo;</button>
+      </nav>
     </div>
   </section>
 </template>
@@ -294,5 +320,32 @@ const groupedProducts = computed(() => {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+.ep-pagination {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 18px;
+}
+.ep-pagination button {
+  min-width: 36px;
+  height: 36px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+}
+.ep-pagination button.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+.ep-pagination button:disabled {
+  opacity: .4;
+  cursor: default;
 }
 </style>
