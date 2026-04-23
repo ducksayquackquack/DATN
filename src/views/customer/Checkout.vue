@@ -322,6 +322,7 @@ const shippingProvider = ref("GHN")
 const shippingLoading = ref(false)
 const shippingError = ref("")
 const shippingQuote = ref(null)
+const shippingRequestSeq = ref(0)
 const shippingSpec = ref({
   weightGram: 1200,
   lengthCm: 30,
@@ -939,12 +940,21 @@ const fetchShippingQuote = async () => {
   const toProvince = String(delivery.value.province || "").trim()
   const toDistrict = String(delivery.value.district || "").trim()
   const toWard = String(delivery.value.ward || "").trim()
+  const expectedWard = String(selectedSavedAddress.value?.phuongXa || "").trim()
+  const needsWard = Boolean(expectedWard || wards.value.length > 0)
 
   if (!toProvince || !toDistrict) {
     shippingQuote.value = null
     return
   }
 
+  if (needsWard && !toWard) {
+    shippingQuote.value = null
+    return
+  }
+
+  const requestSeq = shippingRequestSeq.value + 1
+  shippingRequestSeq.value = requestSeq
   shippingLoading.value = true
   try {
     const payload = {
@@ -959,14 +969,18 @@ const fetchShippingQuote = async () => {
     }
 
     const response = await quoteShippingFeeAll(payload)
+    if (requestSeq !== shippingRequestSeq.value) return
     const quotes = Array.isArray(response?.data?.quotes) ? response.data.quotes : []
     const matched = quotes.find((item) => String(item?.provider || "").toUpperCase() === shippingProvider.value)
     shippingQuote.value = matched || quotes[0] || null
   } catch (error) {
+    if (requestSeq !== shippingRequestSeq.value) return
     shippingQuote.value = { fee: 30000 }
     shippingError.value = error?.response?.data?.message || "Không lấy được phí ship realtime, tạm dùng mức 30.000đ"
   } finally {
-    shippingLoading.value = false
+    if (requestSeq === shippingRequestSeq.value) {
+      shippingLoading.value = false
+    }
   }
 }
 

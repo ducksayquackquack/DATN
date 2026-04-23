@@ -41,16 +41,6 @@
             />
           </div>
 
-          <div class="form-group full-width">
-            <label class="form-label">Mô tả</label>
-            <textarea 
-              v-model="form.moTa" 
-              class="form-textarea" 
-              rows="3"
-              placeholder="Nhập mô tả phiếu giảm giá..."
-            ></textarea>
-          </div>
-
           <div class="form-group">
             <label class="form-label">
               Hình thức giảm <span class="required">*</span>
@@ -69,9 +59,9 @@
               v-model.number="form.giaTriGiamGia" 
               class="form-input" 
               type="number"
-              :placeholder="form.hinhThucGiam ? 'Nhập % (1-100)' : 'Nhập số tiền'"
+              :placeholder="form.hinhThucGiam ? 'Nhập % (1-99)' : 'Nhập số tiền'"
               :min="form.hinhThucGiam ? 1 : 1000"
-              :max="form.hinhThucGiam ? 100 : undefined"
+              :max="form.hinhThucGiam ? 99 : undefined"
             />
           </div>
 
@@ -148,6 +138,16 @@
               <option :value="true">Hoạt động</option>
               <option :value="false">Ngừng hoạt động</option>
             </select>
+          </div>
+
+          <div class="form-group full-width">
+            <label class="form-label">Mô tả</label>
+            <textarea 
+              v-model="form.moTa" 
+              class="form-textarea" 
+              rows="3"
+              placeholder="Nhập mô tả phiếu giảm giá..."
+            ></textarea>
           </div>
         </div>
       </div>
@@ -243,8 +243,8 @@ async function save() {
       return
     }
 
-    if (form.hinhThucGiam === true && (form.giaTriGiamGia < 1 || form.giaTriGiamGia > 100)) {
-      window.toast.warning('Giá trị giảm theo % phải từ 1-100')
+    if (form.hinhThucGiam === true && (form.giaTriGiamGia < 1 || form.giaTriGiamGia >= 100)) {
+      window.toast.warning('Giá trị giảm theo % phải từ 1 đến nhỏ hơn 100')
       return
     }
 

@@ -170,22 +170,22 @@
           <table class="tc-table">
             <thead>
               <tr>
-                <th>Mã đơn</th>
-                <th>Khách hàng</th>
-                <th>Tổng tiền</th>
-                <th>Trạng thái</th>
-                <th>Thời gian</th>
+                <th style="width:140px">Mã đơn</th>
+                <th style="width:200px">Khách hàng</th>
+                <th style="width:160px;text-align:right">Tổng tiền</th>
+                <th style="width:150px;text-align:center">Trạng thái</th>
+                <th style="width:160px;text-align:center">Thời gian</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="row in recentInvoices" :key="row.id || row.maHoaDon">
                 <td>{{ row.maHoaDon }}</td>
                 <td>{{ row.customer }}</td>
-                <td>{{ formatCurrency(row.total) }}</td>
-                <td>
+                <td style="text-align:right;font-weight:600">{{ formatCurrency(row.total) }}</td>
+                <td style="text-align:center">
                   <span class="tc-status" :class="`tone-${row.tone}`">{{ row.status }}</span>
                 </td>
-                <td>{{ formatDate(row.createdAt) }}</td>
+                <td style="text-align:center">{{ formatDate(row.createdAt) }}</td>
               </tr>
               <tr v-if="!recentInvoices.length">
                 <td colspan="5" class="tc-empty">Chưa có dữ liệu hóa đơn.</td>
@@ -277,7 +277,7 @@ import {
   ChevronRight
 } from 'lucide-vue-next'
 
-import { getAllHoaDon, getHoaDonById } from '../../services/hoaDonService'
+import { getAllHoaDon } from '../../services/hoaDonService'
 import { getAllSanPham } from '../../services/sanPhamService'
 import { getAllKhuyenMai, getAllVouchers } from '../../services/khuyenMaiService'
 import { getAllNhanVien } from '../../services/nhanVienService'
@@ -647,60 +647,14 @@ const syncDashboard = async () => {
   if (failed.length) apiError.value = `Chưa tải được: ${failed.join(', ')}`
 
   // Compute sold quantities per variant from completed invoices
-  await computeSoldBySpct()
+  soldBySpct.value = await computeSoldBySpctFromInvoices(invoices.value)
 
   loading.value = false
 }
 
-const shouldCountForStock = (order) => {
-  const statusCode = String(order?.orderStatusCode || '').trim().toUpperCase()
-  const statusText = String(order?.orderStatusName || order?.trangThai || '').toUpperCase()
-  const noteText = String(order?.statusNote || '').toUpperCase()
-  if (statusCode.includes('HUY') || statusText.includes('HUY') || statusText.includes('H\u1ee6Y') || noteText.includes('HUY')) return false
-  return statusCode === 'HOAN_THANH' || statusCode === 'DA_GIAO' || statusText.includes('HOAN_THANH') || statusText.includes('HO\u00c0N TH\u00c0NH') || statusText.includes('DA_GIAO') || statusText.includes('\u0110\u00c3 GIAO')
-}
+import { shouldCountOrderForStock, computeSoldBySpctFromInvoices } from "@/utils/stockCalculation"
 
-const computeSoldBySpct = async () => {
-  const map = new Map()
-  const completedInvoices = invoices.value.filter(shouldCountForStock)
-  const idsToFetch = completedInvoices
-    .filter((inv) => {
-      const details = inv?.items || inv?.chiTietHoaDons || inv?.hoaDonChiTiets || inv?.chiTiets
-      return !Array.isArray(details) || details.length === 0
-    })
-    .map((inv) => Number(inv?.id))
-    .filter((id) => Number.isFinite(id) && id > 0)
-
-  // Fetch details for invoices that don't have inline details (batch of 10)
-  const detailResults = []
-  for (let i = 0; i < idsToFetch.length; i += 10) {
-    const batch = idsToFetch.slice(i, i + 10)
-    const results = await Promise.all(batch.map((id) => getHoaDonById(id).catch(() => null)))
-    detailResults.push(...results)
-  }
-  const detailById = new Map()
-  detailResults.forEach((res) => {
-    const data = res?.data
-    if (data?.id) detailById.set(Number(data.id), data)
-  })
-
-  for (const inv of completedInvoices) {
-    let items = inv?.items || inv?.chiTietHoaDons || inv?.hoaDonChiTiets || inv?.chiTiets
-    if (!Array.isArray(items) || items.length === 0) {
-      const enriched = detailById.get(Number(inv?.id))
-      items = enriched?.items || enriched?.chiTietHoaDons || enriched?.hoaDonChiTiets || enriched?.chiTiets || []
-    }
-    if (!Array.isArray(items)) continue
-    for (const item of items) {
-      const spctId = Number(item?.spctId || item?.sanPhamChiTietId || item?.idSanPhamChiTiet || item?.chiTietSanPhamId || item?.sanPhamChiTiet?.id || 0)
-      const qty = Number(item?.soLuong || item?.quantity || item?.soLuongMua || 0)
-      if (spctId > 0 && qty > 0) {
-        map.set(spctId, (map.get(spctId) || 0) + qty)
-      }
-    }
-  }
-  soldBySpct.value = map
-}
+const shouldCountForStock = (order) => shouldCountOrderForStock(order)
 
 const totalRevenue = computed(() => {
   return invoices.value.reduce((sum, item) => {
@@ -844,7 +798,7 @@ const slides = computed(() => {
         kicker: 'Bộ sưu tập',
         title: 'DirtyWave',
         desc: 'Dữ liệu sản phẩm sẽ hiển thị sau khi đồng bộ.',
-        img: logo
+        img: img1
       }
     ]
   }

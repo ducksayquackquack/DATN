@@ -2,7 +2,7 @@ import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
 
-// https://vite.dev/config/
+// Vite dev config
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const configuredOrigin = String(env.VITE_PUBLIC_APP_ORIGIN || '').trim()

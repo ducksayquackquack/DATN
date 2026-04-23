@@ -120,12 +120,16 @@ const buildCustomerNotifications = async (identityKey = "") => {
 
       for (const item of customerRows) {
         const id = buildCustomerOrderNotificationId(item)
+        const statusLabel = toCustomerStatusLabel(item)
+        const isCancelled = statusLabel === "Đã hủy" || statusLabel === "Giao thất bại"
         list.push({
           id,
           createdAt: item?.ngayTao || new Date().toISOString(),
-          title: `Đơn hàng ${toCustomerStatusLabel(item)}`,
+          title: `Đơn hàng ${statusLabel}`,
           description: summarizeCustomerStatus(item),
-          link: "/customer/profile?tab=orders",
+          link: `/customer/profile?tab=orders&orderId=${item?.id || ""}`,
+          orderId: item?.id || null,
+          showDetail: !isCancelled,
           read: isSeen("customer", id, identityKey)
         })
       }

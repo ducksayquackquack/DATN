@@ -87,6 +87,8 @@ const normalizeImage = (value) => {
   return normalized
 }
 
+const isCuratedCatalogCode = (value = "") => /^SP0*(?:[1-9]|1\d|20)$/i.test(String(value || "").trim())
+
 const normalizeBackendProduct = (item) => {
   const variants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
   const variantPrices = variants.map((v) => toNumber(v?.giaBan)).filter((v) => v > 0)
@@ -103,6 +105,17 @@ const normalizeBackendProduct = (item) => {
     item?.anhChinh,
     variants,
   ])
+  const firstVariant = variants[0] || null
+  const normalizedCode = String(code || "").trim().toUpperCase()
+  const curatedPrimaryImage = isCuratedCatalogCode(normalizedCode)
+    ? (fallbackImageForVariant({
+        id,
+        maSanPham: normalizedCode,
+        tenSanPham: item?.tenSanPham || item?.name,
+        tenMauSac: firstVariant?.mauSac?.tenMau,
+        maChiTietSanPham: firstVariant?.ma || firstVariant?.maSanPhamChiTiet || "",
+      }) || "")
+    : ""
 
   return {
     id,
@@ -110,24 +123,35 @@ const normalizeBackendProduct = (item) => {
     name: String(item?.tenSanPham || item?.name || "Sản phẩm"),
     cat: String(item?.danhMuc?.tenDanhMuc || item?.loai?.tenLoai || "Thời trang nam"),
     price,
-    img: normalizeImage(overrideImage || imageCandidate) || fallbackImageForVariant({
+    img: normalizeImage(overrideImage || curatedPrimaryImage || imageCandidate) || fallbackImageForVariant({
       id,
       maSanPham: code,
       tenSanPham: item?.tenSanPham || item?.name,
-      tenMauSac: variants?.[0]?.mauSac?.tenMau,
-      maChiTietSanPham: variants?.[0]?.ma,
+      tenMauSac: firstVariant?.mauSac?.tenMau,
+      maChiTietSanPham: firstVariant?.ma || firstVariant?.maSanPhamChiTiet,
     }),
     variants: variants.map((v) => ({
       spctId: v?.id,
       ma: v?.ma,
       color: String(v?.mauSac?.tenMau || "").trim(),
       size: String(v?.kichThuoc?.tenKichThuoc || "").trim(),
-      image: normalizeImage(pickImageValue([v, v?.anh, v?.hinhAnh, v?.image, v?.imageUrl, v?.duongDanAnh])) || fallbackImageForVariant({
+      image: normalizeImage(
+        (isCuratedCatalogCode(normalizedCode)
+          ? fallbackImageForVariant({
+              id,
+              maSanPham: normalizedCode,
+              tenSanPham: item?.tenSanPham || item?.name,
+              tenMauSac: v?.mauSac?.tenMau,
+              maChiTietSanPham: v?.ma || v?.maSanPhamChiTiet || "",
+            })
+          : "")
+        || pickImageValue([v, v?.anh, v?.hinhAnh, v?.image, v?.imageUrl, v?.duongDanAnh])
+      ) || fallbackImageForVariant({
         id,
         maSanPham: code,
         tenSanPham: item?.tenSanPham || item?.name,
         tenMauSac: v?.mauSac?.tenMau,
-        maChiTietSanPham: v?.ma,
+        maChiTietSanPham: v?.ma || v?.maSanPhamChiTiet,
       }),
       price: Number(v?.giaBan || 0),
       basePrice: Number(v?.giaBanGoc || v?.giaBan || 0),

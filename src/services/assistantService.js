@@ -21,7 +21,15 @@ export const assistantService = {
   async sendMessage(payload) {
     const finalPayload = {
       ...payload,
-      context: payload?.context || {},
+      context: {
+        ...(payload?.context || {}),
+        ...(payload?.slotValues
+          ? { slotValues: payload.slotValues }
+          : {}),
+        ...(payload?.pendingActionToken
+          ? { pendingActionToken: payload.pendingActionToken }
+          : {}),
+      },
     };
 
     const res = await assistantHttp.post(`/chat`, finalPayload, {

@@ -12,6 +12,7 @@
         <router-link
           class="btn primary"
           to="/admin/phuong-thuc-thanh-toan/form"
+          style="display: none;"
         >
           + Thêm phương thức
         </router-link>
@@ -44,9 +45,9 @@
             <tr>
               <th style="width:100px">Mã</th>
               <th>Tên phương thức</th>
-              <th style="width:170px">Ngày tạo</th>
-              <th style="width:170px">Ngày sửa</th>
-              <th style="width:140px">Trạng thái</th>
+              <th style="width:170px;text-align:center">Ngày tạo</th>
+              <th style="width:170px;text-align:center">Ngày sửa</th>
+              <th style="width:140px;text-align:center">Trạng thái</th>
               <th style="width:140px" class="center">Thao tác</th>
             </tr>
           </thead>
@@ -65,11 +66,11 @@
                 </div>
               </td>
 
-              <td>{{ formatDateTime(item.createdAt) }}</td>
+              <td style="text-align:center">{{ formatDateTime(item.createdAt) }}</td>
 
-              <td>{{ formatDateTime(item.updatedAt) }}</td>
+              <td style="text-align:center">{{ formatDateTime(item.updatedAt) }}</td>
 
-              <td>
+              <td style="text-align:center">
                 <span
                   class="pill"
                   :class="`status-${getAdminStatusTone(item.status)}`"
@@ -185,4 +186,11 @@ async function remove(id) {
   gap:8px;
 }
 
+@media (max-width: 1024px) {
+  .head { flex-direction: column; align-items: flex-start; gap: 12px; }
+}
+@media (max-width: 768px) {
+  .body { overflow-x: auto; }
+  table { min-width: 600px; }
+}
 </style>

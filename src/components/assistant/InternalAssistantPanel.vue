@@ -4,16 +4,15 @@
       <div class="assistant-header-main">
         <div class="assistant-avatar">AI</div>
         <div class="assistant-header-copy">
-          <h3>Trợ lý AI nội bộ</h3>
+          <h3>Trợ lý bán hàng</h3>
           <div class="assistant-subtitle">
-            Hỗ trợ tra cứu đơn hàng, sản phẩm, tồn kho, lịch làm và doanh thu
+            {{ assistantSubtitle }}
           </div>
 
           <div class="assistant-meta-row">
             <span class="assistant-badge role">{{ roleLabel }}</span>
             <span class="assistant-badge context">{{ contextLabel }}</span>
-            <span v-if="sessionCode" class="assistant-badge muted">{{ sessionCode }}</span>
-          </div>
+                      </div>
         </div>
       </div>
 
@@ -25,31 +24,35 @@
 
     <section class="assistant-context-strip">
       <div>
-        <div class="strip-label">Ngữ cảnh hiện tại</div>
+        <div class="strip-label">Khu vực đang hỗ trợ</div>
         <div class="strip-value">{{ contextDescription }}</div>
       </div>
 
       <div class="status-pill" :class="{ live: !loading, busy: loading }">
-        {{ loading ? "Đang xử lý" : "Sẵn sàng demo" }}
+        {{ loading ? "Đang xử lý" : "Sẵn sàng hỗ trợ" }}
       </div>
+    </section>
+
+    <section v-if="apiIssue" class="assistant-issue-banner">
+      <span>{{ apiIssue }}</span>
     </section>
 
     <section v-if="showQuickActions" class="quick-actions-block">
       <div class="quick-actions-head">
-        <div class="quick-actions-title">Gợi ý thao tác nhanh</div>
+        <div class="quick-actions-title">Gợi ý nhanh</div>
         <div class="quick-actions-subtitle">
-          Chọn câu hỏi mẫu để demo nhanh và ổn định hơn
+          Chọn một thao tác thường dùng để bắt đầu nhanh hơn
         </div>
       </div>
 
       <div class="quick-actions">
         <button
           v-for="item in displayedQuickActions"
-          :key="item"
+          :key="suggestedActionKey(item)"
           class="quick-btn"
           @click="sendQuickAction(item)"
         >
-          {{ item }}
+          {{ suggestedActionLabel(item) }}
         </button>
       </div>
     </section>
@@ -63,7 +66,7 @@
 
       <div
         v-for="(msg, index) in messages"
-        :key="`${msg.sender}-${index}`"
+        :key="msg.id || `${msg.sender}-${index}`"
         :class="['message-item', msg.sender]"
       >
         <div class="message-avatar">
@@ -80,32 +83,97 @@
             <div class="message-text">{{ msg.text }}</div>
 
             <div
-              v-if="msg.sender === 'assistant' && msg.toolCalls && msg.toolCalls.length"
-              class="tool-actions-wrap"
+              v-if="msg.sender === 'assistant' && msg.requiresConfirmation"
+              class="assistant-card action-card"
             >
-              <button class="inline-action" @click="toggleToolDetails(index)">
-                {{ showToolDetailsMap[index] ? "Ẩn kỹ thuật" : "Xem kỹ thuật" }}
-              </button>
+              <div class="card-title">Xác nhận thao tác</div>
+              <div class="card-text">
+                {{ msg.confirmationMessage || "Vui lòng xác nhận để tiếp tục xử lý." }}
+              </div>
+              <div class="card-meta-row">
+                <span v-if="msg.actionStatus" class="tiny-badge status">{{ displayActionStatus(msg.actionStatus) }}</span>
+              </div>
+              <div class="action-buttons">
+                <button
+                  class="inline-action primary"
+                  :disabled="loading || !msg.pendingActionToken"
+                  @click="confirmPendingAction(msg)"
+                >
+                  Xác nhận
+                </button>
+                <button
+                  class="inline-action"
+                  :disabled="loading || !msg.pendingActionToken"
+                  @click="cancelPendingAction(msg)"
+                >
+                  Hủy
+                </button>
+              </div>
+            </div>
 
-              <div v-if="showToolDetailsMap[index]" class="tool-calls">
-                <div class="tool-title">Tool đã dùng</div>
-                <div class="tool-list">
-                  <span
-                    v-for="(tool, tIndex) in msg.toolCalls"
-                    :key="`${index}-${tIndex}`"
-                    class="tool-item"
-                  >
-                    {{ tool.tool || "tool" }}
-                  </span>
+            <div
+              v-if="msg.sender === 'assistant' && msg.missingSlots && msg.missingSlots.length"
+              class="assistant-card slot-card"
+            >
+              <div class="card-title">Cần bổ sung thông tin</div>
+              <div class="card-text">Điền nhanh các trường còn thiếu để assistant tiếp tục xử lý.</div>
+              <div class="missing-slot-list">
+                <div v-for="slot in msg.missingSlots" :key="`${msg.id || index}-${slot}`" class="slot-field">
+                  <label :for="`slot-${index}-${slot}`">{{ slotLabel(slot) }}</label>
+                  <input
+                    v-if="slotInputType(slot) !== 'textarea'"
+                    :id="`slot-${index}-${slot}`"
+                    v-model="slotDrafts[msg.id || index][slot]"
+                    :type="slotInputType(slot)"
+                    :placeholder="slotPlaceholder(slot)"
+                    class="slot-input"
+                  />
+                  <textarea
+                    v-else
+                    :id="`slot-${index}-${slot}`"
+                    v-model="slotDrafts[msg.id || index][slot]"
+                    rows="2"
+                    :placeholder="slotPlaceholder(slot)"
+                    class="slot-input slot-textarea"
+                  ></textarea>
                 </div>
+              </div>
+              <div class="action-buttons">
+                <button class="inline-action primary" :disabled="loading" @click="submitMissingSlots(msg, index)">
+                  Gửi thông tin
+                </button>
+              </div>
+            </div>
+
+            <div
+              v-if="msg.sender === 'assistant' && msg.warnings && msg.warnings.length"
+              class="assistant-card warning-card"
+            >
+              <div class="card-title">Lưu ý</div>
+              <ul class="warning-list">
+                <li v-for="warning in msg.warnings" :key="warning">{{ warning }}</li>
+              </ul>
+            </div>
+
+            <div
+              v-if="msg.sender === 'assistant' && msg.suggestedActions && msg.suggestedActions.length"
+              class="assistant-card suggested-card"
+            >
+              <div class="card-title">Thao tác đề xuất</div>
+              <div class="suggested-chip-list">
+                <button
+                  v-for="action in msg.suggestedActions.slice(0, 6)"
+                  :key="`${msg.id || index}-${suggestedActionKey(action)}`"
+                  class="chip-btn"
+                  @click="useSuggestedAction(action, msg)"
+                >
+                  {{ suggestedActionLabel(action) }}
+                </button>
               </div>
             </div>
           </div>
 
-          <div
-            v-if="msg.sender === 'assistant' && !loading && msg.text"
-            class="message-actions"
-          >
+          <div v-if="msg.sender === 'assistant' && !loading && msg.text" class="message-actions">
             <button class="inline-action" @click="copyMessage(msg.text)">Copy</button>
             <button
               v-if="isCustomerChatContext"
@@ -115,6 +183,7 @@
               Chèn vào ô chat khách
             </button>
           </div>
+
         </div>
       </div>
 
@@ -138,6 +207,7 @@
     </div>
 
     <footer class="assistant-footer">
+
       <textarea
         v-model="inputMessage"
         class="assistant-input"
@@ -148,11 +218,7 @@
 
       <div class="assistant-footer-actions">
         <div class="assistant-hint">
-          {{
-            isCustomerChatContext
-              ? "Có thể chèn trực tiếp câu trả lời vào ô chat khách."
-              : "Ưu tiên hỏi ngắn, rõ intent để demo đẹp hơn."
-          }}
+          {{ assistantHint }}
         </div>
 
         <button
@@ -160,7 +226,7 @@
           :disabled="loading || !inputMessage.trim()"
           @click="handleSend"
         >
-          {{ loading ? "Đang gửi..." : "Gửi" }}
+          {{ loading ? "Đang gửi..." : pendingActionState ? "Gửi / xác nhận" : "Gửi" }}
         </button>
       </div>
     </footer>
@@ -202,6 +268,11 @@ export default {
       sessionCode: null,
       showToolDetailsMap: {},
       recommendedActions: [],
+      pendingActionState: null,
+      slotDrafts: {},
+      showDebug: false,
+      apiIssue: "",
+      lastAuthEventAt: 0,
       messages: [this.buildGreetingMessage()],
     };
   },
@@ -221,15 +292,19 @@ export default {
       return "GENERAL_INTERNAL";
     },
     roleLabel() {
-      return this.role === "ADMIN" ? "Chế độ quản trị" : "Chế độ nhân viên";
+      return this.role === "ADMIN" ? "Quản trị viên" : "Nhân viên bán hàng";
     },
     contextLabel() {
-      return PAGE_LABELS[this.resolvedPageType] || "Trợ lý nội bộ";
+      return PAGE_LABELS[this.resolvedPageType] || "Trợ lý bán hàng";
     },
     contextDescription() {
-      const route = this.context?.route || "Không xác định";
-      const page = PAGE_LABELS[this.resolvedPageType] || "Màn hình nội bộ";
-      return `${page} • ${route}`;
+      return PAGE_LABELS[this.resolvedPageType] || "Trợ lý bán hàng";
+    },
+    assistantSubtitle() {
+      if (this.role === "ADMIN") {
+        return "Hỗ trợ tra cứu đơn hàng, khách hàng, tồn kho và thao tác bán hàng hằng ngày.";
+      }
+      return "Hỗ trợ tra cứu đơn hàng, khách hàng, tồn kho và tạo đơn nhanh hơn.";
     },
     isCustomerChatContext() {
       return this.resolvedPageType === "CUSTOMER_CHAT";
@@ -243,40 +318,23 @@ export default {
       if (pageType === "CUSTOMER_CHAT") {
         return "Ví dụ: Viết giúp tôi câu trả lời cho khách về đơn HD202401001";
       }
-
       if (pageType === "REVENUE_DASHBOARD") {
-        return "Ví dụ: Doanh thu tháng này, top 5 sản phẩm bán chạy, có bao nhiêu đơn hủy, có bao nhiêu đơn hoàn thành?";
+        return "Ví dụ: Doanh thu hôm nay thế nào, có đơn trễ hay tồn thấp nào cần xử lý?";
       }
-
       if (pageType === "POS") {
-        return "Ví dụ: SP001 còn hàng không, tìm sản phẩm hoodie, gợi ý 3 sản phẩm dễ chốt sale";
+        return "Ví dụ: SP001 còn hàng không, tạo đơn mới cho khách 0912345678, gợi ý 3 sản phẩm dễ chốt sale";
       }
-
       if (pageType === "ORDER_DETAIL") {
-        return "Ví dụ: Đơn này đang ở trạng thái gì, tóm tắt nhanh đơn hàng này";
+        return "Ví dụ: Đơn này đang ở trạng thái gì, cập nhật trạng thái sang đang giao";
       }
-
-      return "Ví dụ: SP001 còn hàng không, đơn HD202401001 đang ở trạng thái gì, hoặc doanh thu tháng này";
+      return "Ví dụ: Đơn HD202401001 đang ở trạng thái gì, doanh thu hôm nay là bao nhiêu, hoặc cho tôi xem đơn chưa giao ở Hà Nội";
     },
     loadingText() {
       const pageType = this.resolvedPageType;
-
-      if (pageType === "CUSTOMER_CHAT") {
-        return "Assistant đang soạn gợi ý trả lời khách...";
-      }
-
-      if (pageType === "REVENUE_DASHBOARD") {
-        return "Assistant đang tổng hợp doanh thu và số liệu...";
-      }
-
-      if (pageType === "POS") {
-        return "Assistant đang kiểm tra sản phẩm và tồn kho...";
-      }
-
-      if (pageType === "ORDER_DETAIL") {
-        return "Assistant đang tra cứu thông tin đơn hàng...";
-      }
-
+      if (pageType === "CUSTOMER_CHAT") return "Assistant đang soạn gợi ý trả lời khách...";
+      if (pageType === "REVENUE_DASHBOARD") return "Assistant đang tổng hợp doanh thu, đơn trễ và cảnh báo...";
+      if (pageType === "POS") return "Assistant đang kiểm tra sản phẩm, tồn kho và thao tác bán hàng...";
+      if (pageType === "ORDER_DETAIL") return "Assistant đang tra cứu và chuẩn bị thao tác với đơn hàng...";
       return "Assistant đang đọc ngữ cảnh và tìm dữ liệu phù hợp...";
     },
     emptyStateTitle() {
@@ -284,14 +342,24 @@ export default {
     },
     emptyStateDescription() {
       if (this.isCustomerChatContext) {
-        return "Anh/chị có thể nhờ viết câu trả lời cho khách, tra đơn, kiểm tra tồn kho hoặc gợi ý sản phẩm dễ tư vấn.";
+        return "Anh/chị có thể nhờ viết câu trả lời cho khách, tra lịch sử mua hàng, tìm voucher phù hợp hoặc kiểm tra nhanh trạng thái đơn.";
       }
-
-      if (this.resolvedPageType === "REVENUE_DASHBOARD") {
-        return "Anh/chị có thể hỏi về doanh thu, top sản phẩm bán chạy, số lượng đơn theo trạng thái hoặc lịch làm gần nhất.";
+      if (this.role === "ADMIN") {
+        return "Anh/chị có thể hỏi về doanh thu, đơn trễ, tồn thấp, hồ sơ khách hàng, sản phẩm hoặc trạng thái vận hành.";
       }
-
-      return "Anh/chị có thể hỏi về đơn hàng, sản phẩm, tồn kho, doanh thu, lịch làm hoặc nhờ assistant tóm tắt nhanh dữ liệu.";
+      return "Anh/chị có thể hỏi về đơn hàng, sản phẩm, tồn kho, khách hàng, tạo đơn mới hoặc nhờ assistant soạn câu trả lời gửi khách.";
+    },
+    assistantHint() {
+      if (this.pendingActionState?.token) {
+        return "Có thao tác đang chờ xác nhận. Anh/chị có thể bấm nút Xác nhận/Hủy hoặc trả lời tiếp trong chat.";
+      }
+      if (this.isCustomerChatContext) {
+        return "Có thể chèn trực tiếp câu trả lời vào ô chat khách, hoặc dùng các chip gợi ý để thao tác nhanh.";
+      }
+      if (this.role === "ADMIN") {
+        return "Anh/chị có thể dùng trợ lý để tra cứu nhanh, chuẩn bị đơn nháp và chuyển sang đúng màn hình nghiệp vụ.";
+      }
+      return "Nhân viên nên hỏi ngắn, rõ intent: đơn hàng, khách hàng, tồn kho, tạo đơn hoặc câu trả lời cho khách.";
     },
     defaultQuickActions() {
       const pageType = this.resolvedPageType;
@@ -300,36 +368,44 @@ export default {
       if (pageType === "CUSTOMER_CHAT") {
         return hasCustomerMessage
           ? [
-              "Viết giúp tôi câu trả lời cho khách về đơn HD202401001",
+              "Khách này từng mua chưa?",
+              "Viết giúp tôi câu trả lời cho khách",
               "Viết mềm hơn và lịch sự hơn",
-              "Gợi ý 3 sản phẩm hoodie dễ chốt sale",
               "Rút gọn câu trả lời",
+              "Có voucher nào áp được không?",
+              "Gợi ý 3 sản phẩm hoodie dễ chốt sale",
             ]
           : [
+              "Khách này từng mua chưa?",
               "Tìm sản phẩm hoodie",
               "SP001 còn hàng không?",
-              "Đơn HD202401001 đang ở trạng thái gì?",
+              "Đơn này đang ở trạng thái gì?",
               "Gợi ý 3 sản phẩm hoodie dễ chốt sale",
             ];
       }
 
       if (pageType === "REVENUE_DASHBOARD") {
-        return [
-          "Doanh thu tháng này",
-          "Top 5 sản phẩm bán chạy",
-          "Có bao nhiêu đơn hủy?",
-          "Có bao nhiêu đơn chờ xử lý?",
-          "Có bao nhiêu đơn hoàn thành?",
-          "Sản phẩm nào có số lượt click nhiều nhất?",
-        ];
+        return this.role === "ADMIN"
+          ? [
+              "Doanh thu hôm nay là bao nhiêu?",
+              "Đơn trễ cần xử lý",
+              "Tồn thấp",
+              "Có thanh toán thất bại nào bất thường không?",
+            ]
+          : [
+              "Đơn HD202401001 đang ở trạng thái gì?",
+              "Khách này từng mua chưa?",
+              "SP001 còn hàng không?",
+              "Viết giúp tôi câu trả lời cho khách",
+            ];
       }
 
       if (pageType === "POS") {
         return [
           "SP001 còn hàng không?",
           "Tìm sản phẩm hoodie",
+          "Tạo đơn mới cho khách 0912345678",
           "Gợi ý 3 sản phẩm hoodie dễ chốt sale",
-          "Tìm sản phẩm áo khoác",
         ];
       }
 
@@ -337,33 +413,28 @@ export default {
         return [
           "Đơn này đang ở trạng thái gì?",
           "Tóm tắt nhanh đơn hàng này",
+          "Cập nhật trạng thái sang đang giao",
           "Viết giúp tôi câu trả lời cho khách về đơn này",
-          "Gợi ý bước xử lý tiếp theo",
         ];
       }
 
       if (this.role === "ADMIN") {
         return [
-          "Doanh thu tháng này",
-          "Top 5 sản phẩm bán chạy",
-          "Có bao nhiêu đơn hủy?",
-          "Có bao nhiêu đơn chờ xử lý?",
-          "Có bao nhiêu đơn hoàn thành?",
-          "Sản phẩm nào có số lượt click nhiều nhất?",
+          "Doanh thu hôm nay là bao nhiêu?",
+          "Đơn trễ cần xử lý",
+          "Tồn thấp",
         ];
       }
 
       return [
-        "Tìm sản phẩm hoodie",
+        "Khách này từng mua chưa?",
         "SP001 còn hàng không?",
         "Đơn HD202401001 đang ở trạng thái gì?",
-        "Gợi ý 3 sản phẩm hoodie dễ chốt sale",
+        "Cho tôi xem các đơn chưa giao ở Hà Nội",
       ];
     },
     displayedQuickActions() {
-      const actions = this.recommendedActions?.length
-        ? this.recommendedActions
-        : this.defaultQuickActions;
+      const actions = this.recommendedActions?.length ? this.recommendedActions : this.defaultQuickActions;
       return actions.slice(0, 6);
     },
   },
@@ -395,14 +466,19 @@ export default {
   methods: {
     buildGreetingMessage() {
       return {
+        id: this.newMessageId(),
         sender: "assistant",
         text:
           this.role === "ADMIN"
-            ? "Xin chào anh/chị Admin. Em đã sẵn sàng hỗ trợ doanh thu, top sản phẩm, tồn kho thấp, lịch làm và tra cứu dữ liệu để demo."
-            : "Xin chào anh/chị. Em có thể hỗ trợ tìm sản phẩm, kiểm tra tồn kho, tra cứu đơn hàng và gợi ý trả lời khách.",
+            ? "Xin chào anh/chị Admin. Em sẵn sàng hỗ trợ doanh thu, cảnh báo vận hành, voucher, sản phẩm và các thao tác cần xác nhận."
+            : "Xin chào anh/chị. Em có thể hỗ trợ tìm sản phẩm, kiểm tra tồn kho, tra cứu đơn hàng, tạo đơn nháp và gợi ý trả lời khách.",
         toolCalls: [],
         createdAt: new Date().toISOString(),
+        suggestedActions: this.defaultQuickActions,
       };
+    },
+    newMessageId() {
+      return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     },
     senderLabel(sender) {
       if (sender === "user") return "Bạn";
@@ -418,23 +494,78 @@ export default {
         minute: "2-digit",
       });
     },
+    formatDebug(debug) {
+      if (!debug) return "";
+      try {
+        return typeof debug === "string" ? debug : JSON.stringify(debug, null, 2);
+      } catch (error) {
+        return String(debug);
+      }
+    },
+    showDebugFor(msg) {
+      return false;
+    },
     toggleToolDetails(index) {
       this.showToolDetailsMap = {
         ...this.showToolDetailsMap,
         [index]: !this.showToolDetailsMap[index],
       };
     },
+    slotLabel(slot) {
+      const map = {
+        customerPhone: "Số điện thoại khách",
+        shippingAddress: "Địa chỉ giao hàng",
+        quantity: "Số lượng",
+        targetStatus: "Trạng thái cần cập nhật",
+        productHint: "Mã hoặc gợi ý sản phẩm",
+        productName: "Tên sản phẩm",
+        orderCode: "Mã đơn hàng",
+      };
+      return map[slot] || slot;
+    },
+    slotPlaceholder(slot) {
+      const map = {
+        customerPhone: "Ví dụ: 0912345678",
+        shippingAddress: "Ví dụ: 12 Nguyễn Trãi, Hà Nội",
+        quantity: "Ví dụ: 2",
+        targetStatus: "Ví dụ: dang giao",
+        productHint: "Ví dụ: SP001 hoặc áo sơ mi trắng size M",
+        productName: "Ví dụ: Áo sơ mi trắng",
+        orderCode: "Ví dụ: HD202401001",
+      };
+      return map[slot] || `Nhập ${this.slotLabel(slot).toLowerCase()}`;
+    },
+    slotInputType(slot) {
+      if (slot === "quantity") return "number";
+      if (slot === "shippingAddress") return "textarea";
+      return "text";
+    },
+    ensureSlotDraft(messageKey, slots = []) {
+      const draft = { ...(this.slotDrafts[messageKey] || {}) };
+      slots.forEach((slot) => {
+        if (draft[slot] == null) {
+          draft[slot] = "";
+        }
+      });
+      this.slotDrafts = {
+        ...this.slotDrafts,
+        [messageKey]: draft,
+      };
+    },
     getStorageKey() {
       const pageType = this.resolvedPageType || "GENERAL_INTERNAL";
       const route = this.context?.route || "unknown-route";
       const role = this.role || "EMPLOYEE";
-      return `dirtywave_ai_history:${role}:${pageType}:${route}`;
+      const sessionScopedKey =
+        this.context?.sessionCode || this.context?.sessionId || this.context?.orderCode || "global";
+      return `dirtywave_ai_history:${role}:${pageType}:${route}:${sessionScopedKey}`;
     },
     loadHistoryFromStorage() {
       try {
         const raw = localStorage.getItem(this.getStorageKey());
         if (!raw) {
           this.sessionCode = null;
+          this.pendingActionState = null;
           this.messages = [this.buildGreetingMessage()];
           return;
         }
@@ -443,6 +574,13 @@ export default {
         const savedMessages = Array.isArray(parsed?.messages) ? parsed.messages : [];
         this.messages = savedMessages.length ? savedMessages : [this.buildGreetingMessage()];
         this.sessionCode = parsed?.sessionCode || null;
+        this.pendingActionState = parsed?.pendingActionState || null;
+        this.recommendedActions = Array.isArray(parsed?.recommendedActions) ? parsed.recommendedActions : [];
+        this.messages.forEach((msg, index) => {
+          if (msg?.missingSlots?.length) {
+            this.ensureSlotDraft(msg.id || index, msg.missingSlots);
+          }
+        });
         this.scrollToBottom();
       } catch (error) {
         console.error("Không load được lịch sử assistant", error);
@@ -454,6 +592,8 @@ export default {
           this.getStorageKey(),
           JSON.stringify({
             sessionCode: this.sessionCode || this.context?.sessionCode || null,
+            pendingActionState: this.pendingActionState || null,
+            recommendedActions: this.recommendedActions || [],
             messages: (this.messages || []).slice(-50),
             updatedAt: new Date().toISOString(),
           })
@@ -466,6 +606,8 @@ export default {
       localStorage.removeItem(this.getStorageKey());
       this.sessionCode = null;
       this.recommendedActions = [];
+      this.pendingActionState = null;
+      this.slotDrafts = {};
       this.messages = [this.buildGreetingMessage()];
       window.toast?.success?.("Đã xóa lịch sử trợ lý");
       this.scrollToBottom();
@@ -490,88 +632,316 @@ export default {
       window.toast?.success?.("Đã chèn nội dung vào ô chat khách");
     },
     async sendQuickAction(text) {
-      this.inputMessage = text;
+      this.inputMessage = typeof text === "string" ? text : this.suggestedActionLabel(text);
       await this.handleSend();
     },
-    async handleSend() {
-      const text = this.inputMessage.trim();
-      if (!text || this.loading) return;
+    suggestedActionLabel(action) {
+      if (typeof action === "string") return action;
+      return this.formatSuggestedActionLabel(action);
+    },
+    displayActionStatus(status) {
+      const code = String(status || "").toUpperCase();
+      const map = {
+        HANDOFF_REQUIRED: "Cần mở màn hình xử lý",
+        CONFIRMED: "Đã xác nhận",
+        CANCELLED: "Đã hủy",
+        EXECUTED: "Đã xử lý",
+        DONE: "Hoàn tất",
+        FAILED: "Chưa thể xử lý"
+      };
+      return map[code] || "Đang xử lý";
+    },
+    suggestedActionKey(action) {
+      if (typeof action === "string") return action;
+      return `${action?.type || "action"}-${action?.label || "label"}`;
+    },
+    formatSuggestedActionLabel(action) {
+      if (typeof action === "string") return action;
+      const map = {
+        open_order_workflow: "Mở workflow tạo đơn",
+        cancel_draft: "Hủy đơn nháp",
+        open_customer: "Mở hồ sơ khách",
+        recent_orders: "Xem đơn gần đây",
+        upsell: "Gợi ý mua thêm",
+        cross_sell: "Gợi ý sản phẩm đi kèm",
+        stock_guard: "Kiểm tra tồn kho",
+        campaign: "Gợi ý đẩy bán nhanh",
+        drill_down: "Xem chi tiết",
+        export: "Xuất dữ liệu tổng hợp",
+      };
+      return map[action?.type] || action?.label || action?.type || "Gợi ý";
+    },
+    sanitizeSuggestedActions(actions, message = null) {
+      const input = Array.isArray(actions) ? actions : [];
+      const seen = new Set();
+      const result = [];
+      for (const action of input) {
+        const label = this.suggestedActionLabel(action);
+        const type = typeof action === "string" ? action : String(action?.type || "");
+        if (!label) continue;
+        if (["voucher_fit", "continue_previous", "export", "drill_down"].includes(type)) {
+          continue;
+        }
+        const key = type || label;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(action);
+      }
+      return result.slice(0, 4);
+    },
+    extractDraftOrder(message) {
+      if (!message) return null;
+      if (message?.data?.draftOrder) return message.data.draftOrder;
+      const text = String(message?.text || "");
+      if (!/đơn nháp/i.test(text)) return null;
 
+      const phoneMatch = text.match(/khách\s+(\d{9,11})/i);
+      const itemMatch = text.match(/:\s*([a-z0-9_-]+)\s*x\s*(\d+)/i);
+      const addressMatch = text.match(/giao tới\s+(.+?)(?:\.|$)/i);
+      const sizeMatch = text.match(/size\s+([A-Za-z0-9]+)/i);
+
+      return {
+        customerPhone: phoneMatch?.[1] || "",
+        shippingAddress: addressMatch?.[1]?.trim() || "",
+        items: itemMatch ? [{
+          productHint: itemMatch[1].toUpperCase(),
+          quantity: Number(itemMatch[2] || 1),
+          size: sizeMatch?.[1] || "",
+        }] : [],
+        sourceMessage: text,
+      };
+    },
+    useSuggestedAction(action, msg = null) {
+      const type = typeof action === "string" ? "" : (action?.type || "");
+      if (type === "open_order_workflow") {
+        const targetMsg = msg || [...this.messages].reverse().find((m) => m?.sender === "assistant" && this.extractDraftOrder(m));
+        const draftOrder = this.extractDraftOrder(targetMsg);
+        if (!draftOrder) {
+          window.toast?.warning?.("Chưa tìm thấy dữ liệu đơn nháp để mở workflow.");
+          return;
+        }
+        localStorage.setItem("assistantDraftOrder", JSON.stringify(draftOrder));
+        const basePath = this.role === "ADMIN" ? "/admin" : "/employee";
+        this.$router.push(`${basePath}/hoa-don/pos`);
+        window.toast?.success?.("Đã mở workflow tạo đơn và nạp dữ liệu nháp.");
+        return;
+      }
+      this.inputMessage = this.formatSuggestedActionLabel(action);
+      this.scrollToBottom();
+    },
+    normalizeAssistantMessage(response) {
+      const message = {
+        id: this.newMessageId(),
+        sender: "assistant",
+        text: response?.message || "Không có phản hồi từ assistant.",
+        toolCalls: response?.toolCalls || [],
+        createdAt: new Date().toISOString(),
+        requiresConfirmation: !!response?.requiresConfirmation,
+        confirmationMessage: response?.confirmationMessage || "",
+        pendingActionToken: response?.pendingActionToken || null,
+        actionStatus: response?.actionStatus || null,
+        missingSlots: Array.isArray(response?.missingSlots) ? response.missingSlots.filter(Boolean) : [],
+        suggestedActions: [],
+        warnings: Array.isArray(response?.warnings) ? response.warnings.filter(Boolean) : [],
+        auditId: response?.auditId || null,
+        debug: response?.debug || null,
+        data: response?.data || null,
+      };
+
+      if (message.missingSlots.length) {
+        this.ensureSlotDraft(message.id, message.missingSlots);
+      }
+      message.suggestedActions = this.sanitizeSuggestedActions(
+        Array.isArray(response?.suggestedActions)
+          ? response.suggestedActions.filter(Boolean)
+          : Array.isArray(response?.quickReplies)
+            ? response.quickReplies.filter(Boolean)
+            : [],
+        message
+      );
+
+      const draftOrder = this.extractDraftOrder(message);
+      if (draftOrder && !message.data?.draftOrder) {
+        message.data = {
+          ...(message.data || {}),
+          draftOrder,
+        };
+      }
+      if (draftOrder) {
+        const hasOpenWorkflow = (message.suggestedActions || []).some((a) => typeof a === "object" && a?.type === "open_order_workflow");
+        if (!hasOpenWorkflow) {
+          message.suggestedActions = this.sanitizeSuggestedActions([
+            { type: "open_order_workflow", label: "Mở workflow tạo đơn", priority: "high" },
+            ...(message.suggestedActions || []),
+          ], message);
+        }
+      }
+      return message;
+    },
+    async submitMissingSlots(msg, index) {
+  const key = msg.id || index;
+  const draft = this.slotDrafts[key] || {};
+
+  const slotValues = {};
+  (msg.missingSlots || []).forEach((slot) => {
+    const rawValue = draft[slot];
+    const value = typeof rawValue === "string" ? rawValue.trim() : rawValue;
+
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      slotValues[slot] = slot === "quantity" ? Number(value) : value;
+    }
+  });
+
+  if (!Object.keys(slotValues).length) {
+    window.toast?.error?.("Anh/chị hãy nhập ít nhất một thông tin còn thiếu.");
+    return;
+  }
+
+  this.messages.push({
+    id: this.newMessageId(),
+    sender: "user",
+    text: Object.entries(slotValues)
+      .map(([slot, value]) => `${this.slotLabel(slot)}: ${value}`)
+      .join(", "),
+    toolCalls: [],
+    createdAt: new Date().toISOString(),
+  });
+
+  this.inputMessage = "";
+  await this.handleSend({
+    forcedMessage: "continue_pending_action",
+    pendingActionToken: msg?.pendingActionToken || this.pendingActionState?.token || null,
+    slotValues,
+    skipUserEcho: true,
+  });
+},
+async confirmPendingAction(msg) {
+      if (!msg?.pendingActionToken) return;
+      this.inputMessage = "xác nhận";
+      await this.handleSend({
+        forcedMessage: "xác nhận",
+        pendingActionToken: msg.pendingActionToken,
+      });
+    },
+    async cancelPendingAction(msg) {
+      if (!msg?.pendingActionToken) return;
+      this.inputMessage = "hủy";
+      await this.handleSend({
+        forcedMessage: "hủy",
+        pendingActionToken: msg.pendingActionToken,
+      });
+    },
+    async handleSend(options = {}) {
+  const text = (options?.forcedMessage ?? this.inputMessage).trim();
+  if (!text || this.loading) return;
+  if (!options?.skipUserEcho) {
+    this.messages.push({
+      id: this.newMessageId(),
+      sender: "user",
+      text,
+      toolCalls: [],
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  this.inputMessage = "";
+  this.loading = true;
+  this.scrollToBottom();
+
+  try {
+    this.apiIssue = "";
+
+    const response = await assistantService.sendMessage({
+      sessionCode: this.sessionCode || this.context?.sessionCode || null,
+      pendingActionToken: options?.pendingActionToken || this.pendingActionState?.token || null,
+      message: text,
+      role: this.role,
+      source: this.source,
+      context: {
+        ...(this.context || {}),
+        slotValues: options?.slotValues || null,
+      },
+    });
+
+    if (response?.sessionCode) {
+      this.sessionCode = response.sessionCode;
+    }
+
+    const suggested = Array.isArray(response?.suggestedActions)
+      ? response.suggestedActions.filter(Boolean)
+      : Array.isArray(response?.quickReplies)
+        ? response.quickReplies.filter(Boolean)
+        : [];
+    if (suggested.length) {
+      this.recommendedActions = this.sanitizeSuggestedActions(suggested);
+    }
+
+    const assistantMsg = this.normalizeAssistantMessage(response);
+    this.messages.push(assistantMsg);
+
+    if (assistantMsg.requiresConfirmation && assistantMsg.pendingActionToken) {
+      this.pendingActionState = {
+        token: assistantMsg.pendingActionToken,
+        confirmationMessage: assistantMsg.confirmationMessage,
+        actionStatus: assistantMsg.actionStatus,
+        auditId: assistantMsg.auditId,
+      };
+    } else if (["CONFIRMED", "CANCELLED", "EXECUTED", "FAILED", "DONE"].includes((assistantMsg.actionStatus || "").toUpperCase())) {
+      this.pendingActionState = null;
+    } else if (!assistantMsg.pendingActionToken && !assistantMsg.requiresConfirmation) {
+      this.pendingActionState = null;
+    }
+  } catch (error) {
+    const status = error?.response?.status;
+    if (status === 401) {
+      this.apiIssue = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại để dùng trợ lý.";
       this.messages.push({
-        sender: "user",
-        text,
+        id: this.newMessageId(),
+        sender: "system",
+        text: "Phiên đăng nhập nội bộ đã hết hạn hoặc chưa được thiết lập. Anh/chị vui lòng đăng nhập lại bằng tài khoản nhân viên/quản trị viên rồi thử lại.",
         toolCalls: [],
         createdAt: new Date().toISOString(),
       });
-
-      this.inputMessage = "";
-      this.loading = true;
-      this.scrollToBottom();
-
-      try {
-        const response = await assistantService.sendMessage({
-          sessionCode: this.sessionCode || this.context?.sessionCode || null,
-          message: text,
-          role: this.role,
-          source: this.source,
-          context: this.context || {},
-        });
-
-        if (response?.sessionCode) {
-          this.sessionCode = response.sessionCode;
-        }
-
-        if (Array.isArray(response?.quickReplies)) {
-          this.recommendedActions = response.quickReplies.filter(Boolean);
-        }
-
-        this.messages.push({
-          sender: "assistant",
-          text: response?.message || "Không có phản hồi từ assistant.",
-          toolCalls: response?.toolCalls || [],
-          createdAt: new Date().toISOString(),
-        });
-      } catch (error) {
-        const status = error?.response?.status;
-        if (status === 401) {
-          this.messages.push({
-            sender: "system",
-            text: "Phiên đăng nhập nội bộ đã hết hạn hoặc chưa được thiết lập. Anh/chị vui lòng đăng nhập lại bằng tài khoản nhân viên/quản trị viên rồi thử lại.",
-            toolCalls: [],
-            createdAt: new Date().toISOString(),
-          });
-          window.dispatchEvent(
-            new CustomEvent("assistant:auth-required", {
-              detail: {
-                source: this.source,
-                context: this.context || {},
-              },
-            })
-          );
-        } else if (status === 403) {
-          this.messages.push({
-            sender: "system",
-            text: "Tài khoản hiện tại không có quyền dùng trợ lý nội bộ ở màn hình này.",
-            toolCalls: [],
-            createdAt: new Date().toISOString(),
-          });
-        } else {
-          this.messages.push({
-            sender: "assistant",
-            text:
-              error?.response?.data?.error ||
-              error?.response?.data?.message ||
-              "Không gọi được assistant. Vui lòng kiểm tra backend.",
-            toolCalls: [],
-            createdAt: new Date().toISOString(),
-          });
-        }
-      } finally {
-        this.loading = false;
-        this.scrollToBottom();
+      const now = Date.now();
+      if (now - this.lastAuthEventAt > 8000) {
+        this.lastAuthEventAt = now;
+        window.dispatchEvent(
+          new CustomEvent("assistant:auth-required", {
+            detail: {
+              source: this.source,
+              context: this.context || {},
+            },
+          })
+        );
       }
-    },
-    scrollToBottom() {
+    } else if (status === 403) {
+      this.apiIssue = "Tài khoản hiện tại chưa có quyền dùng trợ lý ở màn hình này.";
+      this.messages.push({
+        id: this.newMessageId(),
+        sender: "system",
+        text: "Tài khoản hiện tại không có quyền dùng trợ lý nội bộ ở màn hình này.",
+        toolCalls: [],
+        createdAt: new Date().toISOString(),
+      });
+    } else {
+      this.apiIssue = "Không thể kết nối trợ lý. Kiểm tra backend DATNAPI3 và thử lại.";
+      this.messages.push({
+        id: this.newMessageId(),
+        sender: "assistant",
+        text:
+          error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          "Không gọi được assistant. Vui lòng kiểm tra backend.",
+        toolCalls: [],
+        createdAt: new Date().toISOString(),
+      });
+    }
+  } finally {
+    this.loading = false;
+    this.scrollToBottom();
+  }
+},
+scrollToBottom() {
       nextTick(() => {
         const el = this.$refs.messagesContainer;
         if (el) el.scrollTop = el.scrollHeight;
@@ -584,8 +954,11 @@ export default {
 <style scoped>
 .assistant-panel {
   height: 100%;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
+  border-radius: 20px;
+  overflow: hidden;
   background:
     radial-gradient(circle at top right, rgba(59, 130, 246, 0.1), transparent 26%),
     linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
@@ -681,7 +1054,9 @@ export default {
 .close-btn,
 .inline-action,
 .quick-btn,
-.send-btn {
+.send-btn,
+.chip-btn,
+.footer-suggestion-btn {
   border: none;
   cursor: pointer;
 }
@@ -710,6 +1085,17 @@ export default {
   gap: 12px;
   padding: 14px 18px;
   border-bottom: 1px solid rgba(226, 232, 240, 0.7);
+}
+
+.assistant-issue-banner {
+  margin: 10px 16px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #9f1239;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .strip-label {
@@ -771,7 +1157,8 @@ export default {
   gap: 8px;
 }
 
-.quick-btn {
+.quick-btn,
+.chip-btn {
   padding: 9px 12px;
   border-radius: 999px;
   border: 1px solid #dbeafe;
@@ -782,7 +1169,8 @@ export default {
   transition: all 0.18s ease;
 }
 
-.quick-btn:hover {
+.quick-btn:hover,
+.chip-btn:hover {
   background: #eff6ff;
   border-color: #bfdbfe;
 }
@@ -791,7 +1179,7 @@ export default {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px 18px 18px;
+  padding: 12px 20px 20px;
 }
 
 .assistant-empty-state {
@@ -930,6 +1318,136 @@ export default {
   color: #1d4ed8;
 }
 
+.inline-action:disabled,
+.send-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.assistant-card {
+  margin-top: 12px;
+  border-radius: 14px;
+  padding: 12px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+}
+
+.action-card {
+  background: #eff6ff;
+}
+
+.slot-card {
+  background: #f8fafc;
+}
+
+.warning-card {
+  background: #fff7ed;
+  border-color: rgba(251, 191, 36, 0.45);
+}
+
+.suggested-card {
+  background: #f8fafc;
+}
+
+.debug-card {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+.card-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 6px;
+}
+
+.debug-card .card-title {
+  color: #f8fafc;
+}
+
+.card-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #334155;
+}
+
+.card-meta-row,
+.action-buttons,
+.suggested-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.tiny-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tiny-badge.status {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.missing-slot-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.slot-field {
+  display: grid;
+  gap: 6px;
+}
+
+.slot-field label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.slot-input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  background: #fff;
+  outline: none;
+}
+
+.slot-input:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.slot-textarea {
+  resize: vertical;
+}
+
+.warning-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #9a3412;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.debug-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .tool-actions-wrap {
   margin-top: 12px;
   padding-top: 12px;
@@ -997,10 +1515,34 @@ export default {
   line-height: 1.45;
 }
 
+.footer-suggestions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 18px 12px;
+}
+
+.footer-suggestion-btn {
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  background: rgba(59, 130, 246, 0.08);
+  color: #1d4ed8;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.18s ease;
+}
+
+.footer-suggestion-btn:hover {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
 .assistant-footer {
-  padding: 16px 18px 18px;
+  flex-shrink: 0;
+  padding: 14px 18px 16px;
   border-top: 1px solid rgba(226, 232, 240, 0.9);
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.94);
 }
 
 .assistant-input {
@@ -1044,11 +1586,6 @@ export default {
   min-width: 110px;
 }
 
-.send-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 @keyframes assistant-typing {
   0%,
   80%,
@@ -1087,19 +1624,17 @@ export default {
     align-items: flex-start;
   }
 
-  .assistant-footer-actions {
+  .assistant-footer-actions,
+  .typing-bubble-wrap {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .send-btn {
-    width: 100%;
-  }
-
-  .typing-bubble-wrap {
-    align-items: flex-start;
-    flex-direction: column;
     gap: 8px;
+  }
+
+  .send-btn,
+  .inline-action,
+  .chip-btn {
+    width: 100%;
   }
 }
 </style>

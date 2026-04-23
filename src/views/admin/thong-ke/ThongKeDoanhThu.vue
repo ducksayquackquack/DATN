@@ -1,14 +1,14 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from '../../../composables/useToast'
 import { getAllHoaDon, getHoaDonChiTiet, getHoaDonPage } from '../../../services/hoaDonService'
 import { getAllSanPham, getSanPhamPage } from '../../../services/sanPhamService'
 import { normalizeOrderStatusCode } from '../../../utils/adminStatus'
 import { getRevenueBucket, isRevenueCountableOrder } from '../../../utils/orderRevenue'
-import { getPhieuSummary } from '../../../services/phieuThuChiService'
 import { resolveApiOrigin } from '../../../utils/apiOrigin'
-import { getProductImageOverride } from '../../../utils/productImageOverrides'
+import { getProductImageOverride, getProductImageConfig } from '../../../utils/productImageOverrides'
+import { fallbackImageForVariant } from '../../../utils/productImageFallback'
 import logoImage from '../../../assets/img/logo/new logo.png?url'
 import bomberWindbreakerImage from '../../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-black.PNG?url'
 import hoodieCamoImage from '../../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-black.PNG?url'
@@ -38,6 +38,7 @@ const loading = ref(false)
 const invoices = ref([])
 const statisticsError = ref('')
 const chartTooltip = ref({ visible: false, x: 0, y: 0, label: '', revenue: 0, orders: 0 })
+const pieTooltip = ref({ visible: false, x: 0, y: 0, label: '', value: 0, percentage: 0 })
 const BACKEND_URL = 'http://localhost:8080'
 const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, '')
 
@@ -135,7 +136,7 @@ const pickImageValue = (entry) => {
   if (!entry) return ''
 
   if (typeof entry === 'string') {
-    return isImageString(entry) ? toImageUrl(entry) : ''
+    return toImageUrl(entry)
   }
 
   if (Array.isArray(entry)) {
@@ -158,9 +159,23 @@ const pickImageValue = (entry) => {
 }
 
 const resolveTopProductImage = (product = null, fallbackName = '') => {
+  const imageConfig = getProductImageConfig({ id: product?.id, maSanPham: product?.maSanPham })
+
   const override = getProductImageOverride({ id: product?.id, maSanPham: product?.maSanPham })[0]
   const overrideUrl = toImageUrl(override)
   if (overrideUrl && !isLogoLikeImage(overrideUrl)) return overrideUrl
+
+  const byColorConfig = Array.isArray(imageConfig?.colorImages)
+    ? imageConfig.colorImages.find((entry) => String(entry?.image || '').trim())?.image
+    : ''
+  const byColorConfigUrl = toImageUrl(byColorConfig)
+  if (byColorConfigUrl && !isLogoLikeImage(byColorConfigUrl)) return byColorConfigUrl
+
+  const byGalleryConfig = Array.isArray(imageConfig?.images)
+    ? String(imageConfig.images.find((entry) => String(entry || '').trim()) || '')
+    : ''
+  const byGalleryConfigUrl = toImageUrl(byGalleryConfig)
+  if (byGalleryConfigUrl && !isLogoLikeImage(byGalleryConfigUrl)) return byGalleryConfigUrl
 
   const directImage = pickImageValue([product, product?.sanPhamChiTiets])
   if (directImage && !isLogoLikeImage(directImage)) return directImage
@@ -195,19 +210,179 @@ const resolveTopProductImage = (product = null, fallbackName = '') => {
     if (codeMap[code]) return codeMap[code]
   }
 
-  return logoImage
+  // Avoid showing a wrong random jacket image for unknown mappings.
+  return createTopProductPlaceholder(product?.tenSanPham || fallbackName || 'SP')
+}
+
+const normalizeVariantPart = (value = '') => normalizeProductKey(String(value || '').trim())
+const normalizeCatalogProductCode = (value = '') => {
+  const raw = String(value || '').trim().toUpperCase()
+  if (!raw) return ''
+
+  const spMatch = raw.match(/^SP0*(\d{1,3})$/i)
+  if (spMatch?.[1]) {
+    const n = Number(spMatch[1])
+    if (Number.isFinite(n) && n >= 1 && n <= 20) return `SP${String(n).padStart(3, '0')}`
+  }
+
+  const legacyMatch = raw.match(/^ATID070-0*(\d{1,3})$/i)
+  if (legacyMatch?.[1]) {
+    const n = Number(legacyMatch[1])
+    if (Number.isFinite(n) && n >= 1 && n <= 20) return `SP${String(n).padStart(3, '0')}`
+  }
+
+  return ''
+}
+const isCuratedTopProductCode = (value = '') => Boolean(normalizeCatalogProductCode(value))
+
+const resolveVariantImageFromProduct = ({ product = null, variantId = 0, variantLabel = '' } = {}) => {
+  if (!product) return ''
+
+  const variants = Array.isArray(product?.sanPhamChiTiets) ? product.sanPhamChiTiets : []
+  if (!variants.length) return ''
+
+  const numericVariantId = Number(variantId || 0)
+  let target = null
+
+  if (Number.isFinite(numericVariantId) && numericVariantId > 0) {
+    target = variants.find((variant) => Number(variant?.id || 0) === numericVariantId) || null
+  }
+
+  if (!target && variantLabel) {
+    const parts = String(variantLabel)
+      .split('/')
+      .map((part) => part.trim())
+      .filter(Boolean)
+    const colorPart = normalizeVariantPart(parts[0] || '')
+    const sizePart = normalizeVariantPart(parts[1] || '')
+
+    target = variants.find((variant) => {
+      const color = normalizeVariantPart(
+        variant?.mauSac?.tenMau
+        || variant?.mauSac?.tenMauSac
+        || variant?.mauSac?.name
+        || variant?.tenMau
+        || variant?.mau
+        || ''
+      )
+      const size = normalizeVariantPart(
+        variant?.kichThuoc?.tenKichThuoc
+        || variant?.kichThuoc?.size
+        || variant?.kichThuoc?.name
+        || variant?.tenKichThuoc
+        || variant?.size
+        || ''
+      )
+
+      if (!colorPart) return false
+      if (color !== colorPart) return false
+      if (!sizePart) return true
+      return size === sizePart
+    }) || null
+  }
+
+  if (!target) return ''
+
+  const targetColorName = String(
+    target?.mauSac?.tenMau
+    || target?.mauSac?.tenMauSac
+    || target?.mauSac?.name
+    || target?.tenMau
+    || ''
+  ).trim()
+  const normalizedProductCode = normalizeCatalogProductCode(product?.maSanPham) || String(product?.maSanPham || '').trim().toUpperCase()
+  const fallbackColorName = String(variantLabel || '').split('/')[0]?.trim() || targetColorName
+
+  if (isCuratedTopProductCode(normalizedProductCode)) {
+    const staticVariantFallback = fallbackImageForVariant({
+      id: target?.id || variantId || product?.id,
+      maSanPham: normalizedProductCode,
+      tenSanPham: product?.tenSanPham,
+      tenMauSac: fallbackColorName,
+      maChiTietSanPham: target?.maSanPhamChiTiet || target?.maChiTiet || ''
+    })
+    if (staticVariantFallback) return staticVariantFallback
+  }
+
+  const directVariantImage = pickImageValue([target, target?.anh, target?.hinhAnh, target?.image, target?.imageUrl, target?.duongDanAnh])
+  if (directVariantImage) return directVariantImage
+
+  const config = getProductImageConfig({ id: product?.id, maSanPham: product?.maSanPham })
+  const targetColorId = Number(target?.mauSac?.id || target?.mauSacId || 0)
+  const normalizedTargetColorName = normalizeVariantPart(targetColorName)
+
+  const colorImageFromConfig = Array.isArray(config?.colorImages)
+    ? config.colorImages.find((entry) => {
+      const entryColorId = Number(entry?.colorId || 0)
+      const entryColorName = normalizeVariantPart(entry?.colorName || entry?.tenMau || '')
+      if (targetColorId > 0 && entryColorId === targetColorId) return true
+      if (normalizedTargetColorName && entryColorName && entryColorName === normalizedTargetColorName) return true
+      return false
+    })?.image
+    : ''
+  const colorConfigImageUrl = toImageUrl(colorImageFromConfig)
+  if (colorConfigImageUrl && !isLogoLikeImage(colorConfigImageUrl)) return colorConfigImageUrl
+
+  const staticVariantFallback = fallbackImageForVariant({
+    id: target?.id || variantId || product?.id,
+    maSanPham: product?.maSanPham,
+    tenSanPham: product?.tenSanPham,
+    tenMauSac: fallbackColorName,
+    maChiTietSanPham: target?.maSanPhamChiTiet || target?.maChiTiet || ''
+  })
+  if (staticVariantFallback) return staticVariantFallback
+
+  return ''
+}
+
+const createTopProductPlaceholder = (name = '') => {
+  const seed = String(name || 'SP').trim().slice(0, 2).toUpperCase() || 'SP'
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7f1d1d"/><stop offset="1" stop-color="#dc2626"/></linearGradient></defs><rect width="120" height="120" rx="16" fill="url(#g)"/><text x="60" y="68" fill="#fff" text-anchor="middle" font-size="34" font-family="Arial, sans-serif" font-weight="700">${seed}</text></svg>`
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
 }
 
 const handleTopProductImageError = (event) => {
   if (event?.target) {
-    event.target.src = logoImage
+    const fallbackName = event.target.dataset?.name || ''
+    event.target.src = createTopProductPlaceholder(fallbackName)
   }
 }
 
+const resolveTopProductId = (product) => {
+  const directId = Number(product?.productId || 0)
+  if (Number.isFinite(directId) && directId > 0) return directId
+
+  const normalizedCode = String(product?.productCode || '').trim().toUpperCase()
+  if (normalizedCode) {
+    const byCode = products.value.find(
+      (item) => String(item?.maSanPham || '').trim().toUpperCase() === normalizedCode
+    )
+    const codeId = Number(byCode?.id || 0)
+    if (Number.isFinite(codeId) && codeId > 0) return codeId
+  }
+
+  const normalizedName = normalizeProductKey(stripTrailingBrandTokenForImage(product?.name || ''))
+  if (normalizedName) {
+    const byName = products.value.find((item) => {
+      const itemName = normalizeProductKey(stripTrailingBrandTokenForImage(item?.tenSanPham || ''))
+      return itemName === normalizedName
+    })
+    const nameId = Number(byName?.id || 0)
+    if (Number.isFinite(nameId) && nameId > 0) return nameId
+  }
+
+  return 0
+}
+
 const openTopProductDetail = (product) => {
-  const productId = Number(product?.productId || 0)
+  const productId = resolveTopProductId(product)
   if (!Number.isFinite(productId) || productId <= 0) {
-    toast.warning('Không tìm thấy chi tiết sản phẩm cho dòng này.')
+    const keyword = String(product?.name || '').trim()
+    router.push({
+      path: `${routeBase.value}/san-pham/list`,
+      query: keyword ? { q: keyword } : undefined
+    })
+    toast.info('Không có ID sản phẩm, đã chuyển sang danh sách để tra cứu nhanh.')
     return
   }
 
@@ -215,7 +390,8 @@ const openTopProductDetail = (product) => {
     path: `${routeBase.value}/san-pham/form/${productId}`,
     query: {
       from: 'thong-ke',
-      hasColors: product?.hasColors ? '1' : '0'
+      hasColors: product?.hasColors ? '1' : '0',
+      returnTo: route.fullPath
     }
   })
 }
@@ -257,6 +433,8 @@ const productNameByVariantId = ref(new Map())
 const productNameByProductId = ref(new Map())
 const productNameByMaSanPham = ref(new Map())
 const hideTopProductRevenue = ref(false)
+const topProductsPage = ref(1)
+const TOP_PRODUCTS_PAGE_SIZE = 10
 const searchMeta = ref({
   hasSearched: false,
   total: 0
@@ -269,6 +447,7 @@ const applyFilters = () => {
   }
 
   appliedFilters.value = { ...filters.value }
+  topProductsPage.value = 1
   return true
 }
 
@@ -313,6 +492,28 @@ const formatCompact = (value) => {
 
 const COMPLETED_CODES = new Set(['HOAN_THANH', 'DA_GIAO'])
 const CANCELLED_CODES = new Set(['HUY'])
+
+const normalizeMoney = (value) => Math.round(Number(value) || 0)
+
+const resolveVariantLabel = (variant = {}) => {
+  const color = String(
+    variant?.mauSac?.tenMau
+    || variant?.mauSac?.tenMauSac
+    || variant?.mauSac?.name
+    || variant?.tenMau
+    || variant?.mau
+    || ''
+  ).trim()
+  const size = String(
+    variant?.kichThuoc?.tenKichThuoc
+    || variant?.kichThuoc?.size
+    || variant?.kichThuoc?.name
+    || variant?.tenKichThuoc
+    || variant?.size
+    || ''
+  ).trim()
+  return [color, size].filter(Boolean).join(' / ')
+}
 
 const getInvoiceDetails = (invoice) => {
   if (!invoice || typeof invoice !== 'object') return []
@@ -375,12 +576,20 @@ const inRangeInvoices = computed(() => {
 const invoiceRevenue = (i) => {
   const gross = Number(i?.thanhTien) || Number(i?.tongTien) || Number(i?.tongTienThanhToan) || 0
   const shipping = Number(i?.phiVanChuyen || i?.phiShip || i?.shippingFee || 0)
-  return Math.max(0, gross - shipping)
+  return normalizeMoney(Math.max(0, gross - shipping))
 }
 
 const stats = computed(() => {
   const source = inRangeInvoices.value
-  const totalRevenue = source.reduce((sum, i) => sum + invoiceRevenue(i), 0)
+  const paymentSummary = source.reduce((acc, invoice) => {
+    if (!isRevenueCountableOrder(invoice)) return acc
+    const revenue = invoiceRevenue(invoice)
+    const bucket = getRevenueBucket(invoice)
+    if (bucket === 'transfer') acc.transfer += revenue
+    else acc.cash += revenue
+    return acc
+  }, { cash: 0, transfer: 0 })
+  const totalRevenue = normalizeMoney(paymentSummary.cash + paymentSummary.transfer)
   const totalOrders = source.length
   const completedOrders = source.filter((i) => {
     const code = normalizeOrderStatusCode(i.orderStatusCode, i.orderStatusName, i.trangThai)
@@ -412,25 +621,128 @@ const paymentBreakdown = computed(() => {
     if (bucket === 'transfer') { transfer += rev }
     else { cash += rev }
   })
-  return { cash, transfer }
+  return {
+    cash: normalizeMoney(cash),
+    transfer: normalizeMoney(transfer)
+  }
 })
 
-/* ── Phiếu thu / chi summary ── */
-const phieuSummary = ref({ thu: { total: 0, count: 0 }, chi: { total: 0, count: 0 } })
+const paymentBreakdownTotal = computed(() => {
+  return normalizeMoney(paymentBreakdown.value.cash + paymentBreakdown.value.transfer)
+})
 
-const fetchPhieuSummary = async () => {
-  try {
-    const res = await getPhieuSummary(appliedFilters.value.startDate, appliedFilters.value.endDate)
-    phieuSummary.value = res.data || { thu: { total: 0, count: 0 }, chi: { total: 0, count: 0 } }
-  } catch {
-    // Node backend may be offline — silently ignore
-    phieuSummary.value = { thu: { total: 0, count: 0 }, chi: { total: 0, count: 0 } }
+const toRadians = (deg) => (Math.PI / 180) * deg
+
+const polarToCartesian = (cx, cy, radius, angleDeg) => {
+  const rad = toRadians(angleDeg)
+  return {
+    x: cx + radius * Math.cos(rad),
+    y: cy + radius * Math.sin(rad)
   }
+}
+
+const describePieSlice = (cx, cy, radius, startAngle, endAngle) => {
+  const sweep = endAngle - startAngle
+  if (sweep >= 359.999) {
+    return [
+      `M ${cx} ${cy}`,
+      `m ${radius} 0`,
+      `a ${radius} ${radius} 0 1 0 ${-2 * radius} 0`,
+      `a ${radius} ${radius} 0 1 0 ${2 * radius} 0`,
+      'Z'
+    ].join(' ')
+  }
+
+  const start = polarToCartesian(cx, cy, radius, startAngle)
+  const end = polarToCartesian(cx, cy, radius, endAngle)
+  const largeArcFlag = sweep > 180 ? 1 : 0
+  return `M ${cx} ${cy} L ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x} ${end.y} Z`
+}
+
+const paymentDistribution = computed(() => {
+  const items = [
+    {
+      key: 'cash',
+      label: 'Tiền mặt',
+      description: 'COD + POS',
+      value: normalizeMoney(paymentBreakdown.value.cash),
+      color: '#a81429',
+      softColor: 'rgba(168, 20, 41, 0.11)'
+    },
+    {
+      key: 'transfer',
+      label: 'Chuyển khoản',
+      description: 'VNPay + Bank',
+      value: normalizeMoney(paymentBreakdown.value.transfer),
+      color: '#fb7185',
+      softColor: 'rgba(251, 113, 133, 0.14)'
+    }
+  ]
+
+  const total = items.reduce((sum, item) => sum + item.value, 0)
+  let startAngle = -90
+
+  return items.map((item) => {
+    const ratio = total > 0 ? item.value / total : 0
+    const percentage = ratio * 100
+    const sweepAngle = ratio * 360
+    const endAngle = startAngle + sweepAngle
+    const segment = {
+      ...item,
+      percentage,
+      ratio,
+      startAngle,
+      endAngle,
+      path: describePieSlice(70, 70, 58, startAngle, endAngle)
+    }
+    startAngle = endAngle
+    return segment
+  })
+})
+
+const paymentPieLabel = computed(() => {
+  return paymentBreakdownTotal.value > 0 ? formatCurrency(paymentBreakdownTotal.value) : '0 đ'
+})
+
+const paymentPieCompactTotal = computed(() => {
+  const total = Number(paymentBreakdownTotal.value || 0)
+  if (total >= 1_000_000) return `${(total / 1_000_000).toFixed(1)}M đ`
+  if (total >= 1_000) return `${Math.round(total / 1_000)}K đ`
+  return `${total} đ`
+})
+
+const chartMinWidth = computed(() => {
+  if (revenueByPeriod.value.length > 12) {
+    return `${revenueByPeriod.value.length * 48 + 120}px`
+  }
+  return '100%'
+})
+
+const isTwelveMonthView = computed(() => {
+  return appliedFilters.value.period === 'month' && revenueByPeriod.value.length <= 12
+})
+
+const showPieTooltip = (event, segment) => {
+  const host = event?.currentTarget?.closest('.payment-pie-wrap')
+  if (!host) return
+  const rect = host.getBoundingClientRect()
+  pieTooltip.value = {
+    visible: true,
+    x: event.clientX - rect.left + 10,
+    y: event.clientY - rect.top - 10,
+    label: segment.label,
+    value: segment.value,
+    percentage: segment.percentage
+  }
+}
+
+const hidePieTooltip = () => {
+  pieTooltip.value.visible = false
 }
 
 /* ── Net cash received ── */
 const netCash = computed(() => {
-  return paymentBreakdown.value.cash + phieuSummary.value.thu.total - phieuSummary.value.chi.total
+  return paymentBreakdown.value.cash
 })
 
 const revenueByPeriod = computed(() => {
@@ -575,6 +887,12 @@ const topProducts = computed(() => {
   const productLookupById = new Map()
   const productLookupByName = new Map()
   const productLookupByCode = new Map()
+  const variantLookupById = new Map()
+
+  const isGeneratedPlaceholderImage = (value = '') => {
+    const raw = String(value || '').trim().toLowerCase()
+    return raw.startsWith('data:image/svg+xml') && raw.includes('%3ctext')
+  }
 
   const hasProductColors = (product) => {
     const variants = Array.isArray(product?.sanPhamChiTiets) ? product.sanPhamChiTiets : []
@@ -599,7 +917,7 @@ const topProducts = computed(() => {
     return Number(product?.soLuong ?? product?.ton ?? 0) || 0
   }
 
-  // Seed full catalog so admin can see all current products.
+  // Seed catalog lookup for product and variant resolution.
   products.value.forEach((product) => {
     const name = product?.tenSanPham || product?.maSanPham || `SP #${product?.id || 'N/A'}`
     const productId = Number(product?.id) || 0
@@ -611,6 +929,17 @@ const topProducts = computed(() => {
     if (normalizedName) productLookupByName.set(normalizedName, product)
     if (normalizedCode) productLookupByCode.set(normalizedCode, product)
 
+    const variants = Array.isArray(product?.sanPhamChiTiets) ? product.sanPhamChiTiets : []
+    variants.forEach((variant) => {
+      const variantId = Number(variant?.id || 0)
+      if (!Number.isFinite(variantId) || variantId <= 0) return
+      variantLookupById.set(variantId, {
+        product,
+        variant,
+        label: resolveVariantLabel(variant)
+      })
+    })
+
     if (!productMap.has(productKey)) {
       productMap.set(productKey, {
         name,
@@ -619,7 +948,9 @@ const topProducts = computed(() => {
         revenue: 0,
         image: resolveTopProductImage(product),
         productId: productId || null,
-        hasColors: hasProductColors(product)
+        productCode: normalizedCode || '',
+        hasColors: hasProductColors(product),
+        variantLabel: ''
       })
     }
   })
@@ -680,6 +1011,21 @@ const topProducts = computed(() => {
       const lineRevenue = Number(d?.thanhTien ?? d?.tongTien) || 0
       const unitPrice = Number(d?.donGia ?? d?.giaBan ?? d?.sanPhamChiTiet?.giaBan) || 0
       const revenue = lineRevenue > 0 ? lineRevenue : sold * unitPrice
+      const rawVariantId = Number(d?.sanPhamChiTietId ?? d?.idSanPhamChiTiet ?? d?.spctId ?? d?.sanPhamChiTiet?.id ?? 0)
+      const variantId = Number.isFinite(rawVariantId) && rawVariantId > 0 ? rawVariantId : 0
+      const variantFromCatalog = variantId ? variantLookupById.get(variantId) : null
+      const variantLabel =
+        variantFromCatalog?.label
+        || resolveVariantLabel(d?.sanPhamChiTiet || d?.variant || d)
+        || 'Chưa rõ biến thể'
+      const lineImageFromDetail = pickImageValue([
+        d?.sanPhamChiTiet,
+        d?.variant,
+        d?.anh,
+        d?.hinhAnh,
+        d?.image,
+        d?.urlAnh
+      ])
 
       const normalizedName = normalizeProductKey(stripTrailingBrandTokenForImage(name))
       const productCode = String(
@@ -688,51 +1034,110 @@ const topProducts = computed(() => {
         d?.maSanPham ||
         ''
       ).trim().toUpperCase()
-      const productKey = productId > 0 ? `id:${productId}` : `name:${normalizedName || name}`
       const matchedProduct =
+        variantFromCatalog?.product
+        ||
         (productId && productLookupById.get(productId)) ||
         (productCode && productLookupByCode.get(productCode)) ||
         (normalizedName && productLookupByName.get(normalizedName)) ||
         null
+
+      const catalogVariantImage = resolveVariantImageFromProduct({
+        product: matchedProduct,
+        variantId,
+        variantLabel
+      })
+
+      const lineImage = catalogVariantImage || lineImageFromDetail || ''
+
+      // Only include products that are still active in current catalog.
+      if (!matchedProduct) return
+
+      const resolvedProductId = Number(matchedProduct?.id || productId) || 0
+      const variantFingerprint = normalizeProductKey(variantLabel)
+      const productKey =
+        variantId > 0
+          ? `variant:${variantId}`
+          : (resolvedProductId > 0
+            ? `id:${resolvedProductId}:variant:${variantFingerprint}`
+            : `name:${normalizedName || name}:variant:${variantFingerprint}`)
       
       const prev = productMap.get(productKey) || {
         name,
         sold: 0,
         stock: 0,
         revenue: 0,
-        image: resolveTopProductImage(matchedProduct, name),
-        productId: Number(matchedProduct?.id || productId) || null,
-        hasColors: hasProductColors(matchedProduct)
+        image: lineImage || '',
+        productId: resolvedProductId || null,
+        productCode: productCode || String(matchedProduct?.maSanPham || '').trim().toUpperCase(),
+        hasColors: hasProductColors(matchedProduct),
+        variantLabel,
+        variantId: variantId || null
       }
+
+      const resolvedImage =
+        lineImage
+        || (isGeneratedPlaceholderImage(prev.image) ? '' : prev.image)
+        || ''
 
       productMap.set(productKey, {
         name: prev.name || name,
         sold: prev.sold + sold,
         stock: prev.stock || 0,
-        revenue: prev.revenue + revenue,
-        image: prev.image || resolveTopProductImage(matchedProduct, name),
-        productId: prev.productId || Number(matchedProduct?.id || productId) || null,
-        hasColors: prev.hasColors || hasProductColors(matchedProduct)
+        revenue: normalizeMoney(prev.revenue + revenue),
+        image: resolvedImage,
+        productId: prev.productId || resolvedProductId || null,
+        productCode: prev.productCode || productCode || String(matchedProduct?.maSanPham || '').trim().toUpperCase(),
+        hasColors: prev.hasColors || hasProductColors(matchedProduct),
+        variantLabel: prev.variantLabel || variantLabel,
+        variantId: prev.variantId || variantId || null
       })
     })
   })
 
-  // Show all products — including those with zero sales
   const rows = [...productMap.values()]
     .sort((a, b) => {
       if (b.sold !== a.sold) return b.sold - a.sold
       return a.name.localeCompare(b.name, 'vi')
     })
+    .filter((row) => Number(row?.sold || 0) > 0)
     .map((row) => ({
       ...row,
-      image: row.image || resolveTopProductImage(null, row.name),
+      image: row.image || createTopProductPlaceholder(row.name),
       productId: row.productId || null,
-      hasColors: Boolean(row.hasColors)
+      productCode: row.productCode || '',
+      hasColors: Boolean(row.hasColors),
+      variantLabel: row.variantLabel || 'Chưa rõ biến thể',
+      variantId: row.variantId || null
     }))
 
   return rows.length > 0 ? rows : [
-    { name: 'Chưa có dữ liệu sản phẩm', sold: 0, stock: 0, revenue: 0, image: logoImage, productId: null, hasColors: false }
+    { name: 'Chưa có dữ liệu sản phẩm', sold: 0, stock: 0, revenue: 0, image: createTopProductPlaceholder('SP'), productId: null, productCode: '', hasColors: false, variantLabel: '', variantId: null }
   ]
+})
+
+const topProductsTotalPages = computed(() => {
+  if (!topProducts.value.length) return 1
+  return Math.max(1, Math.ceil(topProducts.value.length / TOP_PRODUCTS_PAGE_SIZE))
+})
+
+const paginatedTopProducts = computed(() => {
+  const start = (topProductsPage.value - 1) * TOP_PRODUCTS_PAGE_SIZE
+  return topProducts.value.slice(start, start + TOP_PRODUCTS_PAGE_SIZE)
+})
+
+const topProductsStartIndex = computed(() => (topProductsPage.value - 1) * TOP_PRODUCTS_PAGE_SIZE)
+
+const goToTopProductsPage = (page) => {
+  const target = Number(page || 1)
+  if (!Number.isFinite(target)) return
+  topProductsPage.value = Math.max(1, Math.min(target, topProductsTotalPages.value))
+}
+
+watch(topProductsTotalPages, (total) => {
+  if (topProductsPage.value > total) {
+    topProductsPage.value = total
+  }
 })
 
 const yAxisTicks = computed(() => {
@@ -773,12 +1178,10 @@ const applyStatisticsFilters = async () => {
     hasSearched: true,
     total: searchMeta.value.total
   }
-  fetchPhieuSummary()
   await fetchStatistics(false)
 }
 
 const loadStatistics = () => {
-  fetchPhieuSummary()
   fetchStatistics(true)
 }
 
@@ -823,15 +1226,13 @@ const exportReport = async () => {
       ['THANH TOÁN', 'GIÁ TRỊ'],
       ['Tiền mặt (COD + POS)', paymentBreakdown.value.cash],
       ['Chuyển khoản (VNPay/Bank)', paymentBreakdown.value.transfer],
-      ['Phiếu thu', phieuSummary.value.thu.total],
-      ['Phiếu chi', phieuSummary.value.chi.total],
       ['Tiền mặt nhận thực tế', netCash.value],
     ]
     const ws1 = XLSX.utils.aoa_to_sheet(overviewData)
     ws1['!cols'] = [{ wch: 36 }, { wch: 24 }]
     ws1['!merges'] = [XLSX.utils.decode_range('A1:B1')]
     applyCurrencyFormat(ws1, ['B'], 8, 10)
-    applyCurrencyFormat(ws1, ['B'], 16, 20)
+    applyCurrencyFormat(ws1, ['B'], 16, 18)
     XLSX.utils.book_append_sheet(wb, ws1, 'Tổng quan')
 
     // --- Sheet 2: Doanh thu theo kỳ ---
@@ -846,14 +1247,22 @@ const exportReport = async () => {
     XLSX.utils.book_append_sheet(wb, ws2, 'Doanh thu theo kỳ')
 
     // --- Sheet 3: Top sản phẩm ---
-    const productRows = topProducts.value.map((p, i) => [i + 1, p.name, p.sold, p.revenue, p.stock])
+    const productRows = topProducts.value.map((p, i) => [
+      i + 1,
+      p.name,
+      p.productCode || '',
+      p.variantLabel || '',
+      p.sold,
+      p.revenue,
+      p.stock
+    ])
     const ws3 = XLSX.utils.aoa_to_sheet([
-      ['STT', 'Sản phẩm', 'Số lượng bán', 'Doanh thu (VNĐ)', 'Tồn kho'],
+      ['STT', 'Sản phẩm', 'Mã SP', 'Biến thể', 'Số lượng bán', 'Doanh thu (VNĐ)', 'Tồn kho'],
       ...productRows
     ])
-    ws3['!cols'] = [{ wch: 6 }, { wch: 44 }, { wch: 16 }, { wch: 20 }, { wch: 12 }]
-    ws3['!autofilter'] = { ref: `A1:E${Math.max(productRows.length + 1, 2)}` }
-    applyCurrencyFormat(ws3, ['D'], 2, productRows.length + 1)
+    ws3['!cols'] = [{ wch: 6 }, { wch: 36 }, { wch: 14 }, { wch: 28 }, { wch: 16 }, { wch: 20 }, { wch: 12 }]
+    ws3['!autofilter'] = { ref: `A1:G${Math.max(productRows.length + 1, 2)}` }
+    applyCurrencyFormat(ws3, ['F'], 2, productRows.length + 1)
     XLSX.utils.book_append_sheet(wb, ws3, 'Top sản phẩm')
 
     // --- Sheet 4: Doanh thu theo trạng thái ---
@@ -1086,7 +1495,6 @@ const fetchProducts = async () => {
 onMounted(() => {
   applyFilters()
   fetchProducts()
-  fetchPhieuSummary()
   fetchStatistics(false)
   searchMeta.value = {
     hasSearched: true,
@@ -1271,29 +1679,11 @@ onMounted(() => {
             <div class="breakdown-value">{{ formatCurrency(paymentBreakdown.transfer) }}</div>
           </div>
         </div>
-        <div class="breakdown-card thu">
-          <div class="breakdown-icon">
-            <span class="material-icons-outlined">arrow_downward</span>
-          </div>
-          <div class="breakdown-info">
-            <div class="breakdown-label">Phiếu thu ({{ phieuSummary.thu.count }})</div>
-            <div class="breakdown-value">{{ formatCurrency(phieuSummary.thu.total) }}</div>
-          </div>
-        </div>
-        <div class="breakdown-card chi">
-          <div class="breakdown-icon">
-            <span class="material-icons-outlined">arrow_upward</span>
-          </div>
-          <div class="breakdown-info">
-            <div class="breakdown-label">Phiếu chi ({{ phieuSummary.chi.count }})</div>
-            <div class="breakdown-value">{{ formatCurrency(phieuSummary.chi.total) }}</div>
-          </div>
-        </div>
       </div>
       <div class="net-cash-bar">
         <span class="net-cash-label">Tiền mặt nhận thực tế</span>
         <span class="net-cash-value" :class="netCash >= 0 ? 'positive' : 'negative'">{{ formatCurrency(netCash) }}</span>
-        <span class="net-cash-hint">= Tiền mặt bán hàng + Phiếu thu − Phiếu chi</span>
+        <span class="net-cash-hint">= Tiền mặt bán hàng (COD + POS)</span>
       </div>
     </div>
 
@@ -1303,38 +1693,89 @@ onMounted(() => {
         <h3>Doanh thu theo {{ { day: 'ngày', week: 'tuần', month: 'tháng', year: 'năm' }[appliedFilters.period] || 'tháng' }}</h3>
         <p class="section-subtitle">Biểu đồ doanh thu theo khoảng thời gian đã chọn</p>
       </div>
-      <div v-if="hasRevenueData" class="chart-outer">
-        <div class="chart-container chart-scrollable">
-          <div class="chart-layout" :style="{ minWidth: revenueByPeriod.length * 72 + 128 + 'px' }">
-            <div class="chart-y-axis">
-              <div v-for="(tick, idx) in yAxisTicks" :key="idx" class="y-tick">{{ tick.label }}</div>
-            </div>
-            <div class="chart-bars" :style="{ gridTemplateColumns: `repeat(${Math.max(revenueByPeriod.length, 1)}, minmax(56px, 1fr))` }">
-              <div 
-                v-for="item in revenueByPeriod" 
-                :key="item.month"
-                class="chart-bar-wrapper"
-                @mouseenter="onBarHover($event, item)"
-                @mouseleave="chartTooltip.visible = false"
-              >
-                <div class="bar-track">
-                  <div class="chart-bar" :style="barHeightStyle(item)">
-                    <div class="bar-value">{{ formatCompact(item.revenue) }}</div>
+      <div v-if="hasRevenueData" class="chart-dashboard">
+        <div class="chart-outer chart-main-panel">
+          <div class="chart-container chart-scrollable">
+            <div class="chart-layout" :style="{ minWidth: chartMinWidth }">
+              <div class="chart-y-axis">
+                <div v-for="(tick, idx) in yAxisTicks" :key="idx" class="y-tick">{{ tick.label }}</div>
+              </div>
+              <div class="chart-bars" :style="{ gridTemplateColumns: `repeat(${Math.max(revenueByPeriod.length, 1)}, minmax(${isTwelveMonthView ? '0' : '44px'}, 1fr))` }">
+                <div 
+                  v-for="item in revenueByPeriod" 
+                  :key="item.month"
+                  class="chart-bar-wrapper"
+                  @mouseenter="onBarHover($event, item)"
+                  @mouseleave="chartTooltip.visible = false"
+                >
+                  <div class="bar-track">
+                    <div class="chart-bar" :style="barHeightStyle(item)">
+                      <div class="bar-value">{{ formatCompact(item.revenue) }}</div>
+                    </div>
                   </div>
+                  <div class="bar-label">{{ item.month }}</div>
                 </div>
-                <div class="bar-label">{{ item.month }}</div>
+              </div>
+            </div>
+          </div>
+          <Transition name="tooltip-pop">
+            <div v-if="chartTooltip.visible" class="chart-tooltip" :style="{ left: chartTooltip.x + 'px', top: chartTooltip.y + 'px' }">
+              <div class="chart-tooltip__label">{{ chartTooltip.label }}</div>
+              <div class="chart-tooltip__row"><span>Doanh thu:</span> <strong>{{ formatCurrency(chartTooltip.revenue) }}</strong></div>
+              <div class="chart-tooltip__row"><span>Đơn hàng:</span> <strong>{{ chartTooltip.orders }}</strong></div>
+            </div>
+          </Transition>
+        </div>
+
+        <div class="chart-side-panel">
+          <div class="payment-pie-wrap" @mouseleave="hidePieTooltip">
+            <div class="payment-pie-header">
+              <h4>Tỷ trọng thanh toán</h4>
+            </div>
+
+            <div class="payment-pie-body" :class="{ 'is-empty': paymentBreakdownTotal <= 0 }">
+              <svg viewBox="0 0 140 140" class="payment-pie-svg" aria-hidden="true">
+                <circle class="payment-pie-track" cx="70" cy="70" r="58"></circle>
+                <path
+                  v-for="segment in paymentDistribution"
+                  :key="segment.key"
+                  class="payment-pie-segment"
+                  :d="segment.path"
+                  :fill="segment.color"
+                  @mouseenter="showPieTooltip($event, segment)"
+                  @mousemove="showPieTooltip($event, segment)"
+                ></path>
+              </svg>
+            </div>
+            <div class="payment-pie-total-inline">
+              <span>Tổng doanh thu</span>
+              <strong :title="paymentPieLabel">{{ paymentPieCompactTotal }}</strong>
+            </div>
+
+            <Transition name="tooltip-pop">
+              <div v-if="pieTooltip.visible" class="payment-pie-tooltip" :style="{ left: pieTooltip.x + 'px', top: pieTooltip.y + 'px' }">
+                <strong>{{ pieTooltip.label }}</strong>
+                <span>{{ pieTooltip.percentage.toFixed(1) }}% • {{ formatCurrency(pieTooltip.value) }}</span>
+              </div>
+            </Transition>
+          </div>
+
+          <div class="payment-pie-legend">
+            <div v-for="segment in paymentDistribution" :key="segment.key" class="payment-legend-item" :style="{ '--legend-color': segment.color, '--legend-soft-color': segment.softColor }">
+              <span class="payment-legend-dot"></span>
+              <div class="payment-legend-text">
+                <div class="payment-legend-row">
+                  <strong>{{ segment.label }}</strong>
+                  <span>{{ segment.percentage.toFixed(1) }}%</span>
+                </div>
+                <div class="payment-legend-subrow">
+                  <span>{{ segment.description }}</span>
+                  <span>{{ formatCurrency(segment.value) }}</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
-        <!-- Hover tooltip (outside scroll container to avoid clipping) -->
-        <Transition name="tooltip-pop">
-          <div v-if="chartTooltip.visible" class="chart-tooltip" :style="{ left: chartTooltip.x + 'px', top: chartTooltip.y + 'px' }">
-            <div class="chart-tooltip__label">{{ chartTooltip.label }}</div>
-            <div class="chart-tooltip__row"><span>Doanh thu:</span> <strong>{{ formatCurrency(chartTooltip.revenue) }}</strong></div>
-            <div class="chart-tooltip__row"><span>Đơn hàng:</span> <strong>{{ chartTooltip.orders }}</strong></div>
-          </div>
-        </Transition>
       </div>
       <div v-else class="chart-empty">Chưa có dữ liệu doanh thu theo khoảng thời gian đã chọn.</div>
     </div>
@@ -1342,11 +1783,18 @@ onMounted(() => {
     <!-- Top Products -->
     <div class="table-section">
       <div class="section-header">
-        <h3>Sản phẩm bán chạy</h3>
-        <p class="section-subtitle">Top sản phẩm theo số lượng bán trong khoảng thời gian đã chọn</p>
+        <h3>Biến thể bán chạy</h3>
+        <p class="section-subtitle">Top biến thể theo số lượng bán trong khoảng thời gian đã chọn</p>
       </div>
       <div class="top-products-wrap">
         <table class="data-table top-products-table">
+          <colgroup>
+            <col class="col-rank" />
+            <col class="col-product" />
+            <col class="col-sold" />
+            <col class="col-revenue" />
+            <col class="col-action" />
+          </colgroup>
           <thead>
             <tr>
               <th class="text-center">Hạng</th>
@@ -1357,9 +1805,14 @@ onMounted(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(product, index) in topProducts" :key="index">
+            <tr v-for="(product, index) in paginatedTopProducts" :key="`${product.variantId || product.productId || product.name}-${index}`">
               <td class="text-center">
-                <span class="rank-badge" :class="index < 3 ? `top-${index + 1}` : 'top-other'">#{{ index + 1 }}</span>
+                <span
+                  class="rank-badge"
+                  :class="(topProductsStartIndex + index) < 3 ? `top-${topProductsStartIndex + index + 1}` : 'top-other'"
+                >
+                  #{{ topProductsStartIndex + index + 1 }}
+                </span>
               </td>
               <td>
                 <div class="product-cell">
@@ -1367,21 +1820,25 @@ onMounted(() => {
                     :src="product.image"
                     :alt="product.name"
                     class="product-thumb"
+                    :data-name="product.name"
                     loading="lazy"
                     @error="handleTopProductImageError"
                   />
                   <div class="product-meta">
                     <div class="product-name">{{ product.name }}</div>
+                    <div class="product-subline" v-if="product.productCode">Mã SP: {{ product.productCode }}</div>
+                    <div class="product-subline" v-if="product.variantLabel">
+                      Biến thể: {{ product.variantLabel }}
+                    </div>
                   </div>
                 </div>
               </td>
               <td class="text-center">{{ product.sold }}</td>
               <td class="text-right product-revenue">{{ hideTopProductRevenue ? 'Đang cập nhật' : formatCurrency(product.revenue) }}</td>
-              <td class="text-center">
+              <td class="text-center action-cell">
                 <button
                   class="btn-eye"
-                  :disabled="!product.productId"
-                  :title="product.productId ? 'Xem chi tiết sản phẩm' : 'Không có sản phẩm để mở'"
+                  :title="resolveTopProductId(product) ? 'Xem chi tiết sản phẩm' : 'Mở danh sách sản phẩm để tra cứu'"
                   @click="openTopProductDetail(product)"
                 >
                   <span class="material-icons-outlined">visibility</span>
@@ -1390,6 +1847,25 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+        <div class="top-products-pager" v-if="topProducts.length > TOP_PRODUCTS_PAGE_SIZE">
+          <button
+            type="button"
+            class="pager-btn"
+            :disabled="topProductsPage <= 1"
+            @click="goToTopProductsPage(topProductsPage - 1)"
+          >
+            Trước
+          </button>
+          <span class="pager-label">Trang {{ topProductsPage }} / {{ topProductsTotalPages }}</span>
+          <button
+            type="button"
+            class="pager-btn"
+            :disabled="topProductsPage >= topProductsTotalPages"
+            @click="goToTopProductsPage(topProductsPage + 1)"
+          >
+            Sau
+          </button>
+        </div>
       </div>
     </div>
     </div>
@@ -1782,14 +2258,45 @@ onMounted(() => {
   color: #6b7280;
 }
 
+.chart-dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 370px;
+  gap: 14px;
+  align-items: stretch;
+}
+
 .chart-outer {
   position: relative;
   overflow: visible;
+  border-radius: 18px;
+}
+
+.chart-main-panel {
+  padding: 18px 16px 8px;
+  display: flex;
+  flex-direction: column;
+  min-height: 472px;
+  background:
+    radial-gradient(circle at top left, rgba(239, 68, 68, 0.04), transparent 36%),
+    #fff;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.chart-side-panel {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 16px;
+  padding: 14px;
+  background: #fff;
 }
 
 .chart-container {
-  min-height: 380px;
-  padding: 12px 0 4px;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  padding: 6px 0 0;
 }
 
 .chart-scrollable {
@@ -1800,17 +2307,19 @@ onMounted(() => {
 
 .chart-layout {
   display: grid;
-  grid-template-columns: 112px 1fr;
-  gap: 16px;
+  grid-template-columns: 96px 1fr;
+  gap: 12px;
   align-items: stretch;
   height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .chart-y-axis {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 4px 0 62px;
+  padding: 2px 0 34px;
 }
 
 .y-tick {
@@ -1823,15 +2332,11 @@ onMounted(() => {
   align-items: stretch;
   height: 100%;
   gap: 12px;
-  padding: 0 12px 18px;
+  padding: 0 12px 2px;
   overflow: visible;
   border-left: 1px solid #e5e7eb;
   border-bottom: 1px solid #e5e7eb;
-}
-
-.chart-scrollable .chart-bars {
-  gap: 8px;
-  padding: 0 12px 18px;
+  grid-auto-rows: 1fr;
 }
 
 .chart-bar-wrapper {
@@ -1844,7 +2349,8 @@ onMounted(() => {
 }
 
 .bar-track {
-  height: 240px;
+  height: 100%;
+  min-height: 340px;
   width: 100%;
   display: flex;
   align-items: flex-end;
@@ -1852,7 +2358,7 @@ onMounted(() => {
 }
 
 .chart-bar {
-  width: min(72px, 100%);
+  width: min(58px, 100%);
   background: linear-gradient(180deg, #dc2626 0%, #b91c1c 100%);
   border-radius: 8px 8px 0 0;
   position: relative;
@@ -1967,11 +2473,199 @@ onMounted(() => {
 .chart-tooltip__row span { color: #94a3b8; }
 .chart-tooltip__row strong { color: #fff; }
 
+.payment-pie-wrap {
+  position: relative;
+  border-radius: 14px;
+  background: transparent;
+  padding: 6px;
+  border: none;
+}
+
+.payment-pie-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.payment-pie-header h4 {
+  margin: 0;
+  font-size: 16px;
+  color: #111827;
+}
+
+.payment-pie-header span {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.payment-pie-body {
+  width: 218px;
+  height: 218px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.payment-pie-svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 6px 14px rgba(148, 24, 52, 0.1));
+}
+
+.payment-pie-track {
+  fill: #f8fafc;
+}
+
+.payment-pie-segment {
+  transition: transform 0.2s ease, filter 0.2s ease;
+  transform-origin: 70px 70px;
+  animation: pie-pop 0.45s ease-out both;
+}
+
+.payment-pie-segment:nth-child(2) { animation-delay: 0.06s; }
+.payment-pie-segment:nth-child(3) { animation-delay: 0.12s; }
+
+.payment-pie-segment:hover {
+  transform: scale(1.02);
+  filter: brightness(1.03);
+}
+
+.payment-pie-total-inline {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+}
+
+.payment-pie-total-inline span {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.payment-pie-total-inline strong {
+  font-size: 15px;
+  color: #111827;
+  line-height: 1.25;
+}
+
+.payment-pie-legend {
+  display: grid;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.payment-legend-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow: inset 3px 0 0 var(--legend-color);
+  animation: rise-fade 0.55s ease-out both;
+}
+
+.payment-legend-item:nth-child(1) { animation-delay: 0.18s; }
+.payment-legend-item:nth-child(2) { animation-delay: 0.24s; }
+
+.payment-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--legend-color);
+  box-shadow: none;
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+.payment-legend-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.payment-legend-row,
+.payment-legend-subrow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.payment-legend-row {
+  margin-bottom: 2px;
+  font-size: 13px;
+  color: #111827;
+}
+
+.payment-legend-subrow {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.payment-pie-tooltip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  background: #0f172a;
+  color: #fff;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  z-index: 12;
+  display: grid;
+  gap: 2px;
+  box-shadow: 0 8px 24px rgba(2, 6, 23, 0.35);
+}
+
+.payment-pie-tooltip span {
+  color: #cbd5e1;
+}
+
 .top-products-wrap {
   overflow-x: auto;
   border: 1px solid rgba(145, 23, 41, 0.18);
   border-radius: 14px;
   background: linear-gradient(170deg, #ffffff 0%, #fff6f7 100%);
+}
+
+.top-products-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 14px;
+  border-top: 1px solid rgba(181, 34, 53, 0.12);
+  background: #fff;
+}
+
+.pager-btn {
+  border: 1px solid #fecdd3;
+  background: #fff1f2;
+  color: #9f1239;
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.pager-btn:hover:not(:disabled) {
+  background: #ffe4e6;
+}
+
+.pager-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pager-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
 }
 
 .data-table {
@@ -1981,6 +2675,23 @@ onMounted(() => {
 
 .top-products-table {
   min-width: 760px;
+  table-layout: fixed;
+}
+
+.top-products-table .col-rank {
+  width: 110px;
+}
+
+.top-products-table .col-sold {
+  width: 170px;
+}
+
+.top-products-table .col-revenue {
+  width: 220px;
+}
+
+.top-products-table .col-action {
+  width: 140px;
 }
 
 .data-table thead tr {
@@ -2003,6 +2714,17 @@ onMounted(() => {
   font-size: 14px;
   color: #374151;
   background: #fff;
+  vertical-align: middle;
+}
+
+.data-table th.text-center,
+.data-table td.text-center {
+  text-align: center;
+}
+
+.data-table th.text-right,
+.data-table td.text-right {
+  text-align: right;
 }
 
 .data-table tbody tr:hover {
@@ -2064,6 +2786,9 @@ onMounted(() => {
 
 .product-meta {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .product-name {
@@ -2073,9 +2798,19 @@ onMounted(() => {
   line-height: 1.35;
 }
 
+.product-subline {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.45;
+}
+
 .product-revenue {
   font-weight: 700;
   color: #111827;
+}
+
+.action-cell {
+  text-align: center;
 }
 
 .btn-eye {
@@ -2124,6 +2859,19 @@ onMounted(() => {
   .stats-grid.secondary {
     grid-template-columns: 1fr;
   }
+
+  .chart-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-side-panel {
+    grid-template-columns: minmax(230px, 320px) 1fr;
+    align-items: center;
+  }
+
+  .chart-main-panel {
+    min-height: 430px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -2163,7 +2911,17 @@ onMounted(() => {
   }
   
   .chart-container {
-    min-height: 280px;
+    min-height: 0;
+  }
+
+  .chart-main-panel {
+    padding: 16px 14px;
+    min-height: 0;
+  }
+
+  .chart-side-panel {
+    padding: 12px;
+    grid-template-columns: 1fr;
   }
 
   .chart-layout {
@@ -2181,7 +2939,7 @@ onMounted(() => {
   }
 
   .bar-track {
-    height: 180px;
+    min-height: 220px;
   }
   
   .bar-amount {
@@ -2195,6 +2953,21 @@ onMounted(() => {
 
   .product-name {
     font-size: 13px;
+  }
+
+  .payment-pie-header,
+  .payment-legend-row,
+  .payment-legend-subrow {
+    flex-direction: column;
+  }
+
+  .payment-pie-body {
+    width: 192px;
+    height: 192px;
+  }
+
+  .payment-pie-total-inline strong {
+    font-size: 14px;
   }
 }
 
@@ -2219,7 +2992,7 @@ onMounted(() => {
 
 .breakdown-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 16px;
   margin-bottom: 20px;
 }
@@ -2237,8 +3010,6 @@ onMounted(() => {
 
 .breakdown-grid .breakdown-card:nth-child(1) { animation-delay: 0.14s; }
 .breakdown-grid .breakdown-card:nth-child(2) { animation-delay: 0.2s; }
-.breakdown-grid .breakdown-card:nth-child(3) { animation-delay: 0.26s; }
-.breakdown-grid .breakdown-card:nth-child(4) { animation-delay: 0.32s; }
 
 .breakdown-card:hover {
   transform: translateY(-2px);
@@ -2265,16 +3036,6 @@ onMounted(() => {
   color: #b91c1c;
 }
 
-.breakdown-card.thu .breakdown-icon {
-  background: #fee2e2;
-  color: #b91c1c;
-}
-
-.breakdown-card.chi .breakdown-icon {
-  background: #fee2e2;
-  color: #b91c1c;
-}
-
 .breakdown-icon .material-icons-outlined {
   font-size: 22px;
 }
@@ -2293,7 +3054,8 @@ onMounted(() => {
 }
 
 .net-cash-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto auto 1fr;
   align-items: center;
   gap: 12px;
   padding: 14px 18px;
@@ -2335,7 +3097,8 @@ onMounted(() => {
 .net-cash-hint {
   font-size: 12px;
   color: #6b7280;
-  margin-left: auto;
+  justify-self: end;
+  margin-left: 0;
 }
 
 @keyframes rise-fade {
@@ -2360,9 +3123,20 @@ onMounted(() => {
   }
 }
 
+@keyframes pie-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @media (max-width: 1200px) {
   .breakdown-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   }
 }
 
@@ -2372,7 +3146,7 @@ onMounted(() => {
   }
 
   .net-cash-bar {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     align-items: flex-start;
     gap: 6px;
   }

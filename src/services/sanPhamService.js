@@ -128,6 +128,11 @@ export const cleanupDeletedVariants = async (variantIds = [], productId = null) 
         break
       } catch (error) {
         const status = Number(error?.response?.status || 0)
+        if (status === 404) {
+          // Backend already does not have this variant anymore.
+          deleted = true
+          break
+        }
         if (status && status < 500 && status !== 405) {
           continue
         }

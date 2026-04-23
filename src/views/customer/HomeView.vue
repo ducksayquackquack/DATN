@@ -5,12 +5,13 @@ import { Eye, ShoppingCart, Truck, ShieldCheck, CreditCard, RefreshCw } from "lu
 import { getAllSanPham } from '../../services/sanPhamService'
 import { applyCampaignPriceToVariants } from '../../services/campaignPricingService'
 import { getAllHoaDon, getHoaDonById } from '../../services/hoaDonService'
+import { computeSoldBySpct } from '../../utils/stockCalculation'
 import { getActiveVouchers, getAllVouchers, normalizeVoucherData } from '../../services/khuyenMaiService'
 import SiteNav from '../../components/SiteNav.vue'
 import CustomerFooter from '../../components/customer/CustomerFooter.vue'
 import { useToast } from '../../composables/useToast'
 import { resolveApiOrigin } from '../../utils/apiOrigin'
-import { getProductImageOverride } from '../../utils/productImageOverrides'
+import { getProductImageConfig } from '../../utils/productImageOverrides'
 import { fallbackImageForVariant } from '../../utils/productImageFallback'
 import img1 from "../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
 import img2 from "../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
@@ -218,8 +219,27 @@ const mappedFallbackByCode = {
   SP020: img20,  // Hoodie Zip Silk
 }
 
+const normalizeCatalogProductCode = (value = '') => {
+  const raw = String(value || '').trim().toUpperCase()
+  if (!raw) return ''
+
+  const spMatch = raw.match(/^SP0*(\d{1,3})$/i)
+  if (spMatch?.[1]) {
+    const n = Number(spMatch[1])
+    if (Number.isFinite(n) && n >= 1 && n <= 20) return `SP${String(n).padStart(3, '0')}`
+  }
+
+  const legacyMatch = raw.match(/^ATID070-0*(\d{1,3})$/i)
+  if (legacyMatch?.[1]) {
+    const n = Number(legacyMatch[1])
+    if (Number.isFinite(n) && n >= 1 && n <= 20) return `SP${String(n).padStart(3, '0')}`
+  }
+
+  return ''
+}
+
 const staticQuickImagesByCode = {
-  SP002: [img2, img3],
+  SP002: [img2],
   SP009: [img9, img10],
   SP012: [img12, img12b],
   SP013: [img13, img13b, img13c, img13d, img13e],
@@ -237,6 +257,16 @@ const colorKeywordMap = {
   vang: "yellow", hong: "pink", tim: "purple", cam: "orange",
   be: "beige", kem: "cream"
 }
+
+const normalizeColorKeyword = (value = "") =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
 
 const mappedFallbackByName = [
   { keywords: ["bomber", "da", "lon"], image: img1 },
@@ -312,6 +342,10 @@ const fallbackImageFor = (id, code = "", name = "") => {
     if (Number.isFinite(codeNum) && codeNum > 0 && mappedFallbackByCodeNum[codeNum]) {
       return mappedFallbackByCodeNum[codeNum]
     }
+  }
+
+  if (!/^ATID070-\d+$/i.test(normalizedCode) && !/^SP0*(?:[1-9]|1\d|20)$/i.test(normalizedCode)) {
+    return ""
   }
 
   const mappedByName = getMappedFallbackByName(name)
@@ -479,7 +513,9 @@ const colorHexByName = (name = "") => {
 }
 
 const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
-  const variants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
+  const rawVariants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
+  const activeVariants = rawVariants.filter((variant) => isActiveStatus(variant?.trangThai || variant?.status))
+  const variants = activeVariants.length ? activeVariants : rawVariants
   const variantPrices = variants.map((variant) => Number(variant?.giaBan || 0)).filter((n) => n > 0)
   const variantWithPrice = variants
     .map((variant) => ({
@@ -488,9 +524,15 @@ const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
     }))
     .filter((variant) => variant.currentPrice > 0)
   const id = Number(item?.id)
-  const code = String(item?.maSanPham || item?.ma || "").trim().toUpperCase()
+  const rawCode = String(item?.maSanPham || item?.ma || "").trim().toUpperCase()
+  const normalizedCatalogCode = normalizeCatalogProductCode(rawCode)
+  const code = normalizedCatalogCode || rawCode
   const productName = String(item?.tenSanPham || item?.name || `Sản phẩm ${id || fallbackIndex + 1}`)
-  const overrideImage = getProductImageOverride({ id, maSanPham: item?.maSanPham })[0]
+  const imageConfig = getProductImageConfig({ id, maSanPham: item?.maSanPham })
+  const configImages = Array.isArray(imageConfig?.images)
+    ? imageConfig.images.map((entry) => String(entry || '').trim()).filter(Boolean)
+    : []
+  const overrideImage = configImages[0] || ''
 
   const variantStock = variants.reduce((sum, v) => sum + Number(v?.soLuong || 0), 0)
   const totalStock = variantStock > 0 ? variantStock : Number(item?.soLuong || 0)
@@ -508,6 +550,10 @@ const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
   )]
 
   const colorImageEntries = [...new Map([
+    ...normalizeColorImageEntries(imageConfig?.colorImages || []).map((entry) => [
+      `${Number(entry.colorId || 0)}|${normalizeNameKey(entry.colorName || '')}|${entry.image}`,
+      entry
+    ]),
     ...normalizeColorImageEntries(item?.colorImages || []).map((entry) => [`${entry.colorId}|${entry.image}`, entry]),
     ...normalizeColorImageEntries(item?.mauSacHinhAnhs || []).map((entry) => [`${entry.colorId}|${entry.image}`, entry]),
     ...normalizeColorImageEntries(item?.anhTheoMauSac || []).map((entry) => [`${entry.colorId}|${entry.image}`, entry]),
@@ -530,6 +576,24 @@ const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
       .filter((entry) => entry.image && (entry.colorId > 0 || entry.colorName))
       .map((entry) => [`${entry.colorId}|${entry.image}`, entry]),
   ]).values()]
+    .filter((entry) => {
+      if (!variants.length) return true
+
+      const entryColorId = Number(entry?.colorId || 0)
+      const entryColorName = String(entry?.colorName || '').trim()
+      return variants.some((variant) => {
+        const variantColorId = Number(variant?.mauSac?.id || 0)
+        const variantColorName = String(
+          variant?.mauSac?.tenMau || variant?.mauSac?.tenMauSac || variant?.mauSac?.name || variant?.tenMau || variant?.tenMauSac || ''
+        ).trim()
+
+        if (entryColorId > 0 && variantColorId > 0) {
+          return entryColorId === variantColorId
+        }
+
+        return entryColorName && isSameColor(entryColorName, variantColorName)
+      })
+    })
 
   const sold = resolveSoldCount(item, variants)
   const rawCategory = String(item?.loai?.tenLoai || item?.danhMuc?.tenDanhMuc || 'Thời trang nam')
@@ -541,29 +605,48 @@ const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
     ? lowestPricedVariant.originalPrice
     : null
 
-  const staticImages = code && staticQuickImagesByCode[code] ? staticQuickImagesByCode[code] : []
+  const staticImages = isCuratedQuickProductCode(code) && staticQuickImagesByCode[normalizeCatalogProductCode(code)]
+    ? staticQuickImagesByCode[normalizeCatalogProductCode(code)]
+    : []
 
-  const galleryImages = staticImages.length
-    ? [...new Set([
-        overrideImage,
-        ...staticImages
-      ].map((entry) => String(entry || '').trim()).filter(Boolean))]
-    : [...new Set([
-        ...colorImageEntries.map((entry) => String(entry?.image || '').trim()).filter(Boolean),
-        ...variants.map((variant) => pickImageValue([
-          variant,
-          variant?.anh,
-          variant?.hinhAnh,
-          variant?.image,
-          variant?.imageUrl,
-          variant?.duongDanAnh
-        ])).filter(Boolean),
-        ...normalizeColorImageEntries(item?.images || []).map((entry) => entry.image).filter(Boolean),
-        pickImageValue([item, item?.anh, item?.hinhAnh, item?.images, item?.image, item?.listAnh]),
-        overrideImage
-      ].map((entry) => String(entry || '').trim()).filter(Boolean))]
+  const firstVariant = variants[0] || null
+  const firstVariantColor = String(
+    firstVariant?.mauSac?.tenMau
+    || firstVariant?.mauSac?.tenMauSac
+    || firstVariant?.mauSac?.name
+    || firstVariant?.tenMau
+    || firstVariant?.tenMauSac
+    || ''
+  ).trim()
+  const curatedPrimaryImage = isCuratedQuickProductCode(code)
+    ? (fallbackImageForVariant({
+        id: Number(firstVariant?.id || id || 0),
+        maSanPham: normalizeCatalogProductCode(code) || code,
+        tenSanPham: productName,
+        tenMauSac: firstVariantColor,
+        maChiTietSanPham: firstVariant?.maSanPhamChiTiet || firstVariant?.maChiTiet || ''
+      }) || '')
+    : ''
 
-  const heroImage = overrideImage || galleryImages[0] || pickImageValue([item, variants]) || fallbackImageFor(id, code, productName)
+  const galleryImages = [...new Set([
+    curatedPrimaryImage,
+    ...configImages,
+    ...colorImageEntries.map((entry) => String(entry?.image || '').trim()).filter(Boolean),
+    ...variants.map((variant) => pickImageValue([
+      variant,
+      variant?.anh,
+      variant?.hinhAnh,
+      variant?.image,
+      variant?.imageUrl,
+      variant?.duongDanAnh
+    ])).filter(Boolean),
+    ...normalizeColorImageEntries(item?.images || []).map((entry) => entry.image).filter(Boolean),
+    pickImageValue([item, item?.anh, item?.hinhAnh, item?.images, item?.image, item?.listAnh]),
+    ...staticImages,
+    overrideImage
+  ].map((entry) => String(entry || '').trim()).filter(Boolean))]
+
+  const heroImage = overrideImage || curatedPrimaryImage || galleryImages[0] || pickImageValue([item, variants]) || fallbackImageFor(id, code, productName)
 
   return {
     id,
@@ -581,6 +664,7 @@ const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
     sizes,
     variants,
     colorImageEntries,
+    code,
   }
 }
 
@@ -739,6 +823,7 @@ const soldByProduct = ref({
   byCode: {},
   byName: {}
 })
+const soldBySpct = ref(new Map())
 const homeBackendProducts = ref([])
 
 const normalizeKeyword = (value = '') =>
@@ -876,6 +961,21 @@ const loadSoldFromOrders = async () => {
 }
 
 const resolveSoldCount = (item, variants = []) => {
+  const activeVariantIds = [...new Set(
+    (Array.isArray(variants) ? variants : [])
+      .filter((variant) => isActiveStatus(variant?.trangThai || variant?.status))
+      .map((variant) => Number(
+        variant?.id || variant?.spctId || variant?.sanPhamChiTietId || variant?.chiTietSanPhamId || 0
+      ))
+      .filter((spctId) => Number.isFinite(spctId) && spctId > 0)
+  )]
+
+  const bySpct = activeVariantIds.reduce((sum, spctId) => {
+    return sum + Number(soldBySpct.value.get(spctId) || 0)
+  }, 0)
+
+  if (bySpct > 0) return bySpct
+
   const id = Number(item?.id || 0)
   const code = String(item?.maSanPham || '').trim().toUpperCase()
   const nameKey = normalizeNameKey(item?.tenSanPham || item?.name || '')
@@ -896,7 +996,13 @@ const resolveSoldCount = (item, variants = []) => {
 
 const loadHomeBackendProducts = async () => {
   try {
-    await loadSoldFromOrders()
+    const [soldByOrderLoaded, soldBySpctMap] = await Promise.all([
+      loadSoldFromOrders(),
+      computeSoldBySpct()
+    ])
+    void soldByOrderLoaded
+    soldBySpct.value = soldBySpctMap instanceof Map ? soldBySpctMap : new Map()
+
     const response = await getAllSanPham()
     const rawProducts = Array.isArray(response?.data) ? response.data : []
     const withCampaignPrice = await Promise.all(rawProducts.map(async (item) => {
@@ -919,6 +1025,7 @@ const loadHomeBackendProducts = async () => {
       products.value = backendProductsMapped.filter((item) => item.price > 0)
     }
   } catch {
+    soldBySpct.value = new Map()
     homeBackendProducts.value = []
     products.value = []
   }
@@ -926,11 +1033,24 @@ const loadHomeBackendProducts = async () => {
 
 const getQuickProductCode = (product) => {
   if (!product) return ''
+  const directCode = normalizeCatalogProductCode(product?.code || product?.maSanPham || '')
+  if (directCode) return directCode
   const byId = homeBackendProducts.value.find(item => Number(item?.id) === Number(product.id))
-  if (byId?.maSanPham) return byId.maSanPham
+  const byIdCode = normalizeCatalogProductCode(byId?.maSanPham)
+  if (byIdCode) return byIdCode
   const localName = normalizeKeyword(product.name)
   const byName = homeBackendProducts.value.find(item => normalizeKeyword(item?.tenSanPham) === localName)
-  return byName?.maSanPham || String(product.id)
+  const byNameCode = normalizeCatalogProductCode(byName?.maSanPham)
+  if (byNameCode) return byNameCode
+  return normalizeCatalogProductCode(product?.code) || String(product.id)
+}
+
+const isCuratedQuickProductCode = (value = '') => Boolean(normalizeCatalogProductCode(value))
+
+const getStaticQuickImagesForProduct = (product) => {
+  const normalizedCode = normalizeCatalogProductCode(getQuickProductCode(product))
+  if (!normalizedCode) return []
+  return Array.isArray(staticQuickImagesByCode[normalizedCode]) ? staticQuickImagesByCode[normalizedCode] : []
 }
 
 const QUICK_SIZES = ["S", "M", "L", "XL"]
@@ -962,17 +1082,8 @@ const quickPreviewImages = computed(() => {
   if (!product) return []
 
   const candidates = []
-
-  if (Array.isArray(product.images)) {
-    candidates.push(...product.images.map((img) => String(img || '').trim()).filter(Boolean))
-  }
-
-  // Include all static color variant images for this product
-  const code = getQuickProductCode(product)
-  const staticImages = code && staticQuickImagesByCode[code] ? staticQuickImagesByCode[code] : []
-  if (staticImages.length) {
-    candidates.push(...staticImages.map((img) => String(img || '').trim()).filter(Boolean))
-  }
+  const curatedCode = normalizeCatalogProductCode(getQuickProductCode(product))
+  const isCuratedCatalog = Boolean(curatedCode)
 
   if (Array.isArray(product.colors) && product.colors.length) {
     for (const color of product.colors) {
@@ -983,15 +1094,36 @@ const quickPreviewImages = computed(() => {
       if (colorImage) {
         candidates.push(colorImage)
       }
-      // Always try fallback per color to ensure gallery has images for every color
-      const fbImg = fallbackImageForVariant({
-        id: product.id,
-        maSanPham: code,
-        tenSanPham: product.name,
-        tenMauSac: selectedColorName,
-      })
-      if (fbImg) candidates.push(fbImg)
     }
+  }
+
+  // Include all static color variant images for this product.
+  const staticImages = getStaticQuickImagesForProduct(product)
+  if (staticImages.length) {
+    candidates.push(...staticImages.map((img) => String(img || '').trim()).filter(Boolean))
+  }
+
+  if (isCuratedCatalog && !candidates.length) {
+    const firstColorName = String(product?.colors?.[0]?.name || '').trim()
+    const firstVariant = findVariantFromQuickSelection(product, firstColorName, quickSize.value)
+    const firstCurated = fallbackImageForVariant({
+      id: Number(firstVariant?.id || product?.id || 0),
+      maSanPham: curatedCode,
+      tenSanPham: product?.name,
+      tenMauSac: firstColorName,
+      maChiTietSanPham: firstVariant?.maSanPhamChiTiet || firstVariant?.maChiTiet || firstVariant?.ma || ''
+    })
+    if (firstCurated) candidates.push(firstCurated)
+  }
+
+  // For curated catalog products, avoid raw backend images that can be mismatched.
+  if (isCuratedCatalog) {
+    return [...new Set(candidates.map((img) => String(img || '').trim()).filter(Boolean))]
+  }
+
+  // Keep backend/raw image sources at lower priority.
+  if (Array.isArray(product.images)) {
+    candidates.push(...product.images.map((img) => String(img || '').trim()).filter(Boolean))
   }
 
   if (product?.img) candidates.push(String(product.img))
@@ -1068,17 +1200,7 @@ const selectQuickColor = (index) => {
     return
   }
   const variant = findVariantFromQuickSelection(product, selectedColorName, quickSize.value)
-  let colorImage = resolveQuickVariantImage(product, variant, selectedColorName)
-  // If resolveQuickVariantImage returned the generic product image, try fallback per color
-  if (!colorImage || isSameImage(colorImage, product?.img)) {
-    const fbImg = fallbackImageForVariant({
-      id: product.id,
-      maSanPham: getQuickProductCode(product),
-      tenSanPham: product.name,
-      tenMauSac: selectedColorName,
-    })
-    if (fbImg) colorImage = fbImg
-  }
+  const colorImage = resolveQuickVariantImage(product, variant, selectedColorName)
   if (!colorImage) {
     if (index >= 0 && index < quickPreviewImages.value.length) {
       quickImageIndex.value = index
@@ -1092,6 +1214,19 @@ const selectQuickColor = (index) => {
     quickImageIndex.value = imageIndex
     triggerQuickImageAnimation()
     return
+  }
+
+  const colorImageName = normalizeImageKey(colorImage).split('/').pop() || ''
+  if (colorImageName) {
+    const looseIndex = quickPreviewImages.value.findIndex((img) => {
+      const currentName = normalizeImageKey(img).split('/').pop() || ''
+      return currentName && currentName === colorImageName
+    })
+    if (looseIndex >= 0) {
+      quickImageIndex.value = looseIndex
+      triggerQuickImageAnimation()
+      return
+    }
   }
 
   if (index >= 0 && index < quickPreviewImages.value.length) {
@@ -1124,6 +1259,8 @@ const isSameColor = (left = '', right = '') => {
   const normalize = (value = '') => String(value)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
@@ -1151,6 +1288,28 @@ const findVariantFromQuickSelection = (product, selectedColorName, selectedSizeN
 }
 
 const resolveQuickVariantImage = (product, variant, selectedColorName = '') => {
+  const productCode = getQuickProductCode(product)
+  const fallbackColorName = String(
+    selectedColorName
+    || variant?.mauSac?.tenMau
+    || variant?.mauSac?.tenMauSac
+    || variant?.mauSac?.name
+    || variant?.tenMau
+    || variant?.tenMauSac
+    || ''
+  ).trim()
+
+  if (isCuratedQuickProductCode(productCode)) {
+    const curatedVariantImage = fallbackImageForVariant({
+      id: Number(variant?.id || product?.id || 0),
+      maSanPham: productCode,
+      tenSanPham: product?.name,
+      tenMauSac: fallbackColorName,
+      maChiTietSanPham: variant?.maSanPhamChiTiet || variant?.maChiTiet || variant?.ma || ''
+    })
+    if (curatedVariantImage) return curatedVariantImage
+  }
+
   const variantImage = pickImageValue([
     variant,
     variant?.anh,
@@ -1179,11 +1338,9 @@ const resolveQuickVariantImage = (product, variant, selectedColorName = '') => {
   // Fallback: match color name to static image filenames by keyword
   if (selectedColorName) {
     const code = getQuickProductCode(product)
-    const staticImages = code && staticQuickImagesByCode[code] ? staticQuickImagesByCode[code] : []
+    const staticImages = getStaticQuickImagesForProduct(product)
     if (staticImages.length) {
-      const normalizedColor = isSameColor.normalize
-        ? selectedColorName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-        : String(selectedColorName || '').toLowerCase().trim()
+      const normalizedColor = normalizeColorKeyword(selectedColorName)
       const keyword = colorKeywordMap[normalizedColor]
         || Object.entries(colorKeywordMap).find(([k]) => normalizedColor.includes(k))?.[1]
         || ''
@@ -1191,6 +1348,16 @@ const resolveQuickVariantImage = (product, variant, selectedColorName = '') => {
         const matched = staticImages.find((img) => String(img || '').toLowerCase().includes(keyword))
         if (matched) return matched
       }
+    }
+
+    if (isCuratedQuickProductCode(code)) {
+      const fbImg = fallbackImageForVariant({
+        id: product.id,
+        maSanPham: code,
+        tenSanPham: product.name,
+        tenMauSac: selectedColorName,
+      })
+      if (fbImg) return fbImg
     }
   }
 
@@ -1439,7 +1606,9 @@ onUnmounted(() => {
 <article
 v-for="(p, index) in filteredBest"
 :key="p.id"
-class="card">
+class="card"
+@click="openProductDetail(p.id)"
+style="cursor:pointer">
 
 <div class="thumb">
   <img :src="p.img" alt="" />

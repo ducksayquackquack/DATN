@@ -5,7 +5,6 @@ import {
   getAllSanPham,
   updateSanPham
 } from "../../../services/sanPhamService"
-import { getAllHoaDon, getHoaDonById } from "../../../services/hoaDonService"
 import { Eye } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel } from "../../../utils/adminStatus"
 import { resolveApiOrigin } from "../../../utils/apiOrigin"
@@ -283,62 +282,38 @@ const normalizeStatusText = (value = "") =>
     .replace(/Đ/g, "D")
     .toLowerCase()
 
-const shouldCountOrderForStock = (detail = {}) => {
-  const order = detail?.hoaDon || detail || {}
-  const statusCode = String(order?.orderStatusCode || detail?.orderStatusCode || "").trim().toUpperCase()
-  const fulfillmentCode = String(order?.fulfillmentStatusCode || detail?.fulfillmentStatusCode || "").trim().toUpperCase()
-  const statusText = normalizeStatusText(order?.orderStatusName || order?.trangThai || order?.status || "")
-  const noteText = normalizeStatusText(order?.statusNote || detail?.statusNote || "")
-
-  if (statusCode.includes("HUY") || statusText.includes("huy") || noteText.includes("huy") || statusText.includes("cancel")) {
-    return false
-  }
-
-  const isFinalOrder = detail?.finalOrder === true || String(order?.businessClosureStatus || "").toUpperCase() === "CLOSED"
-  return isFinalOrder || statusCode === "HOAN_THANH" || fulfillmentCode === "DELIVERED" || statusText.includes("hoan thanh")
-}
+import { computeSoldBySpct, variantAvailableStock as _variantAvailableStock, variantStockValue as _variantStockValue } from "@/utils/stockCalculation"
 
 async function loadSoldQtyBySpct() {
-  try {
-    const hoaDonRes = await getAllHoaDon()
-    const hoaDons = toList(hoaDonRes?.data)
-    const orderIds = hoaDons
-      .map((order) => Number(order?.id))
-      .filter((orderId) => Number.isFinite(orderId) && orderId > 0)
-
-    if (!orderIds.length) return new Map()
-
-    const detailResponses = await Promise.all(
-      orderIds.map((orderId) => getHoaDonById(orderId).catch(() => null))
-    )
-
-    const soldBySpct = new Map()
-
-    for (const detailRes of detailResponses) {
-      const detail = detailRes?.data
-      if (!detail || !shouldCountOrderForStock(detail)) continue
-
-      const items = toList(detail?.items || detail?.hoaDonChiTiets || detail?.chiTietHoaDons || detail?.chiTiets)
-      for (const item of items) {
-        const spctId = Number(item?.spctId || item?.sanPhamChiTietId || item?.idSanPhamChiTiet || item?.chiTietSanPhamId || 0)
-        const qty = Number(item?.soLuong || item?.quantity || item?.soLuongMua || 0)
-        if (!Number.isFinite(spctId) || spctId <= 0 || !Number.isFinite(qty) || qty <= 0) continue
-        soldBySpct.set(spctId, Number(soldBySpct.get(spctId) || 0) + qty)
-      }
-    }
-
-    return soldBySpct
-  } catch {
-    return new Map()
-  }
+  return computeSoldBySpct()
 }
 
 function goToCreate() {
-  router.push(`${routeBase.value}/san-pham/form`)
+  const q = new URLSearchParams()
+  if (search.value.trim()) q.set("q", search.value.trim())
+  if (showActiveOnly.value) q.set("active", "1")
+  const pages = JSON.stringify(currentPageByType.value || {})
+  if (pages && pages !== "{}") q.set("pages", pages)
+  const returnTo = q.toString() ? `${route.path}?${q.toString()}` : route.path
+
+  router.push({
+    path: `${routeBase.value}/san-pham/form`,
+    query: { returnTo }
+  })
 }
 
 function goToEdit(id) {
-  router.push(`${routeBase.value}/san-pham/form/${id}`)
+  const q = new URLSearchParams()
+  if (search.value.trim()) q.set("q", search.value.trim())
+  if (showActiveOnly.value) q.set("active", "1")
+  const pages = JSON.stringify(currentPageByType.value || {})
+  if (pages && pages !== "{}") q.set("pages", pages)
+  const returnTo = q.toString() ? `${route.path}?${q.toString()}` : route.path
+
+  router.push({
+    path: `${routeBase.value}/san-pham/form/${id}`,
+    query: { returnTo }
+  })
 }
 
 function formatCurrency(value) {
@@ -388,6 +363,29 @@ function normalizeColorKey(value = "") {
   return normalized
 }
 
+function isEntityActive(entity = {}, defaultValue = true) {
+  const rawStatus = entity?.trangThai ?? entity?.status ?? entity?.trangThaiText
+  if (typeof rawStatus === "boolean") return rawStatus
+  if (typeof rawStatus === "number") return rawStatus !== 0
+
+  const normalizedStatus = normalizeStatusText(rawStatus)
+  if (normalizedStatus) {
+    if (normalizedStatus.includes("ngung") || normalizedStatus.includes("inactive") || normalizedStatus.includes("disable")) {
+      return false
+    }
+    if (normalizedStatus.includes("hoat dong") || normalizedStatus.includes("active") || normalizedStatus.includes("enable")) {
+      return true
+    }
+  }
+
+  if (typeof entity?.active === "boolean") return entity.active
+  if (typeof entity?.isActive === "boolean") return entity.isActive
+  if (typeof entity?.active === "number") return entity.active !== 0
+  if (typeof entity?.isActive === "number") return entity.isActive !== 0
+
+  return defaultValue
+}
+
 function isUploadedImagePath(value = "") {
   return /(?:^|\/)uploads\//i.test(String(value || "").replace(/\\/g, "/"))
 }
@@ -397,15 +395,11 @@ function hasCoreOrFlameToken(name = "") {
 }
 
 function variantStockValue(variant = {}) {
-  return Number(variant?.soLuong ?? variant?.soLuongTon ?? variant?.tonKho ?? variant?.ton ?? 0)
+  return _variantStockValue(variant)
 }
 
 function variantAvailableStockForList(variant = {}, soldBySpct = new Map()) {
-  const baseStock = variantStockValue(variant)
-  const spctId = Number(variant?.id || variant?.spctId || variant?.sanPhamChiTietId || 0)
-  if (!Number.isFinite(spctId) || spctId <= 0) return baseStock
-  const soldQty = Number(soldBySpct.get(spctId) || 0)
-  return Math.max(0, baseStock - soldQty)
+  return _variantAvailableStock(variant, soldBySpct)
 }
 
 function variantIdentityKeyForList(variant = {}) {
@@ -445,6 +439,12 @@ function toVariantList(product = {}) {
   return []
 }
 
+function toActiveVariantList(product = {}) {
+  const variants = toVariantList(product)
+  const activeVariants = variants.filter((variant) => isEntityActive(variant, true))
+  return activeVariants.length ? activeVariants : variants
+}
+
 function mergeProductsForList(products = []) {
   const grouped = new Map()
 
@@ -464,8 +464,8 @@ function mergeProductsForList(products = []) {
       const rightPenalty = hasCoreOrFlameToken(right?.tenSanPham) ? 1 : 0
       if (leftPenalty !== rightPenalty) return leftPenalty - rightPenalty
 
-      const leftVariantCount = toVariantList(left).length
-      const rightVariantCount = toVariantList(right).length
+      const leftVariantCount = toActiveVariantList(left).length
+      const rightVariantCount = toActiveVariantList(right).length
       if (leftVariantCount !== rightVariantCount) return rightVariantCount - leftVariantCount
 
       const leftId = Number(left?.id)
@@ -479,9 +479,18 @@ function mergeProductsForList(products = []) {
     const variantsByIdentity = new Map()
 
     for (const product of ranked) {
-      for (const variant of toVariantList(product)) {
+      for (const variant of toActiveVariantList(product)) {
         const identityKey = variantIdentityKeyForList(variant) || `id:${Number(variant?.id || 0)}`
         if (!variantsByIdentity.has(identityKey)) {
+          variantsByIdentity.set(identityKey, variant)
+          continue
+        }
+
+        const existingVariant = variantsByIdentity.get(identityKey)
+        const existingActive = isEntityActive(existingVariant, true)
+        const incomingActive = isEntityActive(variant, true)
+
+        if (!existingActive && incomingActive) {
           variantsByIdentity.set(identityKey, variant)
         }
       }
@@ -566,7 +575,22 @@ async function loadData() {
   })
 }
 
-onMounted(loadData)
+onMounted(async () => {
+  const q = route.query || {}
+  if (String(q.q || "").trim()) search.value = String(q.q)
+  showActiveOnly.value = String(q.active || "") === "1"
+  if (String(q.pages || "").trim()) {
+    try {
+      const parsed = JSON.parse(String(q.pages))
+      if (parsed && typeof parsed === "object") {
+        currentPageByType.value = { ...parsed }
+      }
+    } catch {
+      // Ignore invalid persisted page map
+    }
+  }
+  await loadData()
+})
 
 const searchedList = computed(() => {
   const keyword = search.value.trim().toLowerCase()
@@ -646,6 +670,10 @@ async function toggleProductStatus(item) {
   if (!target) return
 
   const nextStatus = isProductActive(target.status) ? "Ngừng hoạt động" : "Hoạt động"
+  const actionText = nextStatus === "Hoạt động" ? "bật" : "tắt"
+  const confirmed = window.confirm(`Bạn có chắc muốn ${actionText} sản phẩm \"${target.name || target.ma || ""}\"?`)
+  if (!confirmed) return
+
   try {
     const raw = target.raw && typeof target.raw === "object" ? target.raw : {}
     const payloadCandidates = [
@@ -758,10 +786,10 @@ async function toggleProductStatus(item) {
               <th style="width:140px">Loại</th>
               <th style="width:140px" class="right">Giá</th>
               <th style="width:120px" class="right">Tồn</th>
-              <th style="width:170px">Ngày tạo</th>
-              <th style="width:170px">Ngày sửa</th>
-              <th style="width:140px">Trạng thái</th>
-              <th style="width:160px" class="col-actions">Thao tác</th>
+              <th style="width:170px;text-align:center">Ngày tạo</th>
+              <th style="width:170px;text-align:center">Ngày sửa</th>
+              <th style="width:140px;text-align:center">Trạng thái</th>
+              <th style="width:160px;text-align:center">Thao tác</th>
             </tr>
           </thead>
 
@@ -790,7 +818,7 @@ async function toggleProductStatus(item) {
 
               <td>{{ item.loai }}</td>
 
-              <td class="col-actions">
+              <td class="right">
                 <template v-if="item.gia === null">
                   <span class="muted">-</span>
                 </template>
@@ -808,11 +836,11 @@ async function toggleProductStatus(item) {
                 </template>
               </td>
 
-              <td>{{ formatDateTime(item.ngayTao) }}</td>
+              <td style="text-align:center">{{ formatDateTime(item.ngayTao) }}</td>
 
-              <td>{{ formatDateTime(item.ngaySua) }}</td>
+              <td style="text-align:center">{{ formatDateTime(item.ngaySua) }}</td>
 
-              <td>
+              <td style="text-align:center">
                 <span
                   class="pill"
                   :class="`status-${getAdminStatusTone(item.status)}`"
@@ -821,9 +849,9 @@ async function toggleProductStatus(item) {
                 </span>
               </td>
 
-              <td class="right">
+              <td style="text-align:center">
 
-                <div class="actions">
+                <div class="actions" style="justify-content:center">
 
                   <button
                     class="iconbtn"

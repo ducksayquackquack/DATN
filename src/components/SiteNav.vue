@@ -15,28 +15,8 @@ import {
 import { resolveApiOrigin } from "../utils/apiOrigin"
 import { getProductImageOverride } from "../utils/productImageOverrides"
 import { readCartObject } from "../utils/cartStorage"
+import { fallbackImageFor } from "../utils/productImageFallback"
 import logo from "../assets/img/logo/new logo.png?url"
-import img1 from "../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
-import img2 from "../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
-import img3 from "../assets/img/Jackets/bomber/bomber-gia-da.jpg?url"
-import img4 from "../assets/img/Jackets/bomber/bomber-nhe-cotton.jpg?url"
-import img5 from "../assets/img/Jackets/hoodie/hoodie-dang-hop.jpg?url"
-import img6 from "../assets/img/Jackets/hoodie/hoodie-in-hinh.jpg?url"
-import img7 from "../assets/img/Jackets/hoodie/hoodie-keo-khoa.jpg?url"
-import img8 from "../assets/img/Jackets/coach/coach-cach-nhiet.jpg?url"
-import img9 from "../assets/img/Jackets/coach/coach-da-asos.jpg?url"
-import img10 from "../assets/img/Jackets/coach/coach-gia-da.jpg?url"
-import img11 from "../assets/img/Jackets/coach/coach-long-cuu.jpg?url"
-// New products
-import img12 from "../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-black.PNG?url"
-import img13 from "../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-black.PNG?url"
-import img14 from "../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-black.PNG?url"
-import img15 from "../assets/img/Jackets/coach/coach-leopard/coach-leopard.PNG?url"
-import img16 from "../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-black.PNG?url"
-import img17 from "../assets/img/Jackets/coach/coach-tiger-stripe/coach-tiger-stripe.PNG?url"
-import img18 from "../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-black.PNG?url"
-import img19 from "../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-blue.PNG?url"
-import img20 from "../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-black.PNG?url"
 
 const props = defineProps({
   cartCount: { type: Number, default: null }
@@ -62,23 +42,6 @@ const { notifications, unreadCount: notificationCount } = useNotifications("cust
 const toNumber = (value) => {
   const n = Number(value)
   return Number.isFinite(n) ? n : 0
-}
-
-const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11, img12, img13, img14, img15, img16, img17, img18, img19, img20]
-
-const fallbackImageFor = (id, code = "") => {
-  const normalizedId = Number(id)
-  if (Number.isFinite(normalizedId) && normalizedId > 0) {
-    return fallbackImages[(normalizedId - 1) % fallbackImages.length]
-  }
-
-  const codeDigits = String(code || "").replace(/\D+/g, "")
-  const codeNumber = Number(codeDigits)
-  if (Number.isFinite(codeNumber) && codeNumber > 0) {
-    return fallbackImages[(codeNumber - 1) % fallbackImages.length]
-  }
-
-  return fallbackImages[0] || logo
 }
 
 const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, "")

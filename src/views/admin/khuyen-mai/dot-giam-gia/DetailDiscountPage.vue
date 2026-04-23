@@ -60,7 +60,7 @@
               placeholder="Nhập giá trị..."
               :disabled="isEnded"
               min="1"
-              max="100"
+              max="99"
             />
           </div>
 
@@ -643,7 +643,7 @@ const isVariantMatchedApplyTarget = (variant) => {
 /* ✅ BADGE “SỐ MŨ” */
 const badgeTheoDot = computed(() => {
   const val = Number(formData.giaTriGiamGia ?? 0);
-  if (!Number.isFinite(val) || val <= 0) return null;
+  if (!Number.isFinite(val) || val <= 0 || val >= 100) return null;
 
   const isMoney = !!formData.loaiGiamGia; // hiện đang khóa %, nhưng để sẵn
   return isMoney
@@ -656,7 +656,7 @@ const badgeTheoDot = computed(() => {
 */
 const mauBadgeTheoDot = computed(() => {
   const n = Number(formData.giaTriGiamGia ?? 0);
-  if (!Number.isFinite(n) || n <= 0) return "ss-badge-low";
+  if (!Number.isFinite(n) || n <= 0 || n >= 100) return "ss-badge-low";
   if (n < 50) return "ss-badge-low";
   if (n <= 70) return "ss-badge-mid";
   return "ss-badge-high";
@@ -1062,7 +1062,7 @@ const getHienThiGiaTheoDot = (variant) => {
   const price = getGiaBienThe(variant);
 
   const val = Number(formData.giaTriGiamGia ?? 0);
-  if (!Number.isFinite(val) || val <= 0) {
+  if (!Number.isFinite(val) || val <= 0 || val >= 100) {
     return { hasDiscount: false, originalPrice: price, finalPrice: price, badge: null };
   }
 
@@ -1130,6 +1130,12 @@ const clearDetailFilters = () => {
 const submitUpdate = async () => {
   if (!formData.tenDotGiamGia || !formData.ngayBatDau || !formData.ngayKetThuc) {
     notifyWarning("Vui lòng nhập đủ thông tin đợt giảm giá");
+    return;
+  }
+
+  const discountPercent = Number(formData.giaTriGiamGia ?? 0);
+  if (!Number.isFinite(discountPercent) || discountPercent < 1 || discountPercent >= 100) {
+    notifyWarning("Giá trị giảm phải từ 1 đến nhỏ hơn 100 (%)");
     return;
   }
 

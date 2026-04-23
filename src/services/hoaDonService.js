@@ -2,6 +2,13 @@ import axios from "axios"
 import { resolveApiOrigin } from "../utils/apiOrigin"
 
 const API = `${resolveApiOrigin()}/api/hoa-don`
+const NODE_BACKEND = String(import.meta.env.VITE_NODE_BACKEND_URL || "").trim().replace(/\/$/, "")
+
+const ORDER_LOOKUP_MAIL_FALLBACK_ENDPOINTS = [
+  `${resolveApiOrigin()}/api/mail/send-order-lookup`,
+  NODE_BACKEND ? `${NODE_BACKEND}/api/mail/send-order-lookup` : "",
+  "http://localhost:3000/api/mail/send-order-lookup"
+].filter(Boolean)
 
 const normalizeHoaDonId = (id) => {
   const raw = String(id ?? "").trim()
@@ -63,7 +70,19 @@ export const sendOrderLookupMail = ({ maHoaDon, soDienThoai = "", email, trackin
     payload.soDienThoai = String(soDienThoai).trim()
   }
 
-  return axios.post(`${API}/lookup/send-mail`, payload)
+  const tryFallback = async () => {
+    let lastError = null
+    for (const endpoint of ORDER_LOOKUP_MAIL_FALLBACK_ENDPOINTS) {
+      try {
+        return await axios.post(endpoint, payload)
+      } catch (error) {
+        lastError = error
+      }
+    }
+    throw lastError || new Error("Không thể gửi mail tra cứu")
+  }
+
+  return axios.post(`${API}/lookup/send-mail`, payload).catch(() => tryFallback())
 }
 
 export const createHoaDon = (data) => {

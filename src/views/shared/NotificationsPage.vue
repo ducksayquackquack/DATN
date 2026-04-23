@@ -24,6 +24,11 @@ const goToLink = (item) => {
   router.push(item.link)
 }
 
+const goToOrderDetail = (item) => {
+  markOneAsRead(item.id)
+  router.push(item.link)
+}
+
 const formatDateTime = (value) => {
   if (!value) return "-"
   const d = new Date(value)
@@ -69,9 +74,17 @@ const formatDateTime = (value) => {
           :class="{ unread: !item.read }"
           @click="goToLink(item)"
         >
-          <div>
-            <h3>{{ item.title }}</h3>
-            <p>{{ item.description }}</p>
+          <div class="notify-item-content">
+            <div>
+              <h3>{{ item.title }}</h3>
+              <p>{{ item.description }}</p>
+            </div>
+            <button
+              v-if="item.showDetail"
+              class="notify-detail-btn"
+              type="button"
+              @click.stop="goToOrderDetail(item)"
+            >Xem chi tiết đơn hàng</button>
           </div>
           <small>{{ formatDateTime(item.createdAt) }}</small>
         </article>
@@ -182,5 +195,29 @@ const formatDateTime = (value) => {
 .notify-item small {
   color: #6b7280;
   white-space: nowrap;
+}
+
+.notify-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.notify-detail-btn {
+  align-self: flex-start;
+  background: #111827;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.notify-detail-btn:hover {
+  background: #dc2626;
 }
 </style>

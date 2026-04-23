@@ -5,10 +5,10 @@ import { Facebook, Instagram, Mail, MapPin, Phone, Youtube } from "lucide-vue-ne
 const year = computed(() => new Date().getFullYear())
 
 const quickLinks = [
-  { label: "Chính sách bảo mật", href: "#" },
-  { label: "Chính sách vận chuyển", href: "#" },
-  { label: "Chính sách đổi trả", href: "#" },
-  { label: "Quy định sử dụng", href: "#" },
+  "Chính sách bảo mật",
+  "Chính sách vận chuyển",
+  "Chính sách đổi trả",
+  "Quy định sử dụng",
 ]
 
 const supportTimes = [
@@ -27,18 +27,18 @@ const supportTimes = [
           <p>Streetwear cho nam theo phong cách tối giản, dễ mặc mỗi ngày.</p>
 
           <div class="cf-socials" aria-label="Kênh mạng xã hội">
-            <a href="#" aria-label="Facebook">
+            <span aria-label="Facebook">
               <Facebook :size="16" />
-            </a>
-            <a href="#" aria-label="Youtube">
+            </span>
+            <span aria-label="Youtube">
               <Youtube :size="16" />
-            </a>
-            <a href="#" aria-label="TikTok">
+            </span>
+            <span aria-label="TikTok">
               <span>Tk</span>
-            </a>
-            <a href="#" aria-label="Instagram">
+            </span>
+            <span aria-label="Instagram">
               <Instagram :size="16" />
-            </a>
+            </span>
           </div>
         </section>
 
@@ -61,10 +61,10 @@ const supportTimes = [
         </section>
 
         <section>
-          <h4>Kết nối</h4>
+          <h4>Thông tin</h4>
           <ul class="cf-links">
-            <li v-for="item in quickLinks" :key="item.label">
-              <a :href="item.href">{{ item.label }}</a>
+            <li v-for="item in quickLinks" :key="item">
+              <span>{{ item }}</span>
             </li>
           </ul>
         </section>
@@ -154,20 +154,19 @@ const supportTimes = [
   gap: 10px;
 }
 
-.cf-socials a {
+.cf-socials span {
   width: 32px;
   height: 32px;
   border-radius: 999px;
   display: grid;
   place-items: center;
-  text-decoration: none;
   color: #f3f4f6;
   border: 1px solid rgba(255, 255, 255, 0.22);
   background: rgba(255, 255, 255, 0.05);
   transition: transform 0.2s ease, background 0.2s ease;
 }
 
-.cf-socials a:hover {
+.cf-socials span:hover {
   transform: translateY(-2px);
   background: rgba(255, 255, 255, 0.15);
 }
@@ -195,13 +194,8 @@ const supportTimes = [
   line-height: 1.5;
 }
 
-.cf-links a {
-  text-decoration: none;
+.cf-links span {
   color: #d6d9de;
-}
-
-.cf-links a:hover {
-  color: #ffffff;
 }
 
 .cf-schedule {

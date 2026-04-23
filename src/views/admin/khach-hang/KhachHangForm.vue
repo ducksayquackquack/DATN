@@ -9,10 +9,13 @@ import {
 import {
   getHoaDonByKhachHang
 } from "../../../services/khachHangService"
+import { getDiaChiByKhachHang } from "../../../services/diaChiService"
+import taiKhoanService from "../../../services/taiKhoanService"
 
 const router = useRouter()
 const route = useRoute()
 const id = route.params.id
+const isCreateMode = !id || String(id) === "new"
 
 const form = ref({
   maKhachHang: "",
@@ -20,13 +23,33 @@ const form = ref({
   gioiTinh: "Nam",
   ngaySinh: "",
   soDienThoai: "",
+  email: "",
+  diaChiNhanHang: "",
   trangThai: "Hoạt động"
 })
 
+const generatedPassword = ref("")
+
 const hoaDonList = ref([])
 
+const toList = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.content)) return payload.content
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.content)) return payload.data.content
+  return []
+}
+
+const formatAddress = (addr) => {
+  if (!addr) return ""
+  return [addr.diaChiCuThe, addr.phuongXa, addr.quanHuyen, addr.tinhThanh]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(", ")
+}
+
 onMounted(async () => {
-  if (id) {
+  if (!isCreateMode) {
     const res = await getKhachHangById(id)
 
     form.value = {
@@ -34,7 +57,20 @@ onMounted(async () => {
       ngaySinh: res.data.ngaySinh
         ? res.data.ngaySinh.substring(0,10)
         : "",
+      email: res.data.email || res.data.taiKhoan?.email || "",
       trangThai: res.data.trangThai || "Hoạt động"
+    }
+
+    try {
+      const addressRes = await getDiaChiByKhachHang(id)
+      const addressRows = toList(addressRes?.data)
+      const preferred = addressRows.find((item) => item?.macDinh === true || item?.laMacDinh === true) || addressRows[0]
+      const fullAddress = formatAddress(preferred)
+      if (fullAddress) {
+        form.value.diaChiNhanHang = fullAddress
+      }
+    } catch {
+      // Keep existing customer payload address if address service is unavailable.
     }
 
     const hdRes = await getHoaDonByKhachHang(id)
@@ -52,22 +88,98 @@ const totalSpending = computed(() =>
 const formatCurrency = (v) =>
   new Intl.NumberFormat("vi-VN").format(v) + "₫"
 
+const taoMatKhauTam = () => {
+  const part = String(Math.floor(100000 + Math.random() * 900000))
+  return `DW@${part}`
+}
+
+const taoTaiKhoanKhachHang = async (email, matKhau) => {
+  const normalizedEmail = String(email || "").trim().toLowerCase()
+  const payloadCandidates = [
+    {
+      email: normalizedEmail,
+      username: normalizedEmail,
+      matKhau,
+      vaiTro: "CUSTOMER",
+      trangThaiHoatDong: "Hoạt động",
+      trangThaiTaiKhoan: "Kích hoạt"
+    },
+    {
+      email: normalizedEmail,
+      tenDangNhap: normalizedEmail,
+      matKhau,
+      vaiTro: "ROLE_CUSTOMER",
+      trangThaiHoatDong: "Hoạt động",
+      trangThaiTaiKhoan: "Kích hoạt"
+    },
+    {
+      email: normalizedEmail,
+      username: normalizedEmail,
+      password: matKhau,
+      vaiTro: "CUSTOMER",
+      trangThaiHoatDong: "Hoạt động",
+      trangThaiTaiKhoan: "Kích hoạt"
+    }
+  ]
+
+  let lastError = null
+  for (const payload of payloadCandidates) {
+    try {
+      const res = await taiKhoanService.create(payload)
+      const accountId = Number(res?.data?.id || res?.data?.data?.id)
+      if (accountId > 0) return accountId
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError || new Error("Không tạo được tài khoản khách hàng")
+}
+
 const save = async () => {
   // Confirmation before saving
-  const action = id ? 'cập nhật' : 'tạo mới'
+  const action = isCreateMode ? 'tạo mới' : 'cập nhật'
   const confirmed = await window.confirmDialog(`Bạn có chắc chắn muốn ${action} thông tin khách hàng "${form.value.tenKhachHang}"?`)
   if (!confirmed) {
     return
   }
 
   try {
-    if (id) {
-      await updateKhachHang(id, form.value)
-      window.toast.success('Cập nhật khách hàng thành công!')
-    } else {
-      await createKhachHang(form.value)
-      window.toast.success('Tạo mới khách hàng thành công!')
+    if (!String(form.value.tenKhachHang || "").trim()) {
+      window.toast.error("Vui lòng nhập họ tên khách hàng")
+      return
     }
+
+    if (isCreateMode) {
+      const normalizedEmail = String(form.value.email || "").trim().toLowerCase()
+      if (!normalizedEmail) {
+        window.toast.error("Vui lòng nhập email để tạo tài khoản khách hàng")
+        return
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        window.toast.error("Email không đúng định dạng")
+        return
+      }
+
+      const matKhauTam = taoMatKhauTam()
+      const taiKhoanId = await taoTaiKhoanKhachHang(normalizedEmail, matKhauTam)
+
+      await createKhachHang({
+        ...form.value,
+        email: normalizedEmail,
+        idTaiKhoan: taiKhoanId,
+        taiKhoan: { id: taiKhoanId },
+        trangThai: form.value.trangThai || "Hoạt động"
+      })
+
+      generatedPassword.value = matKhauTam
+      window.toast.success(`Tạo mới khách hàng thành công! Mật khẩu tạm: ${matKhauTam}`)
+      router.push("/admin/khach-hang/list")
+      return
+    }
+
+    await updateKhachHang(id, form.value)
+    window.toast.success('Cập nhật khách hàng thành công!')
     router.push("/admin/khach-hang/list")
   } catch (error) {
     window.toast.error('Có lỗi xảy ra: ' + (error.message || 'Vui lòng thử lại'))
@@ -80,7 +192,7 @@ const save = async () => {
     <div class="card">
       <div class="head">
         <div>
-          <h1>Form khách hàng</h1>
+          <h1>{{ isCreateMode ? 'Thêm khách hàng' : 'Form khách hàng' }}</h1>
           <small class="muted">
             Tạo mới / cập nhật thông tin khách
           </small>
@@ -153,6 +265,24 @@ const save = async () => {
             />
           </div>
 
+          <div class="field" v-if="isCreateMode">
+            <label>Email đăng nhập <span class="req">*</span></label>
+            <input
+              class="input"
+              v-model="form.email"
+              placeholder="VD: khachhang@dirtywave.com"
+            />
+          </div>
+
+          <div class="field">
+            <label>Địa chỉ</label>
+            <input
+              class="input"
+              v-model="form.diaChiNhanHang"
+              placeholder="VD: 123 Đường ABC, Quận XYZ, TP. HCM"
+            />
+          </div>
+
           <div class="field">
             <label>Trạng thái</label>
             <select
@@ -208,5 +338,12 @@ select.input {
   color: #64748b;
   border-color: #cbd5e1;
   font-weight: 600;
+}
+
+.req {
+  color: #dc2626;
+}
+@media (max-width: 768px) {
+  .head { flex-direction: column; align-items: flex-start; gap: 12px; }
 }
 </style>

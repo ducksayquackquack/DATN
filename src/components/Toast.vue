@@ -4,11 +4,13 @@ import { ref } from "vue"
 const visible = ref(false)
 const message = ref("")
 const type = ref("success")
+const aside = ref(false)
 
 function showToast(msg, t = "success") {
   message.value = msg
   type.value = t
   visible.value = true
+  aside.value = false
 
   setTimeout(() => {
     visible.value = false
@@ -20,7 +22,13 @@ defineExpose({ showToast })
 
 <template>
   <transition name="toast">
-    <div v-if="visible" class="toast" :class="type">
+    <div
+      v-if="visible"
+      class="toast"
+      :class="[type, { 'toast--aside': aside }]"
+      @mouseenter="aside = true"
+      @mouseleave="aside = false"
+    >
       {{ message }}
     </div>
   </transition>
@@ -36,6 +44,12 @@ defineExpose({ showToast })
   color: white;
   font-weight: 600;
   z-index: 9999;
+  transition: transform .32s cubic-bezier(0.22, 1, 0.36, 1), opacity .24s ease;
+}
+
+.toast--aside {
+  transform: translateX(calc(100% - 52px));
+  opacity: .95;
 }
 
 .success { background: #22c55e; }

@@ -216,7 +216,7 @@ async function loadSessions(showLoading = false) {
   } catch (error) {
     console.error("Không tải được danh sách chat", error)
     if (error?.response?.status === 401) {
-alert("Phiên đăng nhập của nhân viên đã hết hạn. Vui lòng đăng nhập lại.")
+      alert("Phiên đăng nhập của nhân viên đã hết hạn. Vui lòng đăng nhập lại.")
     }
   } finally {
     if (showLoading) loadingSessions.value = false

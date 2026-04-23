@@ -264,6 +264,16 @@ const loadShifts = async () => {
 
 const validateTimeValue = (timeValue) => /^\d{2}:\d{2}$/.test(timeValue)
 
+const normalizeShiftName = (value = '') => {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, (char) => (char === 'đ' ? 'd' : 'D'))
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 const resetFormModel = () => {
   formModel.tenCa = ''
   formModel.moTa = ''
@@ -297,8 +307,26 @@ const closeFormModal = () => {
 }
 
 const buildShiftPayload = () => {
-  if (!String(formModel.tenCa).trim()) {
+  const normalizedShiftName = String(formModel.tenCa).trim().replace(/\s+/g, ' ')
+
+  if (!normalizedShiftName) {
     toast.error('Tên ca không được để trống')
+    return null
+  }
+
+  if (normalizedShiftName.length < 3) {
+    toast.error('Tên ca phải có ít nhất 3 ký tự')
+    return null
+  }
+
+  const duplicateShift = shifts.value.find((shift) => {
+    if (!shift?.id) return false
+    if (formModal.mode === 'edit' && Number(shift.id) === Number(formModal.editingId)) return false
+    return normalizeShiftName(shift.name) === normalizeShiftName(normalizedShiftName)
+  })
+
+  if (duplicateShift) {
+    toast.error(`Tên ca "${normalizedShiftName}" đã tồn tại`)
     return null
   }
 
@@ -318,7 +346,7 @@ const buildShiftPayload = () => {
   }
 
   return {
-    tenCa: String(formModel.tenCa).trim(),
+    tenCa: normalizedShiftName,
     moTa: String(formModel.moTa || '').trim(),
     gioBatDau: String(formModel.gioBatDau).trim(),
     gioKetThuc: String(formModel.gioKetThuc).trim(),

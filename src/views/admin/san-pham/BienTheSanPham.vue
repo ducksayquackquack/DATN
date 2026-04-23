@@ -1,8 +1,7 @@
 <script setup>
-import { computed, onMounted, ref } from "vue"
+import { computed, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { getAllSanPham, updateSanPham, updateSanPhamChiTietStatus } from "../../../services/sanPhamService"
-import { getAllHoaDon, getHoaDonById } from "../../../services/hoaDonService"
+import { getAllSanPham, updateSanPham, getSanPhamById } from "../../../services/sanPhamService"
 import { resolveApiOrigin } from "../../../utils/apiOrigin"
 import { getProductImageConfig } from "../../../utils/productImageOverrides"
 import { getAdminStatusTone, normalizeAdminStatusLabel } from "../../../utils/adminStatus"
@@ -252,54 +251,10 @@ function isEntityActive(entity = {}, defaultValue = true) {
   return defaultValue
 }
 
-const shouldCountOrderForStock = (detail = {}) => {
-  const order = detail?.hoaDon || detail || {}
-  const statusCode = String(order?.orderStatusCode || detail?.orderStatusCode || "").trim().toUpperCase()
-  const fulfillmentCode = String(order?.fulfillmentStatusCode || detail?.fulfillmentStatusCode || "").trim().toUpperCase()
-  const statusText = normalizeStatusText(order?.orderStatusName || order?.trangThai || order?.status || "")
-  const noteText = normalizeStatusText(order?.statusNote || detail?.statusNote || "")
-
-  if (statusCode.includes("HUY") || statusText.includes("huy") || noteText.includes("huy") || statusText.includes("cancel")) {
-    return false
-  }
-
-  const isFinalOrder = detail?.finalOrder === true || String(order?.businessClosureStatus || "").toUpperCase() === "CLOSED"
-  return isFinalOrder || statusCode === "HOAN_THANH" || fulfillmentCode === "DELIVERED" || statusText.includes("hoan thanh")
-}
+import { computeSoldBySpct, variantAvailableStock as _variantAvailableStock, variantStockValue as _variantStockValue } from "@/utils/stockCalculation"
 
 async function loadSoldQtyBySpct() {
-  try {
-    const hoaDonRes = await getAllHoaDon()
-    const hoaDons = toList(hoaDonRes?.data)
-    const orderIds = hoaDons
-      .map((order) => Number(order?.id))
-      .filter((orderId) => Number.isFinite(orderId) && orderId > 0)
-
-    if (!orderIds.length) return new Map()
-
-    const detailResponses = await Promise.all(
-      orderIds.map((orderId) => getHoaDonById(orderId).catch(() => null))
-    )
-
-    const soldBySpct = new Map()
-
-    for (const detailRes of detailResponses) {
-      const detail = detailRes?.data
-      if (!detail || !shouldCountOrderForStock(detail)) continue
-
-      const items = toList(detail?.items || detail?.hoaDonChiTiets || detail?.chiTietHoaDons || detail?.chiTiets)
-      for (const item of items) {
-        const spctId = Number(item?.spctId || item?.sanPhamChiTietId || item?.idSanPhamChiTiet || item?.chiTietSanPhamId || 0)
-        const qty = Number(item?.soLuong || item?.quantity || item?.soLuongMua || 0)
-        if (!Number.isFinite(spctId) || spctId <= 0 || !Number.isFinite(qty) || qty <= 0) continue
-        soldBySpct.set(spctId, Number(soldBySpct.get(spctId) || 0) + qty)
-      }
-    }
-
-    return soldBySpct
-  } catch {
-    return new Map()
-  }
+  return computeSoldBySpct()
 }
 
 function inferLoaiName(product = {}) {
@@ -315,9 +270,10 @@ function inferLoaiName(product = {}) {
 
   const n = normalizeSearchText(product?.tenSanPham || "")
   if (!n) return "—"
-  if (n.includes("bomber")) return "Bomber"
-  if (n.includes("hoodie")) return "Hoodie"
-  if (n.includes("coach")) return "Coach"
+  if (n.includes("bomber")) return "Bomber Jacket"
+  if (n.includes("hoodie")) return "Hoodie Jacket"
+  if (n.includes("coach")) return "Coach Jacket"
+  if (n.includes("ao thun") || n.includes("thun")) return "Áo thun"
   return "—"
 }
 
@@ -392,9 +348,18 @@ const searchQuery = ref("")
 const filterStatus = ref("")
 const filterColorId = ref("")
 const filterSizeId = ref("")
+const filterLoai = ref("")
 const priceMin = ref("")
 const priceMax = ref("")
 const showActiveOnly = ref(false)
+
+// Pagination
+const currentPage = ref(1)
+const pageSize = ref(20)
+
+// Sorting
+const sortField = ref("")
+const sortOrder = ref("asc")
 const focusProductId = computed(() => {
   const value = Number(route.query?.productId)
   return Number.isFinite(value) && value > 0 ? value : 0
@@ -457,7 +422,8 @@ const filteredVariants = computed(() => {
       (v) =>
         v.tenSanPham.toLowerCase().includes(q) ||
         v.maSanPham.toLowerCase().includes(q) ||
-        (v.ma || "").toLowerCase().includes(q)
+        (v.ma || "").toLowerCase().includes(q) ||
+        (v.loai || "").toLowerCase().includes(q)
     )
   }
 
@@ -472,10 +438,113 @@ const filteredVariants = computed(() => {
   )
   if (priceMin.value !== "") list = list.filter((v) => v.giaBan >= Number(priceMin.value))
   if (priceMax.value !== "") list = list.filter((v) => v.giaBan <= Number(priceMax.value))
+  if (filterLoai.value) list = list.filter((v) => (v.loai || "") === filterLoai.value)
   if (showActiveOnly.value) list = list.filter((v) => isActiveStatus(v.trangThai))
+
+  // Sort
+  if (sortField.value) {
+    list = [...list].sort((a, b) => {
+      let va, vb
+      if (sortField.value === "loai") { va = a.loai || ""; vb = b.loai || "" }
+      else if (sortField.value === "giaBan") { va = Number(a.giaBan || 0); vb = Number(b.giaBan || 0) }
+      else if (sortField.value === "soLuong") { va = Number(a.soLuong || 0); vb = Number(b.soLuong || 0) }
+      else if (sortField.value === "tenSanPham") { va = a.tenSanPham || ""; vb = b.tenSanPham || "" }
+      else { va = a[sortField.value] || ""; vb = b[sortField.value] || "" }
+      const cmp = typeof va === "number" ? va - vb : String(va).localeCompare(String(vb), "vi")
+      return sortOrder.value === "desc" ? -cmp : cmp
+    })
+  }
 
   return list
 })
+
+// Loại options for filter
+const loaiOptions = computed(() => {
+  const seen = new Set()
+  const result = []
+  const source = viewMode.value === "variants" ? variantItems.value : allVariants.value
+  for (const v of source) {
+    const loai = (v.loai || "").trim()
+    if (!loai || loai === "—" || seen.has(loai)) continue
+    seen.add(loai)
+    result.push(loai)
+  }
+  return result.sort((a, b) => a.localeCompare(b, "vi"))
+})
+
+// Paginated list
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredVariants.value.length / pageSize.value)))
+const paginatedVariants = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredVariants.value.slice(start, start + pageSize.value)
+})
+
+function toggleSort(field) {
+  if (sortField.value === field) {
+    sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc"
+  } else {
+    sortField.value = field
+    sortOrder.value = "asc"
+  }
+  currentPage.value = 1
+}
+
+function sortIcon(field) {
+  if (sortField.value !== field) return "unfold_more"
+  return sortOrder.value === "asc" ? "expand_less" : "expand_more"
+}
+
+const paginationPages = computed(() => {
+  const total = totalPages.value
+  const current = currentPage.value
+  const pages = []
+  const maxVisible = 5
+  let start = Math.max(1, current - Math.floor(maxVisible / 2))
+  let end = Math.min(total, start + maxVisible - 1)
+  if (end - start + 1 < maxVisible) start = Math.max(1, end - maxVisible + 1)
+  for (let i = start; i <= end; i++) pages.push(i)
+  return pages
+})
+
+// Reset page when filters change
+watch([searchQuery, filterStatus, filterColorId, filterSizeId, filterLoai, priceMin, priceMax, viewMode], () => {
+  currentPage.value = 1
+})
+
+function buildReturnToPath() {
+  const q = new URLSearchParams()
+  if (searchQuery.value.trim()) q.set("q", searchQuery.value.trim())
+  if (filterStatus.value) q.set("status", filterStatus.value)
+  if (filterColorId.value) q.set("color", String(filterColorId.value))
+  if (filterSizeId.value) q.set("size", String(filterSizeId.value))
+  if (filterLoai.value) q.set("loai", filterLoai.value)
+  if (String(priceMin.value).trim() !== "") q.set("min", String(priceMin.value))
+  if (String(priceMax.value).trim() !== "") q.set("max", String(priceMax.value))
+  if (showActiveOnly.value) q.set("active", "1")
+  if (viewMode.value && viewMode.value !== "products") q.set("mode", viewMode.value)
+  if (Number(currentPage.value) > 1) q.set("page", String(currentPage.value))
+  if (sortField.value) q.set("sort", sortField.value)
+  if (sortOrder.value && sortOrder.value !== "asc") q.set("order", sortOrder.value)
+  const queryString = q.toString()
+  return queryString ? `${route.path}?${queryString}` : route.path
+}
+
+function hydrateStateFromRouteQuery() {
+  const q = route.query || {}
+  if (String(q.q || "").trim()) searchQuery.value = String(q.q)
+  if (String(q.status || "").trim()) filterStatus.value = String(q.status)
+  if (String(q.color || "").trim()) filterColorId.value = String(q.color)
+  if (String(q.size || "").trim()) filterSizeId.value = String(q.size)
+  if (String(q.loai || "").trim()) filterLoai.value = String(q.loai)
+  if (String(q.min || "").trim()) priceMin.value = String(q.min)
+  if (String(q.max || "").trim()) priceMax.value = String(q.max)
+  showActiveOnly.value = String(q.active || "") === "1"
+  if (String(q.mode || "") === "variants") viewMode.value = "variants"
+  const parsedPage = Number(q.page || 1)
+  if (Number.isFinite(parsedPage) && parsedPage > 0) currentPage.value = parsedPage
+  if (String(q.sort || "").trim()) sortField.value = String(q.sort)
+  if (String(q.order || "").trim()) sortOrder.value = String(q.order)
+}
 
 // ── Utils ────────────────────────────────────────────────────────────
 function toImageUrl(value = "") {
@@ -825,8 +894,12 @@ function clearFilters() {
   filterStatus.value = ""
   filterColorId.value = ""
   filterSizeId.value = ""
+  filterLoai.value = ""
   priceMin.value = ""
   priceMax.value = ""
+  sortField.value = ""
+  sortOrder.value = "asc"
+  currentPage.value = 1
 }
 
 function isActiveStatus(status) {
@@ -834,59 +907,40 @@ function isActiveStatus(status) {
 }
 
 async function toggleGroupStatus(variantRow) {
-  const variantIds = [...new Set(
-    (Array.isArray(variantRow?.variantIds) ? variantRow.variantIds : [])
+  const productIds = [...new Set(
+    (Array.isArray(variantRow?.productIds) ? variantRow.productIds : [variantRow?.productId])
       .map((id) => Number(id))
       .filter((id) => Number.isFinite(id) && id > 0)
   )]
 
-  if (!variantIds.length) {
-    window.toast?.warning?.("Sản phẩm này không có biến thể để cập nhật trạng thái")
+  if (!productIds.length) {
+    window.toast?.warning?.("Sản phẩm này không có dữ liệu để cập nhật trạng thái")
     return
   }
 
   const nextStatus = isActiveStatus(variantRow.trangThai) ? "Ngừng hoạt động" : "Hoạt động"
   try {
-    const productIds = [...new Set(
-      (Array.isArray(variantRow?.productIds) ? variantRow.productIds : [variantRow?.productId])
-        .map((id) => Number(id))
-        .filter((id) => Number.isFinite(id) && id > 0)
-    )]
-
-    const productPayloads = [
-      { trangThai: nextStatus },
-      { status: nextStatus },
-      { isActive: nextStatus === "Hoạt động" },
-      { active: nextStatus === "Hoạt động" }
-    ]
-
     for (const productId of productIds) {
-      let updatedProduct = false
-      for (const payload of productPayloads) {
-        try {
-          await updateSanPham(productId, payload)
-          updatedProduct = true
-          break
-        } catch {
-          // Try next payload shape.
-        }
+      const res = await getSanPhamById(productId)
+      const product = res.data?.data || res.data
+      const payload = {
+        tenSanPham: product.tenSanPham,
+        trangThai: nextStatus
       }
-      if (!updatedProduct) {
-        console.warn("Không cập nhật được trạng thái sản phẩm", productId)
+      if (Array.isArray(product.sanPhamChiTiets) && product.sanPhamChiTiets.length) {
+        payload.sanPhamChiTiets = product.sanPhamChiTiets.map((v) => ({
+          ...v,
+          trangThai: nextStatus
+        }))
       }
+      await updateSanPham(productId, payload)
     }
 
-    const results = await Promise.allSettled(
-      variantIds.map((variantId) => updateSanPhamChiTietStatus(variantId, nextStatus))
-    )
-    const successCount = results.filter((result) => result.status === "fulfilled").length
-    if (!successCount) throw new Error("Không có biến thể nào cập nhật thành công")
-
     await loadData()
-    window.toast?.success?.(nextStatus === "Hoạt động" ? "Đã bật biến thể" : "Đã tắt biến thể")
+    window.toast?.success?.(nextStatus === "Hoạt động" ? "Đã bật sản phẩm" : "Đã tắt sản phẩm")
   } catch (error) {
-    console.error("Không cập nhật được trạng thái biến thể:", error)
-    window.toast?.error?.("Không thể cập nhật trạng thái biến thể")
+    console.error("Không cập nhật được trạng thái:", error)
+    window.toast?.error?.("Không thể cập nhật trạng thái sản phẩm")
   }
 }
 
@@ -955,15 +1009,11 @@ function hasCoreOrFlameToken(name = "") {
 }
 
 function variantStockValue(variant = {}) {
-  return Number(variant?.soLuong ?? variant?.soLuongTon ?? variant?.tonKho ?? variant?.ton ?? 0)
+  return _variantStockValue(variant)
 }
 
 function variantAvailableStockForAdmin(variant = {}, soldBySpct = new Map()) {
-  const baseStock = variantStockValue(variant)
-  const spctId = Number(variant?.id || variant?.spctId || variant?.sanPhamChiTietId || 0)
-  if (!Number.isFinite(spctId) || spctId <= 0) return baseStock
-  const soldQty = Number(soldBySpct.get(spctId) || 0)
-  return Math.max(0, baseStock - soldQty)
+  return _variantAvailableStock(variant, soldBySpct)
 }
 
 function variantIdentityKeyForAdmin(variant = {}) {
@@ -1036,6 +1086,16 @@ function mergeProductsForAdmin(products = []) {
       for (const variant of toVariantList(product)) {
         const identityKey = variantIdentityKeyForAdmin(variant) || `id:${Number(variant?.id || 0)}`
         if (!variantByIdentity.has(identityKey)) {
+          variantByIdentity.set(identityKey, variant)
+          continue
+        }
+
+        const existingVariant = variantByIdentity.get(identityKey)
+        const existingActive = isEntityActive(existingVariant, true)
+        const incomingActive = isEntityActive(variant, true)
+
+        // Keep active variant if duplicate identity (same color/size/price) appears.
+        if (!existingActive && incomingActive) {
           variantByIdentity.set(identityKey, variant)
         }
       }
@@ -1183,7 +1243,9 @@ async function loadData() {
     const productRows = []
     const variantRows = []
     for (const p of dedupedProducts) {
-      const variants = Array.isArray(p.sanPhamChiTiets) ? p.sanPhamChiTiets : []
+      const rawVariants = Array.isArray(p.sanPhamChiTiets) ? p.sanPhamChiTiets : []
+      const activeVariants = rawVariants.filter((variant) => isEntityActive(variant, true))
+      const variants = activeVariants.length ? activeVariants : rawVariants
       const folderPalette = folderColorPaletteByName(p.tenSanPham)
       const productIds = Array.isArray(p.productIds) && p.productIds.length
         ? p.productIds
@@ -1353,7 +1415,8 @@ function goEditProduct(productLike, colorId) {
   const query = {
     from: "bien-the",
     hasColors: isObjectInput ? (productLike?.hasColors ? "1" : "0") : "1",
-    ...(productIds.length > 1 ? { productIds: productIds.join(",") } : {}),
+    scope: "single",
+    returnTo: buildReturnToPath(),
     ...(resolvedColorId > 0 ? { colorId: String(resolvedColorId) } : {})
   }
 
@@ -1366,11 +1429,14 @@ function goEditProduct(productLike, colorId) {
 function goCreateProduct() {
   router.push({
     path: `${routeBase.value}/san-pham/form`,
-    query: { from: "bien-the" }
+    query: { from: "bien-the", returnTo: buildReturnToPath() }
   })
 }
 
-onMounted(loadData)
+onMounted(async () => {
+  hydrateStateFromRouteQuery()
+  await loadData()
+})
 </script>
 
 <template>
@@ -1450,6 +1516,14 @@ onMounted(loadData)
           </select>
         </div>
 
+        <!-- Loại -->
+        <div class="filter-field">
+          <select v-model="filterLoai" class="filter-input">
+            <option value="">Tất cả loại</option>
+            <option v-for="l in loaiOptions" :key="l" :value="l">{{ l }}</option>
+          </select>
+        </div>
+
         <!-- Price range -->
         <div class="filter-field price-range">
           <input
@@ -1470,7 +1544,10 @@ onMounted(loadData)
         </div>
 
         <!-- Clear -->
-        <button class="btn btn-clear" @click="clearFilters">Xóa lọc</button>
+        <button class="btn btn-clear with-icon" @click="clearFilters">
+          <span class="material-icons-outlined btn-icon">filter_list_off</span>
+          Làm mới bộ lọc
+        </button>
       </div>
 
       <div v-if="focusProductId > 0" class="focus-bridge-note">
@@ -1488,20 +1565,32 @@ onMounted(loadData)
               <tr>
                 <th class="col-stt">STT</th>
                 <th class="col-img">Ảnh</th>
-                <th>Tên sản phẩm</th>
+                <th class="sortable-th" @click="toggleSort('tenSanPham')">
+                  Tên sản phẩm
+                  <span class="material-icons-outlined sort-icon">{{ sortIcon('tenSanPham') }}</span>
+                </th>
                 <th>Mã SP</th>
                 <th>Màu sắc</th>
                 <th>Kích cỡ</th>
-                <th>Loại</th>
-                <th class="col-num">Tồn kho</th>
-                <th class="col-num">Giá bán</th>
+                <th class="sortable-th" @click="toggleSort('loai')">
+                  Loại
+                  <span class="material-icons-outlined sort-icon">{{ sortIcon('loai') }}</span>
+                </th>
+                <th class="col-num sortable-th" @click="toggleSort('soLuong')">
+                  Tồn kho
+                  <span class="material-icons-outlined sort-icon">{{ sortIcon('soLuong') }}</span>
+                </th>
+                <th class="col-num sortable-th" @click="toggleSort('giaBan')">
+                  Giá bán
+                  <span class="material-icons-outlined sort-icon">{{ sortIcon('giaBan') }}</span>
+                </th>
                 <th>Trạng thái</th>
                 <th class="col-act">Thao tác</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(v, idx) in filteredVariants" :key="v.rowKey || v.id">
-                <td class="col-stt muted">{{ idx + 1 }}</td>
+              <tr v-for="(v, idx) in paginatedVariants" :key="v.rowKey || v.id">
+                <td class="col-stt muted">{{ (currentPage - 1) * pageSize + idx + 1 }}</td>
                 <td class="col-img">
                   <div class="product-thumb">
                     <img v-if="v.image" :src="v.image" :alt="v.tenSanPham" />
@@ -1543,7 +1632,6 @@ onMounted(loadData)
                       <span class="material-icons-outlined">visibility</span>
                     </button>
                     <button
-                      v-if="Array.isArray(v.variantIds) && v.variantIds.length"
                       type="button"
                       class="variant-switch"
                       :class="{ active: isActiveStatus(v.trangThai) }"
@@ -1557,6 +1645,41 @@ onMounted(loadData)
               </tr>
             </tbody>
           </table>
+
+          <!-- Pagination -->
+          <div v-if="filteredVariants.length" class="pagination-bar">
+            <span class="pagination-info">
+              Trang {{ currentPage }} / {{ totalPages }}
+              ({{ filteredVariants.length }} kết quả)
+            </span>
+            <div class="pagination-controls">
+              <button class="btn btn-small" :disabled="currentPage <= 1" @click="currentPage = 1">
+                <span class="material-icons-outlined" style="font-size:16px">first_page</span>
+              </button>
+              <button class="btn btn-small" :disabled="currentPage <= 1" @click="currentPage--">
+                <span class="material-icons-outlined" style="font-size:16px">chevron_left</span>
+              </button>
+              <button
+                v-for="page in paginationPages"
+                :key="page"
+                class="btn btn-small"
+                :class="{ 'btn-page-active': page === currentPage }"
+                @click="currentPage = page"
+              >{{ page }}</button>
+              <button class="btn btn-small" :disabled="currentPage >= totalPages" @click="currentPage++">
+                <span class="material-icons-outlined" style="font-size:16px">chevron_right</span>
+              </button>
+              <button class="btn btn-small" :disabled="currentPage >= totalPages" @click="currentPage = totalPages">
+                <span class="material-icons-outlined" style="font-size:16px">last_page</span>
+              </button>
+              <select v-model.number="pageSize" class="pagination-size" @change="currentPage = 1">
+                <option :value="10">10 / trang</option>
+                <option :value="20">20 / trang</option>
+                <option :value="50">50 / trang</option>
+                <option :value="100">100 / trang</option>
+              </select>
+            </div>
+          </div>
 
           <div v-else class="empty-state">
             <p>Không có biến thể nào phù hợp với bộ lọc.</p>
@@ -2062,5 +2185,82 @@ onMounted(loadData)
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+
+/* ── Sortable headers ────────────────────────────────────────────────── */
+.sortable-th {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.sortable-th:hover {
+  color: #c5162d;
+}
+.sort-icon {
+  font-size: 16px;
+  vertical-align: middle;
+  opacity: .5;
+}
+.sortable-th:hover .sort-icon {
+  opacity: 1;
+}
+
+/* ── Pagination ──────────────────────────────────────────────────────── */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0 6px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.pagination-info {
+  font-size: 13px;
+  color: #64748b;
+}
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pagination-controls .btn-small {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d8dee9;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+.pagination-controls .btn-small:disabled {
+  opacity: .4;
+  cursor: default;
+}
+.pagination-controls .btn-page-active {
+  background: #1e293b;
+  color: #fff;
+  border-color: #1e293b;
+}
+.pagination-size {
+  margin-left: 8px;
+  padding: 4px 8px;
+  border: 1px solid #d8dee9;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+}
+
+@media (max-width: 1024px) {
+  .filter-bar { flex-direction: column; align-items: stretch; }
+  .filter-field, .search-field { width: 100%; }
+  .head { flex-direction: column; align-items: flex-start; gap: 12px; }
+}
+@media (max-width: 768px) {
+  .bts-table { min-width: 800px; }
+  .pagination-bar { flex-direction: column; gap: 8px; align-items: flex-start; }
 }
 </style>

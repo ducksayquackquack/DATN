@@ -54,7 +54,8 @@
               <span>Tìm kiếm</span>
             </button>
             <button class="btn-filter reset" @click="resetFilters" title="Làm mới bộ lọc">
-              <i class="fa-solid fa-rotate-left"></i>
+              <span class="material-icons-outlined" style="font-size:18px">filter_list_off</span>
+              <span>Làm mới bộ lọc</span>
             </button>
           </div>
         </div>
@@ -220,10 +221,13 @@ const sortDiscountsForList = (rows) => {
 
 const fetchDiscounts = async () => {
   try {
-    const [data, allVariants] = await Promise.all([
-      discountService.getAll(),
-      discountService.getAllProductDetails()
-    ])
+    const data = await discountService.getAll()
+    let allVariants = []
+    try {
+      allVariants = await discountService.getAllProductDetails()
+    } catch {
+      allVariants = []
+    }
 
     const totalProducts = new Set(
       (Array.isArray(allVariants) ? allVariants : [])
@@ -675,5 +679,9 @@ onMounted(fetchDiscounts)
 @media (max-width: 768px) {
   .filter-grid { grid-template-columns: 1fr; }
   .search-col, .action-col { grid-column: span 1; }
+  .action-col { justify-self: stretch; }
+  .action-col .filter-actions { flex-direction: column; }
+  .discount-page .ss-table { min-width: 800px; }
+  .discount-page .head { flex-direction: column; align-items: flex-start; gap: 12px; }
 }
 </style>

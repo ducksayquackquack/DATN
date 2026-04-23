@@ -11,7 +11,7 @@ import {
   updateHoaDonBySystemEvent,
   updateHoaDonItemQty
 } from "../../../services/hoaDonService"
-import { createKhachHang, getAllKhachHang } from "../../../services/KhachHangService"
+import { getAllKhachHang } from "../../../services/KhachHangService"
 import { getAllNhanVien, getNhanVienByTaiKhoanId } from "../../../services/nhanVienService"
 import { getAllSanPham } from "../../../services/sanPhamService"
 import VoucherSelector from "../../../components/voucher/VoucherSelector.vue"
@@ -157,13 +157,7 @@ const persistedVoucherCode = ref("")
 const persistedVoucherName = ref("")
 const ORDER_ITEM_VOUCHER_SNAPSHOTS_KEY = "orderItemVoucherSnapshots"
 const manualStatusNote = ref("")
-const showQuickCustomerForm = ref(false)
-const creatingCustomer = ref(false)
-const quickCustomer = ref({
-  tenKhachHang: "",
-  soDienThoai: "",
-  email: ""
-})
+
 
 const hoaDon = ref({
   id: null,
@@ -234,6 +228,16 @@ const timelineProgressPercent = computed(() => {
   if (idx < 0) return 0
   const maxIndex = Math.max(1, timelineSteps.value.length - 1)
   return (idx / maxIndex) * 100
+})
+
+const timelineLineInsetPercent = computed(() => {
+  const steps = Math.max(2, timelineSteps.value.length)
+  return 50 / steps
+})
+
+const timelineLineWidthPercent = computed(() => {
+  const innerTrack = Math.max(0, 100 - (timelineLineInsetPercent.value * 2))
+  return innerTrack * (timelineProgressPercent.value / 100)
 })
 
 const isTerminalStatus = computed(() => TERMINAL_CODES.includes(currentOrderCode.value))
@@ -508,10 +512,6 @@ function resolveCustomerIdFromResponse(response) {
   return found ? Number(found) : null
 }
 
-function resetQuickCustomerForm() {
-  quickCustomer.value = { tenKhachHang: "", soDienThoai: "", email: "" }
-}
-
 function extractVoucherSnapshotFromNote(note = "") {
   const text = String(note || "")
   const voucherMatch = text.match(/áp dụng voucher\s*([^|\n\r]+)/i)
@@ -531,71 +531,6 @@ function extractVoucherSnapshotFromNote(note = "") {
   }
 
   return { code: "", name: cleanPhrase }
-}
-
-async function quickCreateCustomer() {
-  if (!canEdit.value) return
-
-  const name = String(quickCustomer.value.tenKhachHang || "").trim()
-  const phone = normalizePhone(quickCustomer.value.soDienThoai)
-  const email = String(quickCustomer.value.email || "").trim()
-
-  if (!name) {
-    showToast("Vui lòng nhập tên khách hàng", "warning")
-    return
-  }
-  if (!isValidVietnamPhone(phone)) {
-    showToast("Số điện thoại khách hàng không hợp lệ", "warning")
-    return
-  }
-
-  creatingCustomer.value = true
-  try {
-    const payloadCandidates = [
-      { tenKhachHang: name, soDienThoai: phone, email, trangThai: "Hoạt động" },
-      { tenKhachHang: name, soDienThoai: phone, taiKhoanEmail: email, trangThai: "Hoạt động" },
-      { tenKhachHang: name, soDienThoai: phone, trangThai: "Hoạt động" }
-    ]
-
-    let createdId = null
-    let lastError = null
-    for (const payload of payloadCandidates) {
-      try {
-        const createRes = await createKhachHang(payload)
-        createdId = resolveCustomerIdFromResponse(createRes)
-        if (createdId) break
-      } catch (error) {
-        lastError = error
-      }
-    }
-
-    const khachHangRes = await getAllKhachHang(0, 100)
-    khachHangList.value = extractList(khachHangRes)
-
-    if (!createdId) {
-      const found = khachHangList.value.find((kh) =>
-        normalizePhone(kh?.soDienThoai) === phone && String(kh?.tenKhachHang || "").trim() === name
-      )
-      createdId = found?.id ? Number(found.id) : null
-    }
-
-    if (!createdId) {
-      throw lastError || new Error("Không lấy được khách hàng vừa tạo")
-    }
-
-    hoaDon.value.khachHangId = createdId
-    if (isPosOrder.value) {
-      hoaDon.value.soDienThoaiNhanHang = phone
-    }
-
-    showQuickCustomerForm.value = false
-    resetQuickCustomerForm()
-    showToast("Đã tạo và chọn khách hàng mới", "success")
-  } catch (error) {
-    showToast(extractApiErrorMessage(error, "Không thể tạo nhanh khách hàng"), "error")
-  } finally {
-    creatingCustomer.value = false
-  }
 }
 
 function extractList(response) {
@@ -820,19 +755,24 @@ function getItemInventory(item) {
 }
 
 function getItemImage(item) {
-  const variantImage = String(getVariantFromItem(item)?.image || "").trim()
+  // Prefer the variant's pre-resolved image (set during flattenVariants with full fallback chain)
+  const variant = getVariantFromItem(item)
+  if (variant?.image) return variant.image
+
+  // Try API image fields
   const invoiceImage = String(item?.image || item?.anh || "").trim()
-  const raw = invoiceImage || variantImage
-  if (raw) {
-    const resolved = toImageUrl(raw)
+  if (invoiceImage) {
+    const resolved = toImageUrl(invoiceImage)
     if (resolved) return resolved
   }
+
+  // Local fallback by product code/name/color
   const byVariant = fallbackImageForVariant({
-    id: item?.productId || item?.sanPhamId || getVariantFromItem(item)?.productId || item?.spctId,
-    maSanPham: item?.maSanPham || getVariantFromItem(item)?.maSanPham,
+    id: item?.productId || item?.sanPhamId || item?.spctId,
+    maSanPham: item?.maSanPham,
     tenSanPham: item?.tenSanPhamChiTiet,
     tenMauSac: getItemColor(item),
-    maChiTietSanPham: item?.maSanPhamChiTiet || getVariantFromItem(item)?.maSanPhamChiTiet,
+    maChiTietSanPham: item?.maSanPhamChiTiet,
   })
   if (byVariant) return byVariant
   return fallbackImageFor(item?.spctId, item?.maSanPhamChiTiet || item?.maSanPham, item?.tenSanPhamChiTiet)
@@ -923,6 +863,42 @@ function getItemVouchers(item) {
   return Array.from(mergedMap.values())
     .filter((voucher) => voucher.code || voucher.discount > 0)
     .sort((a, b) => Number(b.discount || 0) - Number(a.discount || 0))
+}
+
+function getItemDiscountTotal(item) {
+  const unitPrice = Number(item?.giaBan || 0)
+  const qty = Math.max(Number(item?.soLuong || 0), 1)
+  const lineTotal = Number(item?.thanhTien || 0)
+  const rawFromItem = Number(
+    item?.voucherDiscount
+    || item?.giamGiaVoucher
+    || item?.giaTriGiamGia
+    || item?.discount
+    || 0
+  )
+  const rawFromVouchers = getItemVouchers(item).reduce((sum, voucher) => sum + Number(voucher?.discount || 0), 0)
+  const explicitDiscount = Math.max(rawFromItem, rawFromVouchers)
+
+  if (explicitDiscount > 0) {
+    return Math.max(0, Math.min(explicitDiscount, unitPrice * qty))
+  }
+
+  const inferred = unitPrice * qty - lineTotal
+  return inferred > 0 ? inferred : 0
+}
+
+function getItemFinalUnitPrice(item) {
+  const qty = Math.max(Number(item?.soLuong || 0), 1)
+  const lineTotal = Number(item?.thanhTien || 0)
+  if (lineTotal > 0) return lineTotal / qty
+  return Number(item?.giaBan || 0)
+}
+
+function hasItemDiscountPrice(item) {
+  const original = Number(item?.giaBan || 0)
+  const discounted = getItemFinalUnitPrice(item)
+  if (!original || !discounted) return false
+  return discounted < original
 }
 
 const onImgError = (e) => { e.target.src = logoFallback }
@@ -1431,6 +1407,15 @@ async function changeItemQuantity(index, rawValue) {
     return
   }
 
+  const stock = Number(getItemInventory(item))
+  if (Number.isFinite(stock) && stock > 0 && quantity > stock) {
+    item.soLuong = stock
+    item.thanhTien = stock * Number(item.giaBan || 0)
+    syncTotals()
+    showToast("Số lượng không được vượt tồn kho", "warning")
+    return
+  }
+
   item.soLuong = quantity
   item.thanhTien = quantity * Number(item.giaBan || 0)
   syncTotals()
@@ -1643,16 +1628,6 @@ watch(
 
         <div class="hero-actions">
           <button class="btn ghost" @click="backToList()">Quay lại</button>
-          <button
-            v-if="!isCreate"
-            class="btn lookup-mail"
-            type="button"
-            :disabled="isSendingLookupMail"
-            @click="sendLookupMailNow"
-          >
-            <Loader2 v-if="isSendingLookupMail" :size="16" class="spin" />
-            <span>{{ isSendingLookupMail ? "Đang gửi mail" : "Gửi mail tra cứu" }}</span>
-          </button>
           <button class="btn primary" @click="saveInvoice" :disabled="isSaving">
             <Loader2 v-if="isSaving" :size="16" class="spin" />
             <Save v-else :size="16" />
@@ -1732,52 +1707,7 @@ watch(
                     {{ khachHang.tenKhachHang || `KH #${khachHang.id}` }}
                   </option>
                 </select>
-                <button
-                  class="btn ghost quick-customer-toggle"
-                  type="button"
-                  :disabled="!canEdit || creatingCustomer"
-                  @click="showQuickCustomerForm = !showQuickCustomerForm"
-                >
-                  {{ showQuickCustomerForm ? "Ẩn tạo nhanh" : "Tạo nhanh khách hàng" }}
-                </button>
-                <div v-if="showQuickCustomerForm" class="quick-customer-form">
-                  <input
-                    v-model="quickCustomer.tenKhachHang"
-                    type="text"
-                    placeholder="Tên khách hàng"
-                    :disabled="!canEdit || creatingCustomer"
-                  />
-                  <input
-                    v-model="quickCustomer.soDienThoai"
-                    type="text"
-                    placeholder="Số điện thoại"
-                    :disabled="!canEdit || creatingCustomer"
-                  />
-                  <input
-                    v-model="quickCustomer.email"
-                    type="email"
-                    placeholder="Email (tùy chọn)"
-                    :disabled="!canEdit || creatingCustomer"
-                  />
-                  <div class="quick-customer-actions">
-                    <button
-                      class="btn ghost"
-                      type="button"
-                      :disabled="!canEdit || creatingCustomer"
-                      @click="resetQuickCustomerForm"
-                    >
-                      Làm mới
-                    </button>
-                    <button
-                      class="btn primary"
-                      type="button"
-                      :disabled="!canEdit || creatingCustomer"
-                      @click="quickCreateCustomer"
-                    >
-                      {{ creatingCustomer ? "Đang tạo" : "Tạo và chọn" }}
-                    </button>
-                  </div>
-                </div>
+
               </div>
 
               <label class="field full">
@@ -1859,8 +1789,8 @@ watch(
             <!-- ── Order Timeline ── -->
             <div v-if="!isCreate" class="order-timeline">
               <div class="timeline-track">
-                <div class="timeline-bg-line"></div>
-                <div class="timeline-progress-line" :style="{ width: timelineProgressPercent + '%' }"></div>
+                <div class="timeline-bg-line" :style="{ left: timelineLineInsetPercent + '%', right: timelineLineInsetPercent + '%' }"></div>
+                <div class="timeline-progress-line" :style="{ left: timelineLineInsetPercent + '%', width: timelineLineWidthPercent + '%' }"></div>
                 <div
                   v-for="(step, idx) in timelineSteps"
                   :key="step.code"
@@ -2054,7 +1984,10 @@ watch(
                     Tồn: {{ getItemInventory(item) }}
                   </span>
                 </div>
-                <div class="product-card-price">{{ formatCurrency(item.giaBan) }}</div>
+                <div class="product-card-price-wrap">
+                  <div class="product-card-price">{{ formatCurrency(getItemFinalUnitPrice(item)) }}</div>
+                  <div v-if="hasItemDiscountPrice(item)" class="product-card-price-old">{{ formatCurrency(item.giaBan) }}</div>
+                </div>
                 <div
                   v-for="(voucher, voucherIndex) in getItemVouchers(item)"
                   :key="`${voucher.code || 'applied'}-${voucherIndex}`"
@@ -2844,8 +2777,6 @@ watch(
 .timeline-bg-line {
   position: absolute;
   top: 18px;
-  left: 28px;
-  right: 28px;
   height: 3px;
   background: #e5e7eb;
   border-radius: 2px;
@@ -2854,7 +2785,6 @@ watch(
 .timeline-progress-line {
   position: absolute;
   top: 18px;
-  left: 28px;
   height: 3px;
   background: linear-gradient(90deg, #dc2626, #ef4444);
   border-radius: 2px;
@@ -3042,7 +2972,7 @@ watch(
 .product-card-img img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 .product-card-placeholder {
   width: 100%;
@@ -3092,6 +3022,17 @@ watch(
   font-weight: 800;
   color: #b91c1c;
   font-size: 15px;
+}
+.product-card-price-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.product-card-price-old {
+  color: #94a3b8;
+  font-size: 12px;
+  text-decoration: line-through;
+  font-weight: 600;
 }
 .product-card-voucher {
   font-size: 12px;
@@ -3267,7 +3208,7 @@ watch(
 .modal-product-img img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 .modal-product-placeholder {
   width: 100%;

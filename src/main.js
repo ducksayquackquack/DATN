@@ -14,7 +14,21 @@ axios.interceptors.request.use((config) => {
     config.headers = config.headers || {};
     config.headers["X-User-Role"] = role;
   }
+  // Debug: log all outgoing requests
+  if (config.method === 'post' || config.method === 'put') {
+    console.warn(`[AXIOS ${config.method.toUpperCase()}] ${config.url}`, JSON.stringify(config.data))
+  }
   return config;
 });
+
+axios.interceptors.response.use(
+  (resp) => resp,
+  (error) => {
+    if (error?.response) {
+      console.error(`[AXIOS ERR] ${error.config?.method?.toUpperCase()} ${error.config?.url} → ${error.response.status}`, JSON.stringify(error.response.data), 'Headers:', JSON.stringify(Object.fromEntries(Object.entries(error.response.headers || {}))))
+    }
+    return Promise.reject(error)
+  }
+);
 
 createApp(App).use(createPinia()).use(router).mount("#app");

@@ -12,7 +12,6 @@ import {
   ShoppingCart,
   Ticket,
   Truck,
-  Undo2,
   Wallet,
   X,
   Ruler
@@ -126,7 +125,7 @@ const galleryMotionVars = {
 }
 
 const staticQuickImagesByCode = {
-  SP002: [img2, img3],
+  SP002: [img2],
   SP009: [img9, img10],
   SP012: [img12, img12b],
   SP013: [img13, img13b, img13c, img13d, img13e],
@@ -274,11 +273,31 @@ const getActiveVariants = (value) => {
   return variants.filter((variant) => isActiveStatus(variant?.trangThai || variant?.status))
 }
 
+
+// Shared stock calculation utility
+import { computeSoldBySpct, computeSoldBySpctDirect, variantAvailableStock } from "@/utils/stockCalculation"
+import { ref as vueRef } from "vue"
+
+const soldQtyBySpct = vueRef(new Map())
+const soldStockHydrated = ref(false)
+
+onMounted(async () => {
+  soldStockHydrated.value = false
+  let soldMap = await computeSoldBySpct().catch(() => new Map())
+  if (!(soldMap instanceof Map) || soldMap.size === 0) {
+    soldMap = await computeSoldBySpctDirect().catch(() => new Map())
+  }
+  soldQtyBySpct.value = soldMap instanceof Map ? soldMap : new Map()
+  soldStockHydrated.value = true
+})
+
+const variantAvailableStockValue = (variant) => variantAvailableStock(variant, soldQtyBySpct.value)
+
 const normalizeBackendProduct = (item) => {
   const variants = getActiveVariants(item)
   const id = resolveProductId(item)
   const code = String(item?.maSanPham || item?.ma || "")
-  const totalStock = variants.reduce((sum, variant) => sum + Math.max(Number(variant?.soLuong || 0), 0), 0)
+  const totalStock = variants.reduce((sum, variant) => sum + variantAvailableStockValue(variant), 0)
   const isInactive = !isActiveStatus(item?.trangThai || item?.status) || variants.length === 0
   const category = String(item?.danhMuc?.tenDanhMuc || item?.loai?.tenLoai || "Thời trang nam")
   const variantPrices = variants.map((variant) => Number(variant?.giaBan || 0)).filter((n) => n > 0)
@@ -437,27 +456,34 @@ const createPlaceholderImage = (index) => {
 }
 
 const displayImages = computed(() => {
+  // Always return all images in original order for gallery arrows to work
+  // 1. Static images by product code (ordered)
+  const productCode = currentProduct.value?.sku || ""
+  const staticImages = productCode && staticQuickImagesByCode[productCode]
+    ? staticQuickImagesByCode[productCode]
+    : []
+  // 2. Images from product.images
   const baseImages = Array.isArray(currentProduct.value.images)
     ? currentProduct.value.images.filter(Boolean)
     : []
-
+  // 3. Color images from colorImageMap (ordered by color)
   const orderedColorImages = []
   for (const color of effectiveColors.value) {
     const colorId = Number(colorNameToIdMap.value?.[color?.name] || 0)
     const fromMap = colorId > 0 ? String(colorImageMap.value?.[colorId] || "").trim() : ""
     if (fromMap) orderedColorImages.push(fromMap)
   }
-
+  // 4. Any extra color images
   const extraColorImages = Object.values(colorImageMap.value || {})
     .map((image) => String(image || "").trim())
     .filter(Boolean)
-
+  // Combine all, preserve order, remove duplicates
   const images = [...new Set([
+    ...staticImages,
     ...orderedColorImages,
     ...baseImages,
     ...extraColorImages
   ])]
-
   if (images.length) return images
   return [createPlaceholderImage(0)]
 })
@@ -543,6 +569,23 @@ const colorNameToIdMap = computed(() => {
     if (name && id > 0 && !map[name]) map[name] = id
   }
   return map
+})
+
+// Tracks which color swatch should be highlighted based on the active image,
+// without collapsing displayImages to a single image.
+const highlightedColor = computed(() => {
+  if (selectedColor.value) return selectedColor.value
+  const image = activeImage.value
+  if (!image) return ""
+  for (const color of effectiveColors.value) {
+    const colorId = Number(colorNameToIdMap.value?.[color?.name] || 0)
+    const colorImg = colorId > 0 ? String(colorImageMap.value?.[colorId] || "") : ""
+    const fallbackImg = resolveColorImageByName(color?.name || "")
+    if ((colorImg && isSameImage(colorImg, image)) || (fallbackImg && isSameImage(fallbackImg, image))) {
+      return color.name
+    }
+  }
+  return ""
 })
 
 const resolveColorImageByName = (colorName) => {
@@ -640,29 +683,58 @@ const displayedProductCode = computed(() => {
 
 const backendVariants = computed(() => {
   const rows = getActiveVariants(matchedBackendProduct.value)
-
   return rows.map((variant, index) => ({
     id: variant?.id,
     maChiTietSanPham: String(variant?.maChiTietSanPham || variant?.maSanPhamChiTiet || "").trim(),
     colorName: String(variant?.mauSac?.tenMau || "").trim(),
     sizeName: String(variant?.kichThuoc?.tenKichThuoc || "").trim(),
     price: Number(variant?.giaBan || 0),
-    soLuong: Number(variant?.soLuong || 0),
+    soLuong: variantAvailableStockValue(variant),
     giaBanGoc: Number(variant?.giaBanGoc || 0),
     sortIndex: index
   }))
 })
 
+const selectedBackendVariant = computed(() => {
+  if (!backendVariants.value.length) return null
+  const activeColor = selectedColor.value || highlightedColor.value
+  const exact = backendVariants.value.find((variant) => {
+    return variant.colorName === activeColor && variant.sizeName === selectedSize.value
+  })
+  if (exact) return exact
+
+  return backendVariants.value.find((variant) => variant.colorName === activeColor)
+    || backendVariants.value.find((variant) => variant.sizeName === selectedSize.value)
+    || backendVariants.value[0]
+})
+
 const currentStock = computed(() => {
-  const selected = Number(selectedBackendVariant.value?.soLuong || 0)
-  if (selected > 0) return selected
+  // Nếu đã chọn cả màu và size, luôn ưu tiên biến thể cụ thể
+  if (selectedBackendVariant.value && selectedSize.value) {
+    return Number(selectedBackendVariant.value?.soLuong || 0)
+  }
+  // Nếu chỉ chọn màu
+  if (selectedColor.value) {
+    const colorVariants = backendVariants.value.filter((v) => v.colorName === selectedColor.value)
+    if (colorVariants.length === 1) {
+      // Nếu chỉ có 1 biến thể cho màu này, lấy đúng số lượng còn lại
+      return Number(colorVariants[0]?.soLuong || 0)
+    } else if (colorVariants.length > 1) {
+      // Nếu có nhiều biến thể cùng màu, cộng tổng
+      return colorVariants.reduce((sum, v) => sum + Number(v?.soLuong || 0), 0)
+    }
+  }
+  // Fallback: tổng tồn kho tất cả biến thể
   if (backendVariants.value.length) {
-    return backendVariants.value.reduce((sum, variant) => sum + Math.max(Number(variant?.soLuong || 0), 0), 0)
+    return backendVariants.value.reduce((sum, variant) => sum + Number(variant?.soLuong || 0), 0)
   }
   return 0
 })
 
 const stockBadge = computed(() => {
+  if (!soldStockHydrated.value) {
+    return { text: "Đang cập nhật tồn kho...", tone: "dark" }
+  }
   const qty = Number(currentStock.value || 0)
   if (qty > 0) return { text: `Còn lại ${qty} sản phẩm`, tone: "green" }
   return { text: "Hết hàng", tone: "dark" }
@@ -701,8 +773,9 @@ const effectiveColors = computed(() => {
 
 const effectiveSizes = computed(() => {
   if (backendVariants.value.length) {
+    const activeColor = selectedColor.value || highlightedColor.value
     const options = backendVariants.value
-      .filter((variant) => !selectedColor.value || variant.colorName === selectedColor.value)
+      .filter((variant) => !activeColor || variant.colorName === activeColor)
       .map((variant) => variant.sizeName)
       .filter(Boolean)
 
@@ -711,18 +784,6 @@ const effectiveSizes = computed(() => {
   }
 
   return currentProduct.value.sizes || []
-})
-
-const selectedBackendVariant = computed(() => {
-  if (!backendVariants.value.length) return null
-  const exact = backendVariants.value.find((variant) => {
-    return variant.colorName === selectedColor.value && variant.sizeName === selectedSize.value
-  })
-  if (exact) return exact
-
-  return backendVariants.value.find((variant) => variant.colorName === selectedColor.value)
-    || backendVariants.value.find((variant) => variant.sizeName === selectedSize.value)
-    || backendVariants.value[0]
 })
 
 const effectivePrice = computed(() => {
@@ -855,7 +916,8 @@ const voucherChipLabel = (voucher) => {
 
 const syncProductState = () => {
   activeImage.value = displayImages.value[0] || ""
-  selectedColor.value = effectiveColors.value[0]?.name || ""
+  // Only auto-select color if there's exactly 1 color, otherwise leave unselected to show all color images
+  selectedColor.value = effectiveColors.value.length === 1 ? effectiveColors.value[0]?.name || "" : ""
   selectedSize.value = effectiveSizes.value[0] || ""
   quantity.value = 1
 }
@@ -982,8 +1044,28 @@ const selectVoucher = (voucher) => {
   closeVoucherDrawer()
 }
 
+const clampQuantity = () => {
+  const stock = Number(currentStock.value || 0)
+  let val = Math.max(1, Math.floor(quantity.value) || 1)
+  if (stock > 0 && val > stock) {
+    val = stock
+    toast.error(`Số lượng tối đa là ${stock}`)
+  }
+  quantity.value = val
+}
+
+const increaseQuantity = () => {
+  const stock = Number(currentStock.value || 0)
+  if (stock > 0 && quantity.value >= stock) {
+    toast.error(`Số lượng tối đa là ${stock}`)
+    return
+  }
+  quantity.value += 1
+}
+
 const validateSelection = () => {
-  if (!selectedColor.value) {
+  const activeColor = selectedColor.value || highlightedColor.value
+  if (!activeColor) {
     toast.error("Vui lòng chọn màu sắc")
     return false
   }
@@ -993,7 +1075,11 @@ const validateSelection = () => {
   }
 
   const availableStock = Number(selectedBackendVariant.value?.soLuong || 0)
-  if (availableStock > 0 && Number(quantity.value || 0) > availableStock) {
+  if (availableStock <= 0) {
+    toast.error("Sản phẩm đã hết hàng")
+    return false
+  }
+  if (Number(quantity.value || 0) > availableStock) {
     toast.error(`Số lượng vượt tồn kho. Còn lại: ${availableStock}`)
     return false
   }
@@ -1028,10 +1114,22 @@ const addToCart = () => {
   }
   if (!validateSelection()) return
   const storedCart = readCartObject()
-  const color = String(selectedColor.value || "").trim()
+  const color = String(selectedColor.value || highlightedColor.value || "").trim()
   const size = String(selectedSize.value || "").trim()
   const key = buildVariantCartKey(currentProduct.value.id, color, size, "")
-  storedCart[key] = Number(storedCart[key] || 0) + quantity.value
+  const currentInCart = Number(storedCart[key] || 0)
+  const availableStock = Number(selectedBackendVariant.value?.soLuong || 0)
+  const newTotal = currentInCart + quantity.value
+  if (availableStock > 0 && newTotal > availableStock) {
+    const canAdd = availableStock - currentInCart
+    if (canAdd <= 0) {
+      toast.error(`Sản phẩm đã đạt tối đa ${availableStock} trong giỏ hàng`)
+      return
+    }
+    toast.error(`Chỉ có thể thêm ${canAdd} sản phẩm nữa (đã có ${currentInCart} trong giỏ)`)
+    return
+  }
+  storedCart[key] = newTotal
   writeCartObject(storedCart)
 
   const cartImage = activeImage.value
@@ -1088,7 +1186,7 @@ const buyNow = () => {
       id: currentProduct.value.id,
       maSanPham: currentProduct.value.sku,
       tenSanPham: currentProduct.value.name,
-      tenMauSac: selectedColor.value,
+      tenMauSac: selectedColor.value || highlightedColor.value,
       maChiTietSanPham: selectedBackendVariant.value?.maChiTietSanPham || ''
     })
     || ""
@@ -1098,7 +1196,7 @@ const buyNow = () => {
     price: effectivePrice.value,
     quantity: quantity.value,
     size: selectedSize.value,
-    color: selectedColor.value,
+    color: selectedColor.value || highlightedColor.value,
     voucherCode: "",
     spctId: selectedBackendVariant.value?.id || null,
     image: buyImg
@@ -1151,6 +1249,14 @@ const browseCategory = (category) => {
 const openHomeAnchor = (hash = "") => {
   mobileOpen.value = false
   router.push(hash ? { path: "/trang-chu", hash: `#${hash}` } : "/trang-chu")
+}
+
+const goBack = () => {
+  if (window.history.length > 1) {
+    router.back()
+    return
+  }
+  router.push("/san-pham")
 }
 
 const goHome = () => router.push("/trang-chu")
@@ -1418,12 +1524,6 @@ watch(activeImage, (image) => {
       return
     }
   }
-
-  const displayIdx = displayImages.value.findIndex((entry) => isSameImage(entry, image))
-  if (displayIdx >= 0 && displayIdx < effectiveColors.value.length) {
-    const mappedColor = effectiveColors.value[displayIdx]?.name || ""
-    if (mappedColor && selectedColor.value !== mappedColor) selectedColor.value = mappedColor
-  }
 })
 
 watch(quickPreviewImages, (images) => {
@@ -1439,8 +1539,12 @@ watch(quickPreviewImageIndex, () => {
 })
 
 watch(effectiveColors, (colors) => {
-  if (!colors.some((color) => color.name === selectedColor.value)) {
+  // Only auto-select if there's exactly 1 color OR if current selection is invalid
+  if (colors.length === 1) {
     selectedColor.value = colors[0]?.name || ""
+  } else if (colors.length > 0 && selectedColor.value && !colors.some((color) => color.name === selectedColor.value)) {
+    // Current selection is no longer valid (color removed from product), clear it
+    selectedColor.value = ""
   }
 })
 
@@ -1466,12 +1570,12 @@ onUnmounted(() => {
     <SiteNav :cart-count="cartCount" />
 
     <main class="pd-shell">
-      <div class="pd-breadcrumb">
-        <button type="button" @click="goHome">Trang chủ</button>
-        <ChevronRight :size="14" />
-        <strong>{{ productsLoading ? 'Đang tải...' : currentProduct.name }}</strong>
-      </div>
+      <button type="button" class="pd-back-btn" @click="goBack" aria-label="Quay lại trang trước">
+        <ChevronLeft :size="16" />
+        Quay lại
+      </button>
 
+      <div class="pd-breadcrumb">
       <section v-if="productsLoading" class="pd-main" style="min-height:60vh;display:flex;align-items:center;justify-content:center">
         <span style="color:#888;font-size:1rem">Đang tải sản phẩm…</span>
       </section>
@@ -1552,14 +1656,14 @@ onUnmounted(() => {
             </section>
 
             <div v-if="effectiveColors.length > 0" class="pd-option-row">
-              <span class="pd-label">Màu sắc: <b>{{ selectedColor }}</b></span>
+              <span class="pd-label">Màu sắc: <b>{{ highlightedColor || 'Chọn màu' }}</b></span>
               <div class="pd-colors">
                 <button
                   v-for="color in effectiveColors"
                   :key="color.name"
                   type="button"
                   class="pd-color"
-                  :class="{ 'is-active': selectedColor === color.name }"
+                  :class="{ 'is-active': highlightedColor === color.name }"
                   :title="color.name"
                   @click="selectedColor = color.name"
                 >
@@ -1593,8 +1697,8 @@ onUnmounted(() => {
             <div class="pd-buy-row">
               <div class="pd-qty">
                 <button type="button" @click="quantity = Math.max(1, quantity - 1)">-</button>
-                <input type="number" v-model.number="quantity" min="1" class="pd-qty-input" @change="quantity = Math.max(1, Math.floor(quantity) || 1)" />
-                <button type="button" @click="quantity += 1">+</button>
+                <input type="number" v-model.number="quantity" min="1" :max="currentStock || undefined" class="pd-qty-input" @change="clampQuantity" />
+                <button type="button" @click="increaseQuantity">+</button>
               </div>
               <button type="button" class="pd-cart-button" @click="addToCart">THÊM VÀO GIỎ</button>
             </div>
@@ -1614,10 +1718,6 @@ onUnmounted(() => {
                 <Wallet :size="16" />
                 <span>Thanh toán COD</span>
               </article>
-              <article>
-                <Undo2 :size="16" />
-                <span>Đổi hàng trong 15 ngày</span>
-              </article>
             </div>
           </div>
         </div>
@@ -1627,7 +1727,6 @@ onUnmounted(() => {
         <div class="pd-tabs__head">
           <button type="button" :class="{ active: activeTab === 'description' }" @click="activeTab = 'description'">Mô tả</button>
           <button type="button" :class="{ active: activeTab === 'shipping' }" @click="activeTab = 'shipping'">Chính sách giao hàng</button>
-          <button type="button" :class="{ active: activeTab === 'return' }" @click="activeTab = 'return'">Chính sách đổi hàng</button>
         </div>
 
         <div v-if="activeTab === 'description'" class="pd-tabs__panel">
@@ -1649,12 +1748,6 @@ onUnmounted(() => {
           <h2>Chính sách giao hàng</h2>
           <p>DirtyWave giao hàng toàn quốc. Đơn từ 299.000₫ được áp dụng ưu đãi phí vận chuyển theo từng thời điểm, và đơn từ 1.000.000₫ được miễn phí ship tại trang checkout hiện tại.</p>
           <p>Thời gian giao dự kiến từ 2 đến 5 ngày làm việc tuỳ khu vực nhận hàng.</p>
-        </div>
-
-        <div v-else class="pd-tabs__panel">
-          <h2>Chính sách đổi hàng</h2>
-          <p>Hỗ trợ đổi size trong vòng 15 ngày với sản phẩm còn nguyên tình trạng sử dụng, tem nhãn đầy đủ và không có dấu hiệu giặt tẩy.</p>
-          <p>Bạn có thể theo dõi và quản lý đơn đổi trong trung tâm tài khoản.</p>
         </div>
       </section>
 
@@ -1978,7 +2071,6 @@ onUnmounted(() => {
 .pd-menu > a,
 .pd-dropdown > a,
 .profile-dropdown button,
-.pd-breadcrumb button,
 .pd-size-guide,
 .pd-voucher-chip,
 .pd-tabs__head button,
@@ -2316,19 +2408,32 @@ onUnmounted(() => {
   padding: 18px 0 56px;
 }
 
-.pd-breadcrumb {
-  display: flex;
+.pd-back-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 18px;
-  font-size: 12px;
-  color: #6b7280;
+  gap: 8px;
+  border: 1px solid rgba(185, 28, 28, 0.12);
+  background: linear-gradient(135deg, #fff8f8 0%, #ffffff 100%);
+  color: #991b1b;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  margin-bottom: 12px;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(185, 28, 28, 0.08);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
 }
 
-.pd-breadcrumb strong {
-  color: #111827;
+.pd-back-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(185, 28, 28, 0.22);
+  background: #fff1f2;
+  box-shadow: 0 14px 28px rgba(185, 28, 28, 0.12);
 }
 
+.pd-breadcrumb {
 .pd-main {
   display: grid;
   grid-template-columns: minmax(0, 520px) minmax(340px, 420px);

@@ -1,21 +1,28 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue"
 import { useRouter, useRoute } from "vue-router"
-import { getAllHoaDon, updateHoaDon, updateHoaDonBySystemEvent, cancelHoaDon } from "../../../services/hoaDonService"
+import { getAllHoaDon, updateHoaDon, updateHoaDonBySystemEvent, cancelHoaDon, getHoaDonById, sendOrderLookupMail } from "../../../services/hoaDonService"
+import { getAllKhachHang } from "../../../services/KhachHangService"
 import { getAllNhanVien } from "../../../services/nhanVienService"
 import { getAllLichLamViecFull } from "../../../services/lichLamViecService"
-import { Eye, Plus, Search, ChevronDown } from "lucide-vue-next"
+import { getAllSanPham } from "../../../services/sanPhamService"
+import { Eye, Plus, Search, ChevronDown, Loader2, Mail, X, UserRound, Phone, MapPin, CalendarDays, CreditCard, Package2, Truck, CheckCircle2, ClipboardList, ReceiptText } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel, normalizeOrderStatusCode } from "../../../utils/adminStatus"
 import { hasPaymentFlowTag, PAYMENT_FLOW_TAGS } from "../../../utils/paymentWorkflow"
 import { buildOrderLookupTrackingUrl } from "../../../utils/publicTrackingUrl"
+import { resolveApiOrigin } from "../../../utils/apiOrigin"
+import { fallbackImageFor, fallbackImageForVariant } from "../../../utils/productImageFallback"
+import { getProductImageConfig, getProductImageOverride } from "../../../utils/productImageOverrides"
 import { useToast } from "../../../composables/useToast"
 import { useConfirm } from "../../../composables/useConfirm"
+import { createHoaDonRealtimeChannel } from "../../../utils/hoaDonRealtime"
 
 const router = useRouter()
 const route = useRoute()
 const { showToast } = useToast()
 const { askConfirm } = useConfirm()
 const panelBasePath = computed(() => (route.path.startsWith('/employee/') ? '/employee' : '/admin'))
+const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, "")
 
 const hoaDons = ref([])
 const loading = ref(false)
@@ -23,14 +30,23 @@ const apiWarning = ref("")
 const searchText = ref("")
 const filterStatus = ref("Tất cả trạng thái")
 const filterType = ref("Tất cả loại")
+const filterDateFrom = ref("")
+const filterDateTo = ref("")
+const activeDatePreset = ref("")
 const currentPage = ref(1)
 const pageSize = ref(10)
 const cancelReasonById = ref({})
 const rowSavingById = ref({})
 const transferTargetById = ref({})
 const activeShiftEmployees = ref([])
+const allNhanVien = ref([])
 const openMoreMenuId = ref(null)
 const NOTIFICATION_STORAGE_KEY = "notifications:seen"
+const realtimeConnectionLabel = ref("Polling")
+const realtimeConnectionTone = ref("neutral")
+const queuedReload = ref(false)
+let realtimeStop = null
+let realtimeDebounceTimer = null
 
 const readPageFromQuery = (value) => {
   const page = Number(value)
@@ -38,6 +54,11 @@ const readPageFromQuery = (value) => {
 }
 
 const loadData = async () => {
+  if (loading.value) {
+    queuedReload.value = true
+    return
+  }
+
   loading.value = true
   apiWarning.value = ""
   try {
@@ -53,23 +74,65 @@ const loadData = async () => {
     }
 
     hoaDons.value = Array.isArray(res.data) ? res.data : (res.data?.content || [])
+    const nvList = extractList(nhanVienRes?.data)
+    allNhanVien.value = nvList
     activeShiftEmployees.value = buildActiveShiftEmployees(
-      extractList(nhanVienRes?.data),
+      nvList,
       extractList(lichRes?.data)
     )
   } catch (error) {
     console.error("Error loading invoices:", error)
     hoaDons.value = []
+    allNhanVien.value = []
     activeShiftEmployees.value = []
     apiWarning.value = error.message || "Không thể tải danh sách hoá đơn"
   } finally {
     loading.value = false
+    if (queuedReload.value) {
+      queuedReload.value = false
+      setTimeout(() => loadData(), 180)
+    }
   }
+}
+
+const queueRealtimeReload = () => {
+  if (realtimeDebounceTimer) clearTimeout(realtimeDebounceTimer)
+  realtimeDebounceTimer = setTimeout(() => {
+    loadData()
+  }, 450)
+}
+
+const updateRealtimeBadge = (state = {}) => {
+  if (state.connected) {
+    realtimeConnectionLabel.value = "WebSocket"
+    realtimeConnectionTone.value = "online"
+    return
+  }
+
+  realtimeConnectionLabel.value = "Polling"
+  realtimeConnectionTone.value = "neutral"
+}
+
+const startRealtimeOrders = () => {
+  const channel = createHoaDonRealtimeChannel({
+    pollIntervalMs: 15000,
+    reconnectDelayMs: 3500,
+    onMessage: () => {
+      queueRealtimeReload()
+    },
+    onState: (state) => {
+      updateRealtimeBadge(state)
+    },
+  })
+
+  channel.start()
+  realtimeStop = () => channel.stop()
 }
 
 onMounted(() => {
   currentPage.value = readPageFromQuery(route.query.page)
   loadData()
+  startRealtimeOrders()
   if (route.query.refresh) {
     router.replace({
       path: `${panelBasePath.value}/hoa-don/list`,
@@ -81,8 +144,79 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (realtimeStop) realtimeStop()
+  if (realtimeDebounceTimer) clearTimeout(realtimeDebounceTimer)
   window.removeEventListener('focus', handleWindowFocus)
   document.removeEventListener('click', handleDocumentClick)
+})
+
+const toDayStartTimestamp = (value = "") => {
+  if (!value) return null
+  const date = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return null
+  return date.getTime()
+}
+
+const toDayEndTimestamp = (value = "") => {
+  if (!value) return null
+  const date = new Date(`${value}T23:59:59.999`)
+  if (Number.isNaN(date.getTime())) return null
+  return date.getTime()
+}
+
+const clearDateFilters = () => {
+  filterDateFrom.value = ""
+  filterDateTo.value = ""
+  activeDatePreset.value = ""
+}
+
+const toInputDate = (date) => {
+  const d = new Date(date)
+  if (Number.isNaN(d.getTime())) return ""
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
+const applyDatePreset = (preset) => {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  let from = ""
+  let to = ""
+
+  if (preset === "today") {
+    from = toInputDate(today)
+    to = toInputDate(today)
+  } else if (preset === "last7") {
+    const start = new Date(today)
+    start.setDate(start.getDate() - 6)
+    from = toInputDate(start)
+    to = toInputDate(today)
+  } else if (preset === "last30") {
+    const start = new Date(today)
+    start.setDate(start.getDate() - 29)
+    from = toInputDate(start)
+    to = toInputDate(today)
+  } else if (preset === "thisMonth") {
+    const start = new Date(today.getFullYear(), today.getMonth(), 1)
+    from = toInputDate(start)
+    to = toInputDate(today)
+  } else if (preset === "lastMonth") {
+    const start = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+    const end = new Date(today.getFullYear(), today.getMonth(), 0)
+    from = toInputDate(start)
+    to = toInputDate(end)
+  }
+
+  filterDateFrom.value = from
+  filterDateTo.value = to
+  activeDatePreset.value = preset
+}
+
+const isDateRangeInvalid = computed(() => {
+  if (!filterDateFrom.value || !filterDateTo.value) return false
+  return toDayStartTimestamp(filterDateFrom.value) > toDayEndTimestamp(filterDateTo.value)
 })
 
 watch(
@@ -103,6 +237,79 @@ const formatDate = (date) => {
   const d = new Date(date)
   return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`
 }
+
+const firstNonEmptyValue = (...values) => {
+  for (const value of values) {
+    const normalized = String(value || "").trim()
+    if (normalized) return normalized
+  }
+  return ""
+}
+
+const formatDateTime = (date) => {
+  if (!date) return "-"
+  const d = new Date(date)
+  if (Number.isNaN(d.getTime())) return "-"
+  const day = d.getDate().toString().padStart(2, "0")
+  const month = (d.getMonth() + 1).toString().padStart(2, "0")
+  const year = d.getFullYear()
+  const hour = d.getHours().toString().padStart(2, "0")
+  const minute = d.getMinutes().toString().padStart(2, "0")
+  return `${day}/${month}/${year} ${hour}:${minute}`
+}
+
+const normalizeImageUrl = (raw) => {
+  const value = String(raw || "").trim()
+  if (!value) return ""
+  if (/^(https?:)?\/\//i.test(value) || value.startsWith("data:") || value.startsWith("blob:")) return value
+  const cleaned = value.replace(/\\/g, "/")
+  if (!BACKEND_ORIGIN) return cleaned
+  if (cleaned.startsWith("/")) return `${BACKEND_ORIGIN}${cleaned}`
+  return `${BACKEND_ORIGIN}/${cleaned.replace(/^\/+/, "")}`
+}
+
+const pickImageValue = (entry) => {
+  if (!entry) return ""
+
+  if (typeof entry === "string") {
+    return normalizeImageUrl(entry)
+  }
+
+  if (Array.isArray(entry)) {
+    for (const child of entry) {
+      const found = pickImageValue(child)
+      if (found) return found
+    }
+    return ""
+  }
+
+  if (typeof entry === "object") {
+    const keys = ["anh", "hinhAnh", "image", "imageUrl", "images", "listAnh", "anhChinh", "duongDanAnh", "src", "thumbnail"]
+    for (const key of keys) {
+      const found = pickImageValue(entry[key])
+      if (found) return found
+    }
+  }
+
+  return ""
+}
+
+const getPaymentMethodLabel = (hoaDon) => {
+  const code = String(
+    hoaDon?.phuongThucThanhToan
+    || hoaDon?.paymentMethod
+    || hoaDon?.paymentMethodCode
+    || ""
+  ).toUpperCase()
+  if (code.includes("VNPAY")) return "VNPay"
+  if (code === "CASH" || code === "TIEN_MAT") return "Tiền mặt"
+  if (code === "BANK" || code.includes("CHUYEN") || code.includes("TRANSFER")) return "Chuyển khoản"
+  if (code === "COD") return "Thanh toán khi nhận hàng"
+  if (!code) return "-"
+  return hoaDon?.phuongThucThanhToan || hoaDon?.paymentMethod || "-"
+}
+
+const getSummaryImageKey = (item, idx) => String(item?.spctId || item?.sanPhamChiTietId || item?.id || idx)
 
 const statusOptions = computed(() => {
   const names = new Set(["Tất cả trạng thái"])
@@ -185,6 +392,27 @@ const filteredData = computed(() => {
 
   if (filterType.value !== "Tất cả loại") {
     data = data.filter((d) => getOrderTypeLabel(d) === filterType.value)
+  }
+
+  let fromTs = toDayStartTimestamp(filterDateFrom.value)
+  let toTs = toDayEndTimestamp(filterDateTo.value)
+
+  if (fromTs != null && toTs != null && fromTs > toTs) {
+    const temp = fromTs
+    fromTs = toTs
+    toTs = temp
+  }
+
+  if (fromTs != null || toTs != null) {
+    data = data.filter((d) => {
+      const created = d?.ngayTao || d?.createdAt || d?.ngaySua
+      if (!created) return false
+      const createdTs = new Date(created).getTime()
+      if (Number.isNaN(createdTs)) return false
+      if (fromTs != null && createdTs < fromTs) return false
+      if (toTs != null && createdTs > toTs) return false
+      return true
+    })
   }
 
   data.sort((a, b) => {
@@ -486,15 +714,14 @@ const canCompleteFromList = (hoaDon) => {
 
 const canTransferFromList = (hoaDon) => {
   const code = normalizeOrderStatusCode(hoaDon?.orderStatusCode, hoaDon?.orderStatusName, hoaDon?.statusNote)
-  const isOnline = getOrderTypeLabel(hoaDon) === "Trực tuyến"
-  if (!isOnline) return false
   if (!["CHO_XAC_NHAN", "CHO_LAY_HANG", "DANG_GIAO"].includes(code)) return false
   return getTransferCandidates(hoaDon).length > 0
 }
 
 const getTransferCandidates = (hoaDon) => {
   const currentEmployeeId = resolveOrderEmployeeId(hoaDon)
-  return activeShiftEmployees.value.filter((item) => Number(item?.id) !== Number(currentEmployeeId))
+  const pool = activeShiftEmployees.value.length > 0 ? activeShiftEmployees.value : allNhanVien.value
+  return pool.filter((item) => Number(item?.id) !== Number(currentEmployeeId))
 }
 
 const getTransferTargetName = (hoaDon) => {
@@ -677,6 +904,411 @@ const completeFromList = async (hoaDon) => {
     rowSavingById.value[hoaDon.id] = false
   }
 }
+
+// ═══ Summary modal ═══
+const summaryModal = ref(null)
+const summaryLoading = ref(false)
+const summaryImageErrors = ref({})
+
+const variantCatalog = ref(new Map())
+const variantCatalogByCode = ref(new Map())
+const customerCatalog = ref(new Map())
+
+const SUMMARY_ONLINE_TIMELINE = [
+  { code: "CHO_XAC_NHAN", label: "Chờ xác nhận", icon: ClipboardList },
+  { code: "CHO_LAY_HANG", label: "Chờ lấy hàng", icon: Package2 },
+  { code: "DANG_GIAO", label: "Đang giao", icon: Truck },
+  { code: "HOAN_THANH", label: "Hoàn thành", icon: CheckCircle2 },
+]
+
+const SUMMARY_POS_TIMELINE = [
+  { code: "CHO_XAC_NHAN", label: "Chờ xử lý", icon: ClipboardList },
+  { code: "CHO_LAY_HANG", label: "Đang phục vụ", icon: Package2 },
+  { code: "HOAN_THANH", label: "Hoàn thành", icon: CheckCircle2 },
+]
+
+const getSummaryTimelineSteps = (hoaDon) => {
+  return getOrderTypeLabel(hoaDon) === "Tại quầy" ? SUMMARY_POS_TIMELINE : SUMMARY_ONLINE_TIMELINE
+}
+
+const getSummaryTimelineState = (hoaDon, stepCode) => {
+  const currentCode = normalizeOrderStatusCode(hoaDon?.orderStatusCode, hoaDon?.orderStatusName, hoaDon?.statusNote)
+  const steps = getSummaryTimelineSteps(hoaDon)
+  const currentIndex = steps.findIndex((step) => step.code === currentCode)
+  const stepIndex = steps.findIndex((step) => step.code === stepCode)
+  if (currentIndex === -1 || stepIndex === -1) return "upcoming"
+  if (stepIndex < currentIndex) return "done"
+  if (stepIndex === currentIndex) return "active"
+  return "upcoming"
+}
+
+const loadCustomerCatalog = async () => {
+  if (customerCatalog.value.size > 0) return
+  try {
+    const res = await getAllKhachHang()
+    const list = Array.isArray(res?.data?.content) ? res.data.content
+      : Array.isArray(res?.data) ? res.data : []
+    const map = new Map()
+    for (const customer of list) {
+      map.set(Number(customer?.id), customer)
+    }
+    customerCatalog.value = map
+  } catch {
+    customerCatalog.value = new Map()
+  }
+}
+
+const loadVariantCatalog = async () => {
+  if (variantCatalog.value.size > 0 || variantCatalogByCode.value.size > 0) return
+  try {
+    const res = await getAllSanPham()
+    const products = Array.isArray(res?.data?.content) ? res.data.content
+      : Array.isArray(res?.data) ? res.data : []
+
+    const byIdMap = new Map()
+    const byCodeMap = new Map()
+
+    for (const sp of products) {
+      const spName = sp.tenSanPham || sp.ten || ''
+      const imageConfig = getProductImageConfig({ id: sp?.id, maSanPham: sp?.maSanPham })
+      const overrideImage = String(getProductImageOverride({ id: sp?.id, maSanPham: sp?.maSanPham })?.[0] || "").trim()
+      const productDirectImage = pickImageValue(sp)
+      const variants = Array.isArray(sp.sanPhamChiTiets) ? sp.sanPhamChiTiets
+        : Array.isArray(sp.chiTietSanPhams) ? sp.chiTietSanPhams
+        : Array.isArray(sp.variants) ? sp.variants : []
+      for (const v of variants) {
+        const colorName = v.mauSac?.tenMauSac || v.mauSac?.tenMau || v.tenMauSac || ''
+        const sizeName = v.kichThuoc?.tenKichThuoc || v.kichThuoc?.tenSize || v.tenKichThuoc || ''
+        const parts = [spName, colorName, sizeName].filter(Boolean)
+        const colorId = Number(v?.mauSac?.id || v?.mauSacId || v?.idMauSac || 0)
+        const colorImage = (imageConfig?.colorImages || []).find((entry) => Number(entry?.colorId) === colorId)?.image || ""
+        const variantDirectImage = pickImageValue(v)
+        const byVariantFallback = fallbackImageForVariant({
+          id: Number(v?.id || sp?.id || 0),
+          maSanPham: sp?.maSanPham,
+          tenSanPham: spName,
+          tenMauSac: colorName,
+          maChiTietSanPham: String(v?.ma || v?.maSanPhamChiTiet || ""),
+        })
+        const resolvedImage = normalizeImageUrl(
+          variantDirectImage
+          || colorImage
+          || productDirectImage
+          || overrideImage
+          || byVariantFallback
+          || fallbackImageFor(Number(v?.id || sp?.id || 0), sp?.maSanPham, spName)
+        )
+
+        const entry = {
+          ten: parts.join(' - '),
+          anh: resolvedImage,
+          mauSac: colorName,
+          kichThuoc: sizeName,
+          giaBan: Number(v.giaBan || 0),
+        }
+
+        const variantId = Number(v.id || v.spctId || v.sanPhamChiTietId || 0)
+        if (Number.isFinite(variantId) && variantId > 0) {
+          byIdMap.set(variantId, entry)
+        }
+        const variantCode = String(v.ma || v.maSanPhamChiTiet || "").trim().toUpperCase()
+        if (variantCode) {
+          byCodeMap.set(variantCode, entry)
+        }
+      }
+    }
+
+    variantCatalog.value = byIdMap
+    variantCatalogByCode.value = byCodeMap
+  } catch { /* catalog load failed, items will show fallback names */ }
+}
+
+const enrichItems = (items) => {
+  const collectItemLabels = (item, fields = []) => {
+    const labels = new Set()
+    for (const field of fields) {
+      const value = String(field || "").trim()
+      if (value) labels.add(value)
+    }
+    return Array.from(labels)
+  }
+
+  return items.map(item => {
+    const spctId = Number(item.spctId || item.sanPhamChiTietId || item.idSanPhamChiTiet || item.chiTietSanPhamId || item.sanPhamChiTiet?.id || 0)
+    const maSanPhamChiTiet = String(item.maSanPhamChiTiet || item.maSpct || item.sanPhamChiTiet?.maSanPhamChiTiet || '').trim().toUpperCase()
+    const cat = variantCatalog.value.get(spctId) || (maSanPhamChiTiet ? variantCatalogByCode.value.get(maSanPhamChiTiet) : undefined)
+    const mauSac = item.sanPhamChiTiet?.mauSac?.tenMauSac || item.tenMauSac || cat?.mauSac || ''
+    const kichThuoc = item.sanPhamChiTiet?.kichThuoc?.tenKichThuoc || item.tenKichThuoc || cat?.kichThuoc || ''
+    const maSanPham = item.maSanPham || item.sanPhamChiTiet?.maSanPham || item.sanPham?.maSanPham || ""
+    // Extract base product name without variant suffix
+    const rawName = item.tenSanPhamChiTiet || cat?.ten || item.tenSanPham || `SP #${spctId}`
+    const suffixParts = [kichThuoc, mauSac].filter(Boolean)
+    let baseName = rawName
+    for (const part of suffixParts) {
+      const escaped = part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      baseName = baseName.replace(new RegExp('\\s*-\\s*' + escaped + '\\s*$'), '')
+      baseName = baseName.replace(new RegExp('\\s*-\\s*' + escaped + '\\s*-'), ' -')
+    }
+    const itemVoucherLabels = collectItemLabels(item, [
+      item?.maPhieuGiamGia,
+      item?.tenPhieuGiamGia,
+      item?.voucherCode,
+      item?.voucherName,
+      item?.phieuGiamGia?.maPhieuGiamGia,
+      item?.phieuGiamGia?.tenPhieuGiamGia,
+    ])
+    const itemCampaignLabels = collectItemLabels(item, [
+      item?.tenKhuyenMai,
+      item?.tenDotGiamGia,
+      item?.dotGiamGia?.tenDotGiamGia,
+      item?.khuyenMai?.tenKhuyenMai,
+      item?.maKhuyenMai,
+      item?.maDotGiamGia,
+      item?.dotGiamGia?.maDotGiamGia,
+      item?.khuyenMai?.maKhuyenMai,
+    ])
+    return {
+      ...item,
+      _tenHienThi: baseName.trim(),
+      _maSanPham: maSanPham,
+      _anh: normalizeImageUrl(
+        cat?.anh
+        || item.sanPhamChiTiet?.anh
+        || item.sanPhamChiTiet?.hinhAnh
+        || item.anh
+        || item.hinhAnh
+        || item.hinhAnhUrl
+        || item.image
+        || item.urlAnh
+        || ''
+      ),
+      _mauSac: mauSac,
+      _kichThuoc: kichThuoc,
+      _maSanPhamChiTiet: maSanPhamChiTiet,
+      _fallbackAnh:
+        fallbackImageForVariant({
+          id: spctId,
+          maSanPham: maSanPham,
+          tenSanPham: baseName.trim(),
+          tenMauSac: mauSac,
+          maChiTietSanPham: maSanPhamChiTiet,
+        }) || fallbackImageFor(spctId, maSanPham || maSanPhamChiTiet, baseName.trim()),
+      _giaBan: Number(item.donGia || item.giaBan || cat?.giaBan || 0),
+      _thanhTien: Number(item.thanhTien || (item.soLuong || 0) * Number(item.donGia || item.giaBan || cat?.giaBan || 0)),
+      _itemVoucherLabels: itemVoucherLabels,
+      _itemCampaignLabels: itemCampaignLabels,
+    }
+  })
+}
+
+const markSummaryImageError = (item, idx) => {
+  const key = getSummaryImageKey(item, idx)
+  summaryImageErrors.value[key] = Number(summaryImageErrors.value[key] || 0) + 1
+}
+
+const getSummaryItemImageSrc = (item, idx) => {
+  // Prefer the actual variant image from order/catalog first.
+  if (item?._anh) {
+    const errorCount = Number(summaryImageErrors.value[getSummaryImageKey(item, idx)] || 0)
+    if (errorCount === 0) return item._anh
+  }
+  // Use mapped fallback only when real image is missing/failed.
+  if (item?._fallbackAnh) return item._fallbackAnh
+  // Show initials as last resort
+  return ""
+}
+
+const summaryItemsSubtotal = computed(() => {
+  const items = summaryModal.value?.items || []
+  return items.reduce((sum, item) => sum + Number(item?._thanhTien || 0), 0)
+})
+
+const extractVoucherSnapshotFromNote = (note = "") => {
+  const text = String(note || "")
+  const voucherMatch = text.match(/áp dụng voucher\s*([^|\n\r]+)/i)
+  const phrase = voucherMatch?.[1] ? voucherMatch[1].trim() : ""
+
+  if (!phrase) return ""
+
+  const cleaned = phrase.replace(/[\s:;,.-]+$/, "").trim()
+  if (!cleaned) return ""
+  return cleaned
+}
+
+const collectSummaryAppliedVouchers = (detail = {}, hd = {}, items = []) => {
+  const labels = new Set()
+
+  const directCandidates = [
+    detail?.maPhieuGiamGia,
+    detail?.tenPhieuGiamGia,
+    detail?.voucherCode,
+    detail?.voucherName,
+    detail?.phieuGiamGia?.maPhieuGiamGia,
+    detail?.phieuGiamGia?.tenPhieuGiamGia,
+    hd?.maPhieuGiamGia,
+    hd?.tenPhieuGiamGia,
+    hd?.voucherCode,
+    hd?.voucherName,
+  ].map((entry) => String(entry || "").trim()).filter(Boolean)
+
+  for (const value of directCandidates) labels.add(value)
+
+  const noteLabel = extractVoucherSnapshotFromNote(detail?.statusNote || hd?.statusNote || "")
+  if (noteLabel) labels.add(noteLabel)
+
+  for (const item of items) {
+    const itemCandidates = [
+      item?.maPhieuGiamGia,
+      item?.tenPhieuGiamGia,
+      item?.voucherCode,
+      item?.voucherName,
+      item?.phieuGiamGia?.maPhieuGiamGia,
+      item?.phieuGiamGia?.tenPhieuGiamGia,
+    ].map((entry) => String(entry || "").trim()).filter(Boolean)
+    for (const value of itemCandidates) labels.add(value)
+  }
+
+  return Array.from(labels)
+}
+
+const collectSummaryAppliedCampaigns = (items = []) => {
+  const labels = new Set()
+
+  for (const item of items) {
+    const name = String(
+      item?.tenKhuyenMai
+      || item?.tenDotGiamGia
+      || item?.dotGiamGia?.tenDotGiamGia
+      || item?.khuyenMai?.tenKhuyenMai
+      || ""
+    ).trim()
+
+    const code = String(
+      item?.maKhuyenMai
+      || item?.maDotGiamGia
+      || item?.dotGiamGia?.maDotGiamGia
+      || item?.khuyenMai?.maKhuyenMai
+      || ""
+    ).trim()
+
+    const label = [code, name].filter(Boolean).join(" - ") || name || code
+    if (label) labels.add(label)
+  }
+
+  return Array.from(labels)
+}
+
+const openSummary = async (hd) => {
+  openMoreMenuId.value = null
+  summaryLoading.value = true
+  summaryImageErrors.value = {}
+  summaryModal.value = {
+    ...hd,
+    items: [],
+    phiVanChuyen: 0,
+    tongTien: 0,
+    finalTotal: Number(hd?.thanhTien || 0),
+    giamGia: 0,
+    voucherLabels: [],
+    campaignLabels: []
+  }
+  try {
+    const [res] = await Promise.all([getHoaDonById(hd.id), loadVariantCatalog(), loadCustomerCatalog()])
+    const detail = res?.data || {}
+    const rawItems = Array.isArray(detail?.items) ? detail.items
+      : Array.isArray(detail?.hoaDonChiTiets) ? detail.hoaDonChiTiets
+      : Array.isArray(detail?.chiTietHoaDons) ? detail.chiTietHoaDons
+      : []
+    const items = enrichItems(rawItems)
+    const tongTien = Number(detail?.tongTien || detail?.totalAmount || 0)
+    const itemsTotal = items.reduce((s, i) => s + (i._thanhTien || 0), 0)
+    const shippingFee = Number(detail?.phiVanChuyen || detail?.shippingFee || 0)
+    const finalTotal = Number(
+      detail?.thanhTien
+      || detail?.tongTienSauGiam
+      || detail?.tongThanhToan
+      || hd?.thanhTien
+      || tongTien
+      || itemsTotal
+    )
+    const discountAmountRaw = Number(detail?.giamGia || detail?.discountAmount || detail?.giaSauGiamGia || detail?.tongGiamGia || 0)
+    const discountAmount = discountAmountRaw > 0
+      ? discountAmountRaw
+      : Math.max(0, itemsTotal + shippingFee - finalTotal)
+    const voucherLabels = collectSummaryAppliedVouchers(detail, hd, rawItems)
+    const campaignLabels = collectSummaryAppliedCampaigns(rawItems)
+    const customerId = Number(detail?.khachHangId || detail?.customerId || hd?.khachHangId || 0)
+    const customer = customerCatalog.value.get(customerId)
+    const resolvedEmail = firstNonEmptyValue(
+      detail?.emailNhanHang,
+      detail?.email,
+      detail?.customerEmail,
+      detail?.khachHang?.email,
+      detail?.khachHang?.taiKhoan?.email,
+      detail?.khachHang?.taiKhoanEmail,
+      hd?.emailNhanHang,
+      hd?.email,
+      customer?.email,
+      customer?.taiKhoan?.email,
+      customer?.taiKhoanEmail,
+      customer?.tenDangNhap,
+      customer?.taiKhoan?.tenDangNhap,
+    )
+    summaryModal.value = {
+      ...hd,
+      ...detail,
+      items,
+      resolvedEmail,
+      phiVanChuyen: shippingFee,
+      tongTien: tongTien > 0 ? tongTien : itemsTotal,
+      finalTotal,
+      giamGia: discountAmount,
+      voucherLabels,
+      campaignLabels,
+    }
+  } catch (e) {
+    console.error("Failed to load order detail for summary:", e)
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
+const closeSummary = () => { summaryModal.value = null }
+
+const goToFullDetail = (id) => {
+  summaryModal.value = null
+  router.push({
+    path: `${panelBasePath.value}/hoa-don/detail/${id}`,
+    query: currentPage.value > 1 ? { page: String(currentPage.value) } : {}
+  })
+}
+
+// ═══ Send lookup mail from list ═══
+const sendingMailForId = ref(null)
+
+const sendLookupMailFromList = async (hd) => {
+  openMoreMenuId.value = null
+  const maHoaDon = String(hd?.maHoaDon || "").trim()
+  const soDienThoai = String(hd?.soDienThoaiNhanHang || "").trim()
+  const email = String(hd?.emailNhanHang || hd?.email || "").trim()
+
+  if (!maHoaDon) { showToast("Thiếu mã đơn hàng", "warning"); return }
+  if (!email) { showToast("Không tìm thấy email khách hàng để gửi", "warning"); return }
+
+  sendingMailForId.value = hd.id
+  try {
+    const trackingUrl = buildOrderLookupTrackingUrl({ maHoaDon })
+    const payload = { maHoaDon, email }
+    if (soDienThoai) payload.soDienThoai = soDienThoai
+    if (trackingUrl) payload.trackingUrl = trackingUrl
+    const response = await sendOrderLookupMail(payload)
+    showToast(response?.data?.message || "Đã gửi mail tra cứu", "success")
+  } catch (error) {
+    showToast(error?.response?.data?.message || "Không thể gửi mail tra cứu", "error")
+  } finally {
+    sendingMailForId.value = null
+  }
+}
 </script>
 
 <template>
@@ -714,6 +1346,7 @@ const completeFromList = async (hoaDon) => {
         <div>
           <h1>Quản lý Hoá Đơn</h1>
           <small class="muted">Theo dõi và quản lý tất cả đơn hàng</small>
+          <small class="realtime-badge" :class="`is-${realtimeConnectionTone}`">Dữ liệu: {{ realtimeConnectionLabel }}</small>
         </div>
         <div style="display:flex; gap:8px;">
         </div>
@@ -721,38 +1354,82 @@ const completeFromList = async (hoaDon) => {
 
       <div class="body">
         <!-- FILTERS & SEARCH -->
-        <div style="display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap;">
-          <div class="search">
-            <Search :size="18" style="color: #9ca3af;" />
-            <input
-              v-model="searchText"
-              type="text"
-              placeholder="Tìm theo mã hóa đơn, khách hàng, SĐT, nhân viên..."
-              style="flex: 1; border: none; outline: none; background: transparent;"
-            />
+        <div class="invoice-filters-container">
+          <!-- TOP ROW: SEARCH + QUICK FILTERS -->
+          <div class="invoice-filters-top">
+            <div class="search">
+              <Search :size="18" style="color: #9ca3af;" />
+              <input
+                v-model="searchText"
+                type="text"
+                placeholder="Tìm theo mã hóa đơn, khách hàng, SĐT, nhân viên..."
+                style="flex: 1; border: none; outline: none; background: transparent;"
+              />
+            </div>
+
+            <div class="quick-filters">
+              <select v-model="filterStatus" class="invoice-filter-select">
+                <option v-for="status in statusOptions" :key="status">{{ status }}</option>
+              </select>
+
+              <select v-model="filterType" class="invoice-filter-select">
+                <option>Tất cả loại</option>
+                <option>Tại quầy</option>
+                <option>Trực tuyến</option>
+              </select>
+            </div>
           </div>
 
-          <select v-model="filterStatus" style="padding: 10px 34px 10px 12px; border: 1px solid var(--line); border-radius: 8px; min-width: 200px; font-size: 14px;">
-            <option v-for="status in statusOptions" :key="status">{{ status }}</option>
-          </select>
+          <!-- DATE FILTER SECTION (EXPANDED) -->
+          <div class="date-filter-expanded">
+            <div class="date-filter-header"></div>
 
-          <select v-model="filterType" style="padding: 10px 34px 10px 12px; border: 1px solid var(--line); border-radius: 8px; min-width: 160px; font-size: 14px;">
-            <option>Tất cả loại</option>
-            <option>Tại quầy</option>
-            <option>Trực tuyến</option>
-          </select>
+            <div class="date-filter-body">
+              <div class="date-filter-inputs-wrapper">
+                <div class="date-filter-inputs">
+                  <label class="date-filter-field date-filter-field--with-icon">
+                    <span>Từ ngày</span>
+                    <input v-model="filterDateFrom" type="date" />
+                  </label>
+                  <label class="date-filter-field">
+                    <span>Đến ngày</span>
+                    <input v-model="filterDateTo" type="date" />
+                  </label>
+                </div>
+              </div>
+
+              <div class="date-filter-presets-wrapper">
+                <span class="presets-label">Lọc nhanh</span>
+                <div class="date-filter-presets">
+                  <button type="button" :class="{ active: activeDatePreset === 'today' }" @click="applyDatePreset('today')">Hôm nay</button>
+                  <button type="button" :class="{ active: activeDatePreset === 'last7' }" @click="applyDatePreset('last7')">7 ngày</button>
+                  <button type="button" :class="{ active: activeDatePreset === 'last30' }" @click="applyDatePreset('last30')">30 ngày</button>
+                  <button type="button" :class="{ active: activeDatePreset === 'thisMonth' }" @click="applyDatePreset('thisMonth')">Tháng này</button>
+                  <button type="button" :class="{ active: activeDatePreset === 'lastMonth' }" @click="applyDatePreset('lastMonth')">Tháng trước</button>
+                  <button class="date-filter-clear date-filter-clear-inline" type="button" @click="clearDateFilters" :disabled="!filterDateFrom && !filterDateTo">
+                    Xóa lọc
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="isDateRangeInvalid" class="date-filter-warning">
+                ⚠️ Khoảng ngày chưa đúng, hệ thống sẽ tự đổi thứ tự khi lọc.
+              </div>
+
+            </div>
+          </div>
         </div>
 
         <!-- TABLE -->
-        <div style="overflow-x: auto;">
+        <div class="table-responsive-wrapper">
           <table class="table" style="width: 100%;">
             <thead>
               <tr>
-                <th style="width: 270px; text-align: left;">Đơn hàng</th>
-                <th style="width: 240px;">Khách hàng</th>
-                <th class="value-head" style="width: 240px;">Giá trị</th>
-                <th class="status-head" style="width: 250px;">Trạng thái</th>
-                <th style="width: 280px; text-align: right;">Thao tác</th>
+                <th style="min-width: 270px; text-align: left;">Đơn hàng</th>
+                <th style="min-width: 240px;">Khách hàng</th>
+                <th class="value-head" style="min-width: 200px;">Giá trị</th>
+                <th class="status-head" style="min-width: 220px;">Trạng thái</th>
+                <th style="min-width: 200px; text-align: right;">Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -805,7 +1482,7 @@ const completeFromList = async (hoaDon) => {
                 </td>
                 <td class="action-col">
                   <div class="action-stack">
-                    <button class="action-btn" @click="viewDetail(hd.id)" title="Xem chi tiết">
+                    <button class="action-btn" @click="openSummary(hd)" title="Xem chi tiết">
                       <Eye :size="18" />
                       <span>Chi tiết</span>
                     </button>
@@ -820,7 +1497,7 @@ const completeFromList = async (hoaDon) => {
                       <span>{{ getPrimaryActionLabel(hd) }}</span>
                     </button>
 
-                    <div v-if="hasExtraActions(hd)" class="row-more-wrap">
+                    <div class="row-more-wrap">
                       <button
                         class="action-btn more-toggle"
                         type="button"
@@ -905,6 +1582,16 @@ const completeFromList = async (hoaDon) => {
                             {{ rowSavingById[hd.id] ? "Đang hủy" : "Hủy" }}
                           </button>
                         </div>
+
+                        <button
+                          class="menu-action mail-action"
+                          type="button"
+                          :disabled="sendingMailForId === hd.id"
+                          @click="sendLookupMailFromList(hd)"
+                        >
+                          <Mail :size="14" />
+                          <span>{{ sendingMailForId === hd.id ? "Đang gửi..." : "Gửi mail tra cứu" }}</span>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -915,27 +1602,25 @@ const completeFromList = async (hoaDon) => {
         </div>
 
         <!-- PAGINATION -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); flex-wrap: wrap; gap: 12px;">
-          <div style="font-size: 13px; color: #9ca3af;">
+        <div class="pagination-container">
+          <div class="pagination-info">
             Hiển thị {{ paginatedData.length === 0 ? 0 : (currentPage - 1) * pageSize + 1 }} – {{ Math.min(currentPage * pageSize, filteredData.length) }} / {{ filteredData.length }}
           </div>
-          <div style="display: flex; gap: 8px;">
+          <div class="pagination-controls">
             <button
-              class="btn"
+              class="pagination-btn"
               @click="currentPage--"
               :disabled="currentPage === 1"
-              style="padding: 8px 12px; font-size: 13px;"
             >
               ← Trước
             </button>
-            <div style="padding: 8px 14px; background: var(--line-light); border-radius: 8px; min-width: 40px; text-align: center; font-weight: 600; font-size: 13px;">
+            <div class="pagination-page-indicator">
               {{ currentPage }}
             </div>
             <button
-              class="btn"
+              class="pagination-btn"
               @click="currentPage++"
               :disabled="currentPage >= totalPages"
-              style="padding: 8px 12px; font-size: 13px;"
             >
               Sau →
             </button>
@@ -944,19 +1629,450 @@ const completeFromList = async (hoaDon) => {
       </div>
     </div>
   </main>
+
+  <!-- Summary Modal -->
+  <Teleport to="body">
+    <Transition name="summary-fade">
+      <div v-if="summaryModal" class="summary-overlay" @click.self="closeSummary">
+        <div class="summary-box">
+          <div class="summary-head">
+            <div>
+              <h2>{{ formatMaHoaDon(summaryModal.maHoaDon) || `#${summaryModal.id}` }}</h2>
+              <p class="summary-subhead">Tóm tắt nhanh đơn hàng theo phong cách dashboard</p>
+            </div>
+            <button class="summary-close" @click="closeSummary"><X :size="18" /></button>
+          </div>
+
+          <div v-if="summaryLoading" class="summary-loading">
+            <div class="summary-skeleton summary-skeleton-title"></div>
+            <div class="summary-skeleton-pills">
+              <div class="summary-skeleton summary-skeleton-pill"></div>
+              <div class="summary-skeleton summary-skeleton-pill"></div>
+              <div class="summary-skeleton summary-skeleton-pill"></div>
+            </div>
+            <div class="summary-skeleton-grid">
+              <div class="summary-skeleton summary-skeleton-card" v-for="n in 6" :key="n"></div>
+            </div>
+            <div class="summary-skeleton-list">
+              <div class="summary-skeleton-row" v-for="n in 3" :key="`row-${n}`">
+                <div class="summary-skeleton summary-skeleton-thumb"></div>
+                <div class="summary-skeleton-col">
+                  <div class="summary-skeleton summary-skeleton-line lg"></div>
+                  <div class="summary-skeleton summary-skeleton-line md"></div>
+                </div>
+                <div class="summary-skeleton summary-skeleton-line price"></div>
+              </div>
+            </div>
+          </div>
+          <div v-else class="summary-body">
+            <div class="summary-top-meta">
+              <span class="summary-meta-pill">Mã đơn: {{ summaryModal.maHoaDon || `#${summaryModal.id}` }}</span>
+              <span class="summary-meta-pill">Nhân viên: {{ summaryModal.tenNhanVien || 'Chưa gán' }}</span>
+              <span class="summary-meta-pill">Thanh toán: {{ getPaymentMethodLabel(summaryModal) }}</span>
+            </div>
+
+            <div v-if="summaryModal.voucherLabels?.length || summaryModal.campaignLabels?.length" class="summary-applied-wrap">
+              <div v-if="summaryModal.voucherLabels?.length" class="summary-applied-row">
+                <span class="summary-applied-label">Voucher áp dụng</span>
+                <div class="summary-applied-tags">
+                  <span v-for="voucher in summaryModal.voucherLabels" :key="voucher" class="summary-applied-tag">{{ voucher }}</span>
+                </div>
+              </div>
+              <div v-if="summaryModal.campaignLabels?.length" class="summary-applied-row">
+                <span class="summary-applied-label">Đợt giảm giá sản phẩm</span>
+                <div class="summary-applied-tags">
+                  <span v-for="campaign in summaryModal.campaignLabels" :key="campaign" class="summary-applied-tag summary-applied-tag--campaign">{{ campaign }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="summary-info-grid">
+              <div class="summary-field">
+                <span class="summary-label"><ReceiptText :size="11" /> Trạng thái</span>
+                <span class="status-badge" :class="`status-${getStatusColor(summaryModal.orderStatusName)}`">
+                  {{ normalizeAdminStatusLabel(summaryModal.orderStatusName) }}
+                </span>
+              </div>
+              <div class="summary-field">
+                <span class="summary-label"><Package2 :size="11" /> Loại đơn</span>
+                <span>{{ getOrderTypeLabel(summaryModal) }}</span>
+              </div>
+              <div class="summary-field">
+                <span class="summary-label"><CalendarDays :size="11" /> Ngày tạo</span>
+                <span>{{ formatDateTime(summaryModal.ngayTao) }}</span>
+              </div>
+              <div class="summary-field">
+                <span class="summary-label"><ReceiptText :size="11" /> Mã hóa đơn hiển thị</span>
+                <span>{{ formatMaHoaDon(summaryModal.maHoaDon) || `#${summaryModal.id}` }}</span>
+              </div>
+              <div class="summary-field">
+                <span class="summary-label"><UserRound :size="11" /> Khách hàng</span>
+                <span>{{ summaryModal.tenKhachHang || 'Khách lẻ' }}</span>
+              </div>
+              <div class="summary-field">
+                <span class="summary-label"><Phone :size="11" /> Điện thoại</span>
+                <span>{{ summaryModal.soDienThoaiNhanHang || '—' }}</span>
+              </div>
+              <div class="summary-field">
+                <span class="summary-label"><Mail :size="11" /> Email</span>
+                <span>{{ summaryModal.resolvedEmail || summaryModal.emailNhanHang || summaryModal.email || '—' }}</span>
+              </div>
+              <div class="summary-field">
+                <span class="summary-label"><MapPin :size="11" /> Địa chỉ</span>
+                <span class="summary-value multiline">{{ summaryModal.diaChiNhanHang || '—' }}</span>
+              </div>
+            </div>
+
+            <div v-if="summaryModal.items?.length" class="summary-items">
+              <div class="summary-section-title">Sản phẩm</div>
+              <div class="summary-item" v-for="(item, idx) in summaryModal.items" :key="idx">
+                <div class="summary-item-thumb">
+                  <img
+                    v-if="getSummaryItemImageSrc(item, idx)"
+                    class="summary-item-img"
+                    :src="getSummaryItemImageSrc(item, idx)"
+                    @error="markSummaryImageError(item, idx)"
+                  />
+                  <span v-else class="summary-item-initials">{{ (item._tenHienThi || '?')[0] }}</span>
+                </div>
+                <div class="summary-item-body">
+                  <div class="summary-item-name">
+                    {{ item._tenHienThi }}
+                    <span v-if="item._mauSac || item._kichThuoc" class="summary-item-variant">
+                      {{ [item._mauSac, item._kichThuoc].filter(Boolean).join(' / ') }}
+                    </span>
+                  </div>
+                  <div v-if="item._maSanPhamChiTiet" class="summary-item-code">{{ item._maSanPhamChiTiet }}</div>
+                  <div class="summary-item-meta">x{{ item.soLuong || 0 }} × {{ formatCurrency(item._giaBan) }}</div>
+                  <div v-if="item._itemVoucherLabels?.length || item._itemCampaignLabels?.length" class="summary-item-promos">
+                    <span
+                      v-for="(label, promoIdx) in item._itemVoucherLabels || []"
+                      :key="`voucher-${idx}-${promoIdx}-${label}`"
+                      class="summary-item-promo summary-item-promo--voucher"
+                    >
+                      Voucher: {{ label }}
+                    </span>
+                    <span
+                      v-for="(label, promoIdx) in item._itemCampaignLabels || []"
+                      :key="`campaign-${idx}-${promoIdx}-${label}`"
+                      class="summary-item-promo summary-item-promo--campaign"
+                    >
+                      Campaign: {{ label }}
+                    </span>
+                  </div>
+                </div>
+                <div class="summary-item-price">{{ formatCurrency(item._thanhTien) }}</div>
+              </div>
+            </div>
+
+            <div class="summary-totals">
+              <div class="summary-total-row" v-if="(summaryModal.phiVanChuyen > 0) || (summaryModal.giamGia > 0)">
+                <span>Tạm tính</span>
+                <span>{{ formatCurrency(summaryItemsSubtotal) }}</span>
+              </div>
+              <div class="summary-total-row" v-if="summaryModal.phiVanChuyen > 0">
+                <span>Phí vận chuyển</span>
+                <span>{{ formatCurrency(summaryModal.phiVanChuyen) }}</span>
+              </div>
+              <div class="summary-total-row" v-if="summaryModal.giamGia > 0">
+                <span>Giảm giá</span>
+                <span class="discount-amount">-{{ formatCurrency(summaryModal.giamGia) }}</span>
+              </div>
+              <div class="summary-total-row summary-grand-total">
+                <span>Tổng cộng</span>
+                <span>{{ formatCurrency(summaryModal.finalTotal || summaryModal.tongTien) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="summary-footer">
+            <button class="summary-detail-btn" @click="goToFullDetail(summaryModal.id)">
+              Xem chi tiết đầy đủ →
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
+/* FILTERS CONTAINER */
+.invoice-filters-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #f8f9fb 0%, #f3f4f7 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.invoice-filters-top {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
 .search {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
+  padding: 11px 15px;
+  border: 1px solid #cbd5e1;
   background: white;
   border-radius: 10px;
   flex: 1;
-  min-width: 280px;
+  min-width: 300px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s;
+}
+
+.search:focus-within {
+  border-color: #6366f1;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.12);
+}
+
+.quick-filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.invoice-filter-select {
+  padding: 11px 36px 11px 13px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  min-width: 180px;
+  font-size: 14px;
+  background: white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23475569' d='M10.293 3.293L6 7.586 1.707 3.293A1 1 0 00.293 4.707l5 5a1 1 0 001.414 0l5-5a1 1 0 10-1.414-1.414z'/%3E%3C/svg%3E") no-repeat right 10px center;
+  cursor: pointer;
+  font-weight: 500;
+  color: #334155;
+  appearance: none;
+  transition: all 0.2s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.invoice-filter-select:hover {
+  border-color: #94a3b8;
+  background-color: #f8fafc;
+}
+
+.invoice-filter-select:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.12);
+}
+
+/* DATE FILTER EXPANDED */
+.date-filter-expanded {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 8px;
+}
+
+.date-filter-header {
+  display: none;
+}
+
+.date-filter-clear {
+  border: 1px solid #dc2626;
+  background: #fff1f2;
+  color: #991b1b;
+  font-size: 13px;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.date-filter-clear:hover:not(:disabled) {
+  border-color: #991b1b;
+  background: #fee2e2;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(153, 27, 27, 0.15);
+}
+
+.date-filter-clear:disabled {
+  color: #dc2626;
+  background: #fff5f5;
+  border-color: #fca5a5;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.date-filter-body {
+  display: grid;
+  grid-template-columns: minmax(280px, 450px) 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.date-filter-inputs-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.date-filter-presets-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.presets-label {
+  font-size: 13px;
+  color: #475569;
+  font-weight: 600;
+  line-height: 1.1;
+  min-height: 18px;
+}
+
+.date-filter-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.date-filter-field--with-icon span::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  vertical-align: -3px;
+  background: center / contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23dc2626' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'/%3E%3Cline x1='16' y1='2' x2='16' y2='6'/%3E%3Cline x1='8' y1='2' x2='8' y2='6'/%3E%3Cline x1='3' y1='10' x2='21' y2='10'/%3E%3C/svg%3E");
+}
+
+.date-filter-field {
+  display: grid;
+  gap: 6px;
+}
+
+.date-filter-field span {
+  font-size: 14px;
+  color: #475569;
+  font-weight: 600;
+}
+
+.date-filter-field input {
+  padding: 11px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  font-size: 15px;
+  background: white;
+  color: #1e293b;
+  font-weight: 500;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.date-filter-field input:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.date-filter-field input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.12);
+}
+
+.date-filter-presets {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.date-filter-presets button {
+  border: 1.5px solid #cbd5e1;
+  background: white;
+  color: #475569;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 11px 14px;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
+  white-space: nowrap;
+  min-width: fit-content;
+}
+
+.date-filter-presets button:hover {
+  border-color: #6366f1;
+  background: #eef2ff;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.12);
+}
+
+.date-filter-presets button.active {
+  border-color: #dc2626;
+  background: #fff1f2;
+  color: #991b1b;
+  box-shadow: 0 2px 8px rgba(153, 27, 27, 0.15);
+  font-weight: 800;
+}
+
+.date-filter-warning {
+  grid-column: 1 / -1;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #92400e;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.date-filter-clear-inline {
+  margin-left: 12px;
+}
+
+@media (max-width: 1080px) {
+  .date-filter-body {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+
+.date-filter-warning {
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 8px;
+}
+
+.realtime-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  background: #f8fafc;
+}
+
+.realtime-badge.is-online {
+  border-color: #86efac;
+  background: #dcfce7;
+  color: #166534;
 }
 
 .table {
@@ -966,37 +2082,46 @@ const completeFromList = async (hoaDon) => {
 }
 
 .table thead {
-  background: var(--line-light);
-  border-bottom: 2px solid var(--line);
+  background: linear-gradient(135deg, #f8f9fb 0%, #f0f1f4 100%);
+  border-bottom: 2px solid #e2e8f0;
 }
 
 .table th {
   position: sticky;
   top: 0;
   z-index: 3;
-  padding: 14px 14px;
+  padding: 14px 16px;
   text-align: left;
   font-weight: 700;
-  color: var(--text);
-  font-size: 13px;
-  letter-spacing: 0.5px;
+  color: #334155;
+  font-size: 12px;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  background: linear-gradient(90deg, #8f0f22 0%, #bd1730 42%, #df3a4e 100%);
-  color: #fff;
+  background: linear-gradient(135deg, #f8f9fb 0%, #f0f1f4 100%);
+  border-bottom: 2px solid #e2e8f0;
 }
 
 .table td {
-  padding: 16px 14px;
+  padding: 16px 16px;
   color: var(--text);
   vertical-align: top;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.table tbody tr {
+  transition: background-color 0.2s ease;
 }
 
 .table tbody tr:nth-child(even) td {
-  background: #fffafa;
+  background: #f8fafc;
 }
 
 .table tbody tr:hover td {
-  background: #fff1f3;
+  background: #eff6ff;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .invoice-code-cell {
@@ -1146,11 +2271,11 @@ const completeFromList = async (hoaDon) => {
 
 .status-badge {
   display: inline-block;
-  padding: 7px 12px;
-  border-radius: 20px;
-  font-size: 13px;
+  padding: 6px 11px;
+  border-radius: 18px;
+  font-size: 12.5px;
   font-weight: 700;
-  border: 1px solid;
+  border: 0.75px solid;
   white-space: nowrap;
 }
 
@@ -1248,6 +2373,81 @@ const completeFromList = async (hoaDon) => {
 .row-more-menu--up {
   top: auto;
   bottom: calc(100% + 8px);
+}
+
+.table-responsive-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.pagination-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 28px;
+  padding: 18px;
+  border-top: 1px solid #e2e8f0;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+  background: linear-gradient(135deg, #f8f9fb 0%, #f0f1f4 100%);
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.pagination-info {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pagination-btn {
+  border: 1px solid #cbd5e1;
+  background: white;
+  color: #334155;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  border-color: #6366f1;
+  background: white;
+  color: #6366f1;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.12);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-page-indicator {
+  padding: 8px 16px;
+  background: white;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  min-width: 48px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 13px;
+  color: #334155;
 }
 
 .menu-action {
@@ -1476,4 +2676,449 @@ const completeFromList = async (hoaDon) => {
     font-size: 13px;
   }
 }
+
+/* ═══ Mail action in dropdown ═══ */
+.mail-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid #f0f0f0;
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+/* ═══ Summary Modal ═══ */
+.summary-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,.5);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 9999;
+  padding: 20px;
+}
+.summary-box {
+  background: #fff;
+  border-radius: 18px;
+  max-width: 720px;
+  width: 100%;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 50px rgba(0,0,0,.18);
+  overflow: hidden;
+  --sidebar-surface:
+    radial-gradient(circle at 14% 10%, rgba(239, 68, 68, 0.2), transparent 44%),
+    linear-gradient(165deg, #0a0a0f 0%, #17161e 46%, #07070b 100%);
+}
+.summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 22px;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+  background: var(--sidebar-surface);
+  position: relative;
+  isolation: isolate;
+}
+.summary-head::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.25;
+  z-index: 0;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.07) 0 1px, transparent 1px 18px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 18px);
+}
+.summary-head > * {
+  position: relative;
+  z-index: 1;
+}
+.summary-head h2 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  font-weight: 900;
+  color: #f8fafc;
+}
+.summary-subhead {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(241, 245, 249, 0.72);
+}
+.summary-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #f8fafc;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.summary-close:hover { background: rgba(255, 255, 255, 0.24); color: #ffffff; }
+
+.summary-loading {
+  padding: 20px 22px 24px;
+  display: grid;
+  gap: 14px;
+}
+.summary-skeleton {
+  border-radius: 10px;
+  background: linear-gradient(90deg, #f1f5f9 0%, #ffffff 50%, #f1f5f9 100%);
+  background-size: 220% 100%;
+  animation: summaryShimmer 1.3s linear infinite;
+}
+.summary-skeleton-title { height: 34px; width: 42%; }
+.summary-skeleton-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+.summary-skeleton-pill { height: 34px; width: 180px; border-radius: 999px; }
+.summary-skeleton-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.summary-skeleton-card { height: 74px; }
+.summary-skeleton-list { display: grid; gap: 12px; }
+.summary-skeleton-row { display: grid; grid-template-columns: 56px minmax(0, 1fr) 110px; gap: 12px; align-items: center; }
+.summary-skeleton-thumb { width: 56px; height: 56px; }
+.summary-skeleton-col { display: grid; gap: 8px; }
+.summary-skeleton-line { height: 12px; }
+.summary-skeleton-line.lg { width: 82%; }
+.summary-skeleton-line.md { width: 56%; }
+.summary-skeleton-line.price { width: 100px; justify-self: end; height: 22px; }
+
+@keyframes summaryShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -20% 0; }
+}
+
+.summary-body {
+  overflow-y: auto;
+  padding: 16px 22px;
+}
+
+.summary-top-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.summary-applied-wrap {
+  margin-top: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px;
+  background: #f8fafc;
+  display: grid;
+  gap: 8px;
+}
+
+.summary-applied-row {
+  display: grid;
+  gap: 6px;
+}
+
+.summary-applied-label {
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.summary-applied-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.summary-applied-tag {
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #b91c1c;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.summary-applied-tag--campaign {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.summary-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 11px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.summary-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 20px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fcfdff;
+}
+.summary-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.summary-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: .035em;
+}
+.summary-field .status-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+.summary-field > span:last-child {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.summary-value.multiline {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+.summary-section-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-top: 18px;
+  margin-bottom: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.summary-items {
+  margin-bottom: 4px;
+}
+
+.summary-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+.summary-item-img {
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  object-fit: contain;
+  flex-shrink: 0;
+  background: #f3f4f6;
+}
+.summary-item-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.summary-item-initials {
+  font-size: 18px;
+  font-weight: 800;
+  color: #9ca3af;
+  text-transform: uppercase;
+}
+.summary-item-body {
+  flex: 1;
+  min-width: 0;
+}
+.summary-item-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+  color: #111;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.summary-item-code {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #94a3b8;
+}
+.summary-item-variant {
+  font-size: 12px;
+  color: #9ca3af;
+  font-weight: 500;
+  margin-left: 4px;
+}
+.summary-item-meta {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+.summary-item-promos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.summary-item-promo {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.summary-item-promo--voucher {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+}
+.summary-item-promo--campaign {
+  background: #ecfeff;
+  border: 1px solid #a5f3fc;
+  color: #155e75;
+}
+.summary-item-price {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: #dc2626;
+  flex-shrink: 0;
+}
+
+.summary-totals {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fff, #fcfcfd);
+}
+.summary-total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13.5px;
+  color: #374151;
+  padding: 4px 0;
+}
+.discount-amount { color: #dc2626; }
+.summary-grand-total {
+  display: flex;
+  align-items: center;
+  font-size: 17px;
+  font-weight: 800;
+  color: #991b1b;
+  padding: 9px 10px;
+  margin-top: 6px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #fff1f2, #fee2e2);
+  border: 1px solid #fca5a5;
+}
+.summary-grand-total span:last-child {
+  color: #dc2626;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.summary-footer {
+  padding: 16px 22px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: center;
+  background: #fff;
+  border-radius: 0 0 20px 20px;
+}
+.summary-detail-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 13px 0;
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .15s;
+  box-shadow: 0 2px 8px rgba(220,38,38,.22);
+}
+.summary-detail-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(220,38,38,.35);
+}
+
+@media (max-width: 760px) {
+  .summary-skeleton-grid,
+  .summary-info-grid {
+    grid-template-columns: 1fr;
+
+  .invoice-filter-select,
+  .invoice-filter-select--type,
+  .date-filter-card {
+    min-width: 100%;
+    width: 100%;
+  }
+
+  .date-filter-inputs {
+    grid-template-columns: 1fr;
+  }
+  }
+  .summary-head h2 {
+    font-size: 24px;
+  }
+  .summary-item-price {
+    font-size: 18px;
+  }
+}
+
+/* Summary modal transitions */
+.summary-fade-enter-active { transition: opacity .2s ease; }
+.summary-fade-leave-active { transition: opacity .15s ease; }
+.summary-fade-enter-from, .summary-fade-leave-to { opacity: 0; }
 </style>

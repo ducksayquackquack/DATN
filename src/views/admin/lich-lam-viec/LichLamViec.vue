@@ -177,7 +177,7 @@
               >
                 <span class="event-time">{{ entry.startTime }}-{{ entry.endTime }}</span>
                 <span class="event-name">{{ entry.shiftName }}</span>
-                <span v-if="entry.employeeName" class="event-employee">{{ entry.employeeName }}</span>
+                <span v-if="resolveEmployeeDisplay(entry)" class="event-employee">{{ resolveEmployeeDisplay(entry) }}</span>
               </div>
               <button
                 v-if="getEntriesByDate(day.dateKey).length > 3"
@@ -221,6 +221,7 @@
                   <div>
                     <div class="schedule-name">{{ schedule.name }}</div>
                     <div class="schedule-desc">{{ schedule.description || 'Không có mô tả' }}</div>
+                    <div v-if="resolveEmployeeDisplay(schedule)" class="schedule-desc">{{ resolveEmployeeDisplay(schedule) }}</div>
                   </div>
                 </div>
               </td>
@@ -297,6 +298,7 @@ import { createLichLamViec, deleteLichLamViec, getAllLichLamViec, getAllLichLamV
 import { getAllNhanVien } from '../../../services/nhanVienService'
 import { getAllCaLam } from '../../../services/caLamService'
 import taiKhoanService from '../../../services/taiKhoanService'
+import * as XLSX from 'xlsx'
 
 const toast = useToast()
 
@@ -370,6 +372,8 @@ const mapApiSchedule = (item) => {
   const startTime = normalizeTime(item?.gioBatDau)
   const endTime = normalizeTime(item?.gioKetThuc)
   const employeeName = item?.tenNhanVien || ''
+  const employeeCode = item?.maNhanVien || item?.maNV || ''
+  const employeeDisplay = [employeeCode, employeeName].filter(Boolean).join(' - ') || employeeName
   const dateKey = normalizeDateKey(item?.ngayLam)
   const statusText = String(item?.trangThai || '').toLowerCase()
   const status = statusText.includes('hoạt động')
@@ -381,7 +385,7 @@ const mapApiSchedule = (item) => {
   const visual = mapScheduleType(startTime)
 
   const descriptionParts = []
-  if (employeeName) descriptionParts.push(`NV: ${employeeName}`)
+  if (employeeDisplay) descriptionParts.push(`NV: ${employeeDisplay}`)
   if (dateKey) {
     const [year, month, day] = dateKey.split('-')
     descriptionParts.push(`Ngày: ${day}/${month}/${year}`)
@@ -393,6 +397,8 @@ const mapApiSchedule = (item) => {
     employeeId: item?.idNhanVien || null,
     shiftId: item?.idCaLam || null,
     employeeName,
+    employeeCode,
+    employeeDisplay,
     dateKey,
     type: visual.type,
     icon: visual.icon,
@@ -444,6 +450,38 @@ const employeeSuggestions = computed(() => {
     .filter((employee) => employee.display.toLowerCase().includes(keyword))
     .slice(0, 20)
 })
+
+const employeeById = computed(() => {
+  return new Map(
+    employees.value
+      .filter((item) => Number(item?.id))
+      .map((item) => [Number(item.id), item])
+  )
+})
+
+const employeeByName = computed(() => {
+  return new Map(
+    employees.value
+      .filter((item) => String(item?.name || '').trim())
+      .map((item) => [String(item.name).trim().toLowerCase(), item])
+  )
+})
+
+const resolveEmployeeDisplay = (entry) => {
+  const current = entry || {}
+  const explicitCode = String(current.employeeCode || '').trim()
+  const explicitName = String(current.employeeName || '').trim()
+  if (explicitCode && explicitName) return `${explicitCode} - ${explicitName}`
+  if (explicitCode) return explicitCode
+
+  const fallback = employeeById.value.get(Number(current.employeeId || current.idNhanVien || 0))
+  if (fallback) return fallback.display
+
+  const fallbackByName = employeeByName.value.get(explicitName.toLowerCase())
+  if (fallbackByName) return fallbackByName.display
+
+  return current.employeeDisplay || current.employeeName || ''
+}
 
 const filteredSchedules = computed(() => {
   return schedules.value.filter((schedule) => {
@@ -568,7 +606,7 @@ const getEntriesByDate = (dateKey) => {
     startTime: schedule.startTime,
     endTime: schedule.endTime,
     status: schedule.status
-  })).filter((entry) => !entry.dateKey || entry.dateKey === dateKey)
+  })).filter((entry) => entry.dateKey === dateKey)
 }
 
 const goToday = () => {
@@ -892,23 +930,48 @@ const handleImportFile = async (event) => {
   lastImportedFile.value = file.name
   const extension = file.name.split('.').pop()?.toLowerCase()
 
-  if (extension !== 'csv') {
-    toast.info('Tạm thời hỗ trợ đọc CSV trực tiếp. File Excel sẽ được hỗ trợ ở bước tiếp theo.')
+  if (!['csv', 'xlsx', 'xls'].includes(extension)) {
+    toast.error('Chỉ hỗ trợ file CSV hoặc Excel (.xlsx, .xls)')
     event.target.value = ''
     return
   }
 
   importing.value = true
   try {
-    const text = await file.text()
-    const lines = text.split(/\r?\n/).filter(Boolean)
-    if (lines.length < 2) {
-      toast.error('File CSV không có dữ liệu hợp lệ')
-      importing.value = false
-      return
+    let rows = []
+
+    if (extension === 'csv') {
+      const text = await file.text()
+      const lines = text.split(/\r?\n/).filter(Boolean)
+      if (lines.length < 2) {
+        toast.error('File CSV không có dữ liệu hợp lệ')
+        importing.value = false
+        event.target.value = ''
+        return
+      }
+      rows = lines.slice(1).map((line) => line.split(/[,;\t]/).map((part) => part.trim()))
+    } else {
+      // Excel (.xlsx / .xls)
+      const buffer = await file.arrayBuffer()
+      const workbook = XLSX.read(buffer, { type: 'array' })
+      const sheetName = workbook.SheetNames[0]
+      if (!sheetName) {
+        toast.error('File Excel không có dữ liệu hợp lệ.')
+        importing.value = false
+        event.target.value = ''
+        return
+      }
+      const sheet = workbook.Sheets[sheetName]
+      const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+      if (jsonData.length < 2) {
+        toast.error('File Excel không có dữ liệu hợp lệ.')
+        importing.value = false
+        event.target.value = ''
+        return
+      }
+      rows = jsonData.slice(1).map((row) => row.map((cell) => String(cell ?? '').trim()))
     }
 
-    const rows = lines.slice(1).map((line) => line.split(/[,;\t]/).map((part) => part.trim()))
     const mapped = rows
       .map((row) => {
         const dateKey = normalizeDateKey(row[0])
@@ -924,11 +987,18 @@ const handleImportFile = async (event) => {
       })
       .filter(Boolean)
 
+    if (!mapped.length) {
+      toast.error('File Excel không có dữ liệu hợp lệ.')
+      importing.value = false
+      event.target.value = ''
+      return
+    }
+
     importedAssignments.value = mapped
-    toast.success(`Đã nhập ${mapped.length} bản ghi lịch làm việc`)
+    toast.success(`Import Thành Công! Đã nhập ${mapped.length} bản ghi lịch làm việc`)
   } catch (error) {
     console.error('Import file failed:', error)
-    toast.error('Không thể đọc file CSV')
+    toast.error('Không thể đọc file. Vui lòng kiểm tra lại định dạng.')
   } finally {
     importing.value = false
     event.target.value = ''

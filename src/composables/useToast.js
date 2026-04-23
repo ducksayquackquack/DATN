@@ -7,6 +7,9 @@ const SUCCESS_TOAST_DURATION = 3000
 const DUPLICATE_TOAST_WINDOW_MS = 800
 const recentToasts = new Map()
 
+// { id -> { timerId: ReturnType<setTimeout>|null, remainingMs: number, startedAt: number } }
+const toastTimers = new Map()
+
 export function useToast() {
   const showToast = (message, type = 'success', durationOrOptions = DEFAULT_TOAST_DURATION, maybeOptions = {}) => {
     const baseDuration = typeof durationOrOptions === 'number'
@@ -48,21 +51,41 @@ export function useToast() {
       action: options?.action || null
     })
 
-    setTimeout(() => {
+    const timerId = setTimeout(() => {
       const index = toasts.value.findIndex(t => t.id === id)
-      if (index > -1) {
-        toasts.value.splice(index, 1)
-      }
+      if (index > -1) toasts.value.splice(index, 1)
+      toastTimers.delete(id)
     }, duration)
+    toastTimers.set(id, { timerId, remainingMs: duration, startedAt: Date.now() })
 
     return id
   }
 
   const dismissToast = (id) => {
+    const info = toastTimers.get(id)
+    if (info?.timerId != null) clearTimeout(info.timerId)
+    toastTimers.delete(id)
     const index = toasts.value.findIndex((t) => t.id === id)
-    if (index > -1) {
-      toasts.value.splice(index, 1)
-    }
+    if (index > -1) toasts.value.splice(index, 1)
+  }
+
+  const pauseToast = (id) => {
+    const info = toastTimers.get(id)
+    if (!info || info.timerId == null) return
+    clearTimeout(info.timerId)
+    const elapsed = Date.now() - info.startedAt
+    toastTimers.set(id, { timerId: null, remainingMs: Math.max(400, info.remainingMs - elapsed), startedAt: info.startedAt })
+  }
+
+  const resumeToast = (id) => {
+    const info = toastTimers.get(id)
+    if (!info || info.timerId != null) return
+    const timerId = setTimeout(() => {
+      const index = toasts.value.findIndex(t => t.id === id)
+      if (index > -1) toasts.value.splice(index, 1)
+      toastTimers.delete(id)
+    }, info.remainingMs)
+    toastTimers.set(id, { ...info, timerId, startedAt: Date.now() })
   }
 
   const cartAdded = (payload = {}, duration = 5000) => {
@@ -77,6 +100,8 @@ export function useToast() {
     toasts,
     showToast,
     dismissToast,
+    pauseToast,
+    resumeToast,
     cartAdded,
     success: (msg, durationOrOptions, maybeOptions) => {
       if (durationOrOptions === undefined) {

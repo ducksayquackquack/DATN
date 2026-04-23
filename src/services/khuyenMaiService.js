@@ -1,7 +1,9 @@
 import axios from "axios"
+import { resolveApiOrigin } from "../utils/apiOrigin"
 
-const API = "http://localhost:8080/api/khuyen-mai"
-const VOUCHER_API = "http://localhost:8080/api/phieu-giam-gia"
+const API_ORIGIN = resolveApiOrigin().replace(/\/$/, "")
+const API = `${API_ORIGIN}/api/khuyen-mai`
+const VOUCHER_API = `${API_ORIGIN}/api/phieu-giam-gia`
 
 const VOUCHER_MAX_DISCOUNT_PRESETS = {
   PGG001: 2000000,

@@ -20,7 +20,7 @@ const PaymentReturn = () => import("../views/PaymentReturn.vue")
 const NotificationsPage = () => import("../views/shared/NotificationsPage.vue")
 
 const EmployeeLayout = () => import("../views/employee/EmployeeLayout.vue")
-const EmployeeGiaoCa = () => import("../views/employee/GiaoCaTest.vue")
+const EmployeeGiaoCa = () => import("../views/employee/GiaoCa.vue")
 const EmployeeGiaoCaLegacy = () => import("../views/employee/MoKetCaTest.vue")
 const EmployeeDangKyDoiCa = () => import("../views/employee/DangKyDoiCa.vue")
 const EmployeeProfileView = () => import("../views/employee/ProfileView.vue")

@@ -1,7 +1,7 @@
 import axios from "axios"
+import { resolveApiOrigin } from "../utils/apiOrigin"
 
-const API_BASE =
-  (import.meta.env.VITE_API_ORIGIN || "http://localhost:8080").replace(/\/$/, "")
+const API_BASE = `${resolveApiOrigin()}`
 
 export const searchChatProducts = async (params) => {
   try {
@@ -18,12 +18,12 @@ export const searchChatProducts = async (params) => {
           id: p.id,
           name: p.name || p.tenSanPham || "",
           summary: p.summary || p.moTa || "",
-          price: Number(p.price || p.giaBan || 0),
-          stock: Number(p.stock || 0),
+          price: Number(p.price || p.giaBan || p.giaTu || 0),
+          stock: Number(p.stock || p.soLuong || p.tongTon || 0),
           image: p.image || p.anh || null,
-          sizes: Array.isArray(p.sizes) ? p.sizes : [],
-          colors: Array.isArray(p.colors) ? p.colors : [],
-          category: p.category || p.loai || "",
+          sizes: Array.isArray(p.sizes) ? p.sizes : Array.isArray(p.kichThuoc) ? p.kichThuoc : [],
+          colors: Array.isArray(p.colors) ? p.colors : Array.isArray(p.mauSac) ? p.mauSac : [],
+          category: p.category || p.loai || p.danhMuc || "",
           defaultVariantId: p.defaultVariantId ?? null,
           defaultSize: p.defaultSize || "",
           defaultColor: p.defaultColor || ""

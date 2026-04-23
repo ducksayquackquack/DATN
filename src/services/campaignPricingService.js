@@ -1,9 +1,13 @@
 import axios from "axios";
+import { resolveApiOrigin } from "../utils/apiOrigin";
 
-const NODE_BACKEND = (import.meta.env.VITE_NODE_BACKEND_URL || "http://localhost:3000").replace(/\/$/, "");
+const NODE_BACKEND = String(import.meta.env.VITE_NODE_BACKEND_URL || "").trim().replace(/\/$/, "");
 const SPRING_API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api").replace(/\/$/, "");
 const SPRING_PRODUCTS_API = `${SPRING_API_BASE}/san-pham`;
 const SPRING_CAMPAIGNS_API = `${SPRING_API_BASE}/khuyen-mai`;
+const SAME_ORIGIN_API_BASE = `${resolveApiOrigin()}/api`.replace(/\/$/, "");
+const SAME_ORIGIN_PRODUCTS_API = `${SAME_ORIGIN_API_BASE}/san-pham`;
+const SAME_ORIGIN_CAMPAIGNS_API = `${SAME_ORIGIN_API_BASE}/khuyen-mai`;
 
 let cacheAt = 0;
 let cacheProductMap = new Map(); // productId -> { giaTri, ngayBatDau, ngayKetThuc, tenKhuyenMai, ... }
@@ -98,7 +102,9 @@ async function buildProductDiscountMap(force = false) {
     const nextMap = new Map();
     const nowDate = new Date();
 
-    const nodeRes = await axios.get(`${NODE_BACKEND}/api/khuyen-mai-products`).catch(() => null);
+    const nodeRes = NODE_BACKEND
+      ? await axios.get(`${NODE_BACKEND}/api/khuyen-mai-products`).catch(() => null)
+      : null;
     const nodeRows = Array.isArray(nodeRes?.data) ? nodeRes.data : [];
     for (const row of nodeRows) {
       if (!isCampaignActiveNow(row, nowDate)) continue;
@@ -110,10 +116,12 @@ async function buildProductDiscountMap(force = false) {
     }
 
     if (!nextMap.size) {
-      const [campaignRes, productsRes] = await Promise.all([
-        axios.get(SPRING_CAMPAIGNS_API).catch(() => null),
-        axios.get(SPRING_PRODUCTS_API, { params: { page: 0, size: 2000 } }).catch(() => null),
-      ]);
+      let campaignRes = await axios.get(SPRING_CAMPAIGNS_API).catch(() => null);
+      let productsRes = await axios.get(SPRING_PRODUCTS_API, { params: { page: 0, size: 2000 } }).catch(() => null);
+      if (!campaignRes || !productsRes) {
+        campaignRes = campaignRes || await axios.get(SAME_ORIGIN_CAMPAIGNS_API).catch(() => null);
+        productsRes = productsRes || await axios.get(SAME_ORIGIN_PRODUCTS_API, { params: { page: 0, size: 2000 } }).catch(() => null);
+      }
 
       const campaigns = unwrapList(campaignRes?.data);
       const products = unwrapList(productsRes?.data);

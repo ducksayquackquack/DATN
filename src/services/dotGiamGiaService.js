@@ -1,10 +1,15 @@
 import axios from "axios"
+import { resolveApiOrigin } from "../utils/apiOrigin"
 
-const NODE_BACKEND = (import.meta.env.VITE_NODE_BACKEND_URL || "http://localhost:3000").replace(/\/$/, "")
+const NODE_BACKEND = String(import.meta.env.VITE_NODE_BACKEND_URL || "").trim().replace(/\/$/, "")
+const API_ORIGIN = resolveApiOrigin().replace(/\/$/, "")
+const LOCAL_API_ORIGIN = "http://localhost:8080"
 
 const CANDIDATE_BASES = [
-  "http://localhost:8080/api/admin",
-  "http://localhost:8080/api"
+  `${API_ORIGIN}/api/admin`,
+  `${API_ORIGIN}/api`,
+  `${LOCAL_API_ORIGIN}/api/admin`,
+  `${LOCAL_API_ORIGIN}/api`
 ]
 
 const ENDPOINTS = {
@@ -79,8 +84,8 @@ const safeRequest = async (method, url, config = {}) => {
     return await axios({ method, url, ...config })
   } catch (error) {
     const status = Number(error?.response?.status || 0)
-    if (String(method || "get").toLowerCase() === "get" && status === 400) return null
-    if (status === 404 || status === 405) return null
+    const isGet = String(method || "get").toLowerCase() === "get"
+    if (isGet && (status === 400 || status === 404 || status === 405 || status >= 500)) return null
     throw error
   }
 }
@@ -97,7 +102,12 @@ const pickEndpoint = async (key) => {
   for (const base of CANDIDATE_BASES) {
     for (const path of paths) {
       const url = `${base}${path}`
-      const ok = await probeEndpoint(url)
+      let ok = false
+      try {
+        ok = await probeEndpoint(url)
+      } catch {
+        ok = false
+      }
       if (ok) {
         endpointCache.set(key, url)
         return url
@@ -369,7 +379,8 @@ export const discountService = {
     // Sync product associations via Node backend SQL endpoint
     let syncOk = false
     const doSync = async (productIds) => {
-      await axios.post(`${NODE_BACKEND}/api/khuyen-mai-products/sync`, {
+      const syncBase = NODE_BACKEND || API_ORIGIN
+      await axios.post(`${syncBase}/api/khuyen-mai-products/sync`, {
         khuyenMaiId: Number(id),
         sanPhamIds: (productIds || []).map(Number).filter(n => Number.isFinite(n) && n > 0)
       })
@@ -418,7 +429,8 @@ export const discountService = {
       console.warn('[syncProductAssociations] Không tìm được product ID nào từ variant IDs:', [...variantIdSet])
     }
 
-    await axios.post(`${NODE_BACKEND}/api/khuyen-mai-products/sync`, {
+    const syncBase = NODE_BACKEND || API_ORIGIN
+    await axios.post(`${syncBase}/api/khuyen-mai-products/sync`, {
       khuyenMaiId: Number(khuyenMaiId),
       sanPhamIds: productIds
     })
@@ -432,7 +444,8 @@ export const discountService = {
     if (!Number.isFinite(kmId) || kmId <= 0) return []
 
     try {
-      const res = await axios.get(`${NODE_BACKEND}/api/khuyen-mai-products/${kmId}`)
+      const syncBase = NODE_BACKEND || API_ORIGIN
+      const res = await axios.get(`${syncBase}/api/khuyen-mai-products/${kmId}`)
       const rows = Array.isArray(res?.data) ? res.data : []
       if (rows.length > 0) return rows
     } catch {

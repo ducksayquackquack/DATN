@@ -37,15 +37,15 @@ import img8 from "../../assets/img/Jackets/coach/coach-cach-nhiet.jpg?url"
 import img9 from "../../assets/img/Jackets/coach/coach-da-asos.jpg?url"
 import img10 from "../../assets/img/Jackets/coach/coach-gia-da.jpg?url"
 import img11 from "../../assets/img/Jackets/coach/coach-long-cuu.jpg?url"
-import img12 from "../../assets/img/Jackets/bomber/bomber-astronaut/bomber-astronaut-black.PNG?url"
-import img13 from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/bomer-embroidered-black.PNG?url"
-import img14 from "../../assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-black.PNG?url"
-import img15 from "../../assets/img/Jackets/coach/coach-leopard/coach-leopard.PNG?url"
-import img16 from "../../assets/img/Jackets/coach/coach-longsleeve/coach-longsleeve-black.PNG?url"
-import img17 from "../../assets/img/Jackets/coach/coach-tiger-stripe/coach-tiger-stripe.PNG?url"
-import img18 from "../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-black.PNG?url"
-import img19 from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-blue.PNG?url"
-import img20 from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-black.PNG?url"
+import img12 from "../../assets/img/Jackets/bomber/bomber-astronaut/IMG_4435.PNG?url"
+import img13 from "../../assets/img/Jackets/bomber/bomber-embroidered-fuzzy/IMG_4437.PNG?url"
+import img14 from "../../assets/img/Jackets/bomber/bomber-windbreaker/IMG_4432.PNG?url"
+import img15 from "../../assets/img/Jackets/coach/coach-leopard/IMG_4445.PNG?url"
+import img16 from "../../assets/img/Jackets/coach/coach-longsleeve/IMG_4442.PNG?url"
+import img17 from "../../assets/img/Jackets/coach/coach-tiger-stripe/IMG_4446.PNG?url"
+import img18 from "../../assets/img/Jackets/hoodie/hoodie-camo/IMG_4450.PNG?url"
+import img19 from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/IMG_4452.PNG?url"
+import img20 from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/IMG_4447.PNG?url"
 
 const route = useRoute()
 const router = useRouter()
@@ -62,9 +62,9 @@ const CONTACTS = [
 ]
 
 const faqSuggestions = [
-  "Làm thế nào để đặt hàng?",
-  "Phí vận chuyển là bao nhiêu?",
-  "Kiểm tra trạng thái đơn hàng"
+  "Bomber đen dưới 700k",
+  "Mình cao 1m68 nặng 58kg mặc size gì?",
+  "Đơn hàng của tôi đang ở đâu?"
 ]
 
 const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11, img12, img13, img14, img15, img16, img17, img18, img19, img20]
@@ -77,6 +77,8 @@ const isTyping = ref(false)
 const input = ref("")
 const bodyRef = ref(null)
 const botOnline = ref(typeof navigator !== "undefined" ? navigator.onLine : true)
+const chatBackendIssue = ref("")
+const lastBackendErrorLogAt = ref(0)
 const messages = ref([])
 const sessionId = ref(loadOrCreateSessionId())
 const sessionMemory = ref(loadSessionMemory())
@@ -189,22 +191,35 @@ const getFallbackImage = (id) => {
   return fallbackImages[(Math.max(n, 1) - 1) % fallbackImages.length]
 }
 
-const normalizeProduct = (product = {}) => ({
-  ...product,
-  id: Number(product.id || 0),
-  price: Number(product.price || 0),
-  stock: Number(product.stock || 0),
-  image: product.image && !String(product.image).startsWith("/chatbot/fallback/")
-    ? product.image
-    : getFallbackImage(product.id),
-  sizes: Array.isArray(product.sizes) ? product.sizes : [],
-  colors: Array.isArray(product.colors) ? product.colors : [],
-  category: product.category || "",
-  summary: product.summary || "",
-  defaultVariantId: product.defaultVariantId ?? null,
-  defaultSize: product.defaultSize || "",
-  defaultColor: product.defaultColor || ""
-})
+const normalizeProduct = (product = {}) => {
+  const normalizedId = Number(product.id || 0)
+
+  return {
+    ...product,
+    id: normalizedId,
+    name: product.name || product.tenSanPham || product.maSanPham || "",
+    price: Number(product.price || product.giaBan || product.giaTu || 0),
+    stock: Number(product.stock || product.soLuong || product.tongTon || 0),
+    image: product.image && !String(product.image).startsWith("/chatbot/fallback/")
+      ? product.image
+      : getFallbackImage(normalizedId || 1),
+    sizes: Array.isArray(product.sizes)
+      ? product.sizes
+      : Array.isArray(product.kichThuoc)
+        ? product.kichThuoc
+        : [],
+    colors: Array.isArray(product.colors)
+      ? product.colors
+      : Array.isArray(product.mauSac)
+        ? product.mauSac
+        : [],
+    category: product.category || product.loai || product.danhMuc || "",
+    summary: product.summary || product.moTa || "",
+    defaultVariantId: product.defaultVariantId ?? null,
+    defaultSize: product.defaultSize || "",
+    defaultColor: product.defaultColor || ""
+  }
+}
 
 function extractProducts(payload = {}) {
   const meta = safeJsonParse(payload?.metadataJson, {}) || {}
@@ -451,8 +466,9 @@ async function fetchSupportStatus() {
     const nextStatus = String(data?.sessionStatus || "OPEN").trim().toUpperCase()
     sessionStatus.value = nextStatus || "OPEN"
     applySessionState(nextStatus, data?.assignedEmployeeName || "")
+    clearBackendIssue()
   } catch (error) {
-    console.error("Không lấy được trạng thái hỗ trợ", error)
+    setBackendIssue("Không thể kết nối trạng thái chat. Hệ thống sẽ tự thử lại.", error)
     sessionStatus.value = "OPEN"
     supportMode.value = "BOT"
     supportLabel.value = "Bot đang hỗ trợ"
@@ -573,7 +589,7 @@ async function syncHistoryFromServer() {
       await syncScroll()
     }
   } catch (e) {
-    console.error("Không tải được lịch sử chat", e)
+    setBackendIssue("Không tải được lịch sử chat lúc này. Vui lòng kiểm tra kết nối.", e)
   }
 }
 
@@ -620,6 +636,25 @@ function scrollToBottom() {
   bodyRef.value.scrollTop = bodyRef.value.scrollHeight
 }
 
+function setBackendIssue(message, error = null) {
+  chatBackendIssue.value = String(message || "Kết nối chat đang gián đoạn.").trim()
+
+  const now = Date.now()
+  if (error && now - lastBackendErrorLogAt.value > 10000) {
+    lastBackendErrorLogAt.value = now
+    console.error("Chat backend issue:", error)
+  }
+}
+
+function clearBackendIssue() {
+  chatBackendIssue.value = ""
+}
+
+async function retryBackendConnection() {
+  await fetchSupportStatus()
+  await syncHistoryFromServer()
+}
+
 async function syncScroll() {
   await nextTick()
   scrollToBottom()
@@ -657,19 +692,54 @@ function pushUserMessage(text) {
     id: crypto.randomUUID(),
     role: "user",
     text,
-    statusLabel: "Đã nhận tin nhắn",
-    deliveryState: "Đã gửi",
-    readState: "Đã đọc",
+    statusLabel: "Đang gửi",
+    deliveryState: "Đang gửi",
+    readState: "Chưa đọc",
     createdAt: new Date().toISOString(),
     quickReplies: [],
     products: [],
     pending: true,
+    failed: false,
     serverId: null
   }
 
   messages.value.push(msg)
   sessionMemory.value.push({ role: "user", text })
   saveSessionMemory()
+}
+
+function updateLatestPendingUserMessage(state = "sent") {
+  const target = [...messages.value]
+    .reverse()
+    .find((item) => item?.role === "user" && item?.pending)
+
+  if (!target) return
+
+  const map = {
+    sent: {
+      statusLabel: "Đã gửi",
+      deliveryState: "Đã gửi",
+      readState: "Đã nhận",
+      pending: false,
+      failed: false
+    },
+    read: {
+      statusLabel: "Đã gửi",
+      deliveryState: "Đã gửi",
+      readState: "Đã đọc",
+      pending: false,
+      failed: false
+    },
+    failed: {
+      statusLabel: "Gửi lỗi",
+      deliveryState: "Gửi lỗi",
+      readState: "Chưa gửi",
+      pending: false,
+      failed: true
+    }
+  }
+
+  Object.assign(target, map[state] || map.sent)
 }
 
 function pushBotMessage(payload = {}) {
@@ -747,6 +817,7 @@ async function requestHumanSupportFromBot() {
     const responseProducts = extractProducts(data)
 
     applySessionState(nextStatus, data?.assignedEmployeeName || "")
+    clearBackendIssue()
 
     if (data?.message || data?.quickReplies?.length || responseProducts.length) {
       pushBotMessage({
@@ -1029,8 +1100,16 @@ async function submitMessage() {
     if (nextStatus) {
       applySessionState(nextStatus, data?.assignedEmployeeName || "")
     }
+    clearBackendIssue()
+    updateLatestPendingUserMessage("sent")
 
-    const shouldSuppressBotMessage = Boolean(data?.suppressBotMessage)
+    const isProductIntent = looksLikeProductSearch(text)
+    const waitingHumanButStillCanSuggest =
+      supportMode.value === "HUMAN" &&
+      sessionStatus.value === "WAITING_EMPLOYEE" &&
+      isProductIntent
+    const shouldSuppressBotMessage =
+      Boolean(data?.suppressBotMessage) && !waitingHumanButStillCanSuggest
     const finalProducts = serverProducts.length ? serverProducts : fallbackProducts
 
     const messageText =
@@ -1060,9 +1139,11 @@ async function submitMessage() {
         quickReplies,
         products: finalProducts
       })
+      updateLatestPendingUserMessage("read")
     }
   } catch (error) {
-    console.error("Gửi chat thất bại", error)
+    updateLatestPendingUserMessage("failed")
+    setBackendIssue("Không gửi được tin nhắn. Hệ thống sẽ thử lại khi kết nối ổn định.", error)
     pushBotMessage({
       mode: supportMode.value || "BOT",
       message:
@@ -1213,6 +1294,13 @@ onBeforeUnmount(() => {
         </header>
 
         <div ref="bodyRef" class="dw-chatbox__body">
+          <div v-if="chatBackendIssue" class="dw-backend-alert">
+            <span>{{ chatBackendIssue }}</span>
+            <div class="dw-backend-alert__actions">
+              <button type="button" @click="retryBackendConnection">Thử lại</button>
+            </div>
+          </div>
+
           <div v-if="supportMode === 'BOT' && sessionStatus === 'OPEN'" class="dw-support-cta">
             <button type="button" class="dw-support-cta__btn" @click="requestHumanSupportFromBot">
               Gặp nhân viên hỗ trợ
@@ -1483,11 +1571,54 @@ onBeforeUnmount(() => {
   gap: 14px;
 }
 
+.dw-backend-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #9f1239;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.dw-backend-alert__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dw-backend-alert button {
+  border: 1px solid #fda4af;
+  background: #fff;
+  color: #be123c;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 .dw-message {
   display: flex;
   flex-direction: column;
   gap: 6px;
   animation: dw-msg-in 0.3s ease both;
+  .dw-backend-alert {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .dw-backend-alert__actions {
+    width: 100%;
+    flex-direction: column;
+  }
+  .dw-backend-alert button {
+    width: 100%;
+  }
 }
 
 @keyframes dw-msg-in {
@@ -1719,7 +1850,11 @@ onBeforeUnmount(() => {
   box-shadow: 0 14px 28px rgba(0,0,0,0.16);
 }
 
-/* Hover contact pills disabled — only open on click */
+.dw-launcher-wrap:not(.is-open):hover .dw-contact-pill {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(calc(-84px * (var(--dw-index) + 1))) scale(1);
+}
 
 .dw-contact-pill:hover {
   filter: brightness(1.1);
@@ -1911,3 +2046,14 @@ onBeforeUnmount(() => {
   transform: scale(0.97);
 }
 </style>
+
+
+
+
+
+
+
+
+
+
+

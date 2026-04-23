@@ -187,4 +187,11 @@ const filteredData = computed(() => {
   gap:8px;
 }
 
+@media (max-width: 1024px) {
+  .head { flex-direction: column; align-items: flex-start; gap: 12px; }
+}
+@media (max-width: 768px) {
+  .body { overflow-x: auto; }
+  table { min-width: 600px; }
+}
 </style>

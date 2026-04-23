@@ -1,7 +1,7 @@
 import axios from "axios"
+import { resolveApiOrigin } from "../utils/apiOrigin"
 
-const API_BASE =
-  (import.meta.env.VITE_API_ORIGIN || "http://localhost:8080").replace(/\/$/, "")
+const API_BASE = `${resolveApiOrigin()}`
 
 export const sendChatMessage = (payload) =>
   axios.post(`${API_BASE}/api/chatbot/message`, payload)

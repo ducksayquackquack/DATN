@@ -487,17 +487,6 @@ const isSanPhamActive = computed(() => {
           <button v-if="sidebarCollapsed" class="topbar-hamburger" @click="toggleSidebar" aria-label="Mở sidebar">
             <Menu :size="22" />
           </button>
-          <div class="search topbar-search">
-            <button class="search-icon-btn" type="button" @click="handleGlobalSearch" aria-label="Tìm kiếm">
-              <Search size="18" />
-            </button>
-            <input
-              v-model="globalSearchText"
-              placeholder="Tìm mã hoá đơn, tên sản phẩm, khách hàng..."
-              @keyup.enter="handleGlobalSearch"
-            />
-          </div>
-
           <div class="userbox">
             <div class="time-display">
               <div class="time">{{ formatTime() }}</div>
@@ -542,9 +531,7 @@ const isSanPhamActive = computed(() => {
 
       <main class="wrap">
         <router-view v-slot="{ Component }">
-          <transition name="slide-up" mode="out-in">
-            <component :is="Component" />
-          </transition>
+          <component :is="Component" :key="$route.fullPath" />
         </router-view>
       </main>
     </div>
@@ -753,6 +740,13 @@ const isSanPhamActive = computed(() => {
   border-top: 1px solid rgba(255,255,255,0.08);
 }
 
+.userbox {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .time-display {
   display: flex;
   flex-direction: column;
@@ -901,5 +895,36 @@ const isSanPhamActive = computed(() => {
   display: grid;
   place-items: center;
   padding: 0 5px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1024px) {
+  .topbar .row { padding: 12px 16px; }
+  .time-display { display: none; }
+  .user-info { display: none; }
+  .avatar-wrapper { padding: 6px; }
+}
+
+@media (max-width: 768px) {
+  .app { grid-template-columns: 1fr !important; }
+  .sidebar {
+    position: fixed; top: 0; left: 0; z-index: 999;
+    width: 268px !important; height: 100vh;
+    opacity: 1 !important; pointer-events: auto !important;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+  }
+  .app:not(.sidebar-collapsed) .sidebar {
+    transform: translateX(0);
+  }
+  .app.sidebar-collapsed .sidebar {
+    transform: translateX(-100%);
+    width: 268px !important; padding: 10px !important;
+    opacity: 1 !important; pointer-events: auto !important;
+  }
+  .topbar .row { padding: 10px 12px; gap: 8px; }
+  .topbar-search { min-width: 0; max-width: none; }
+  .search { min-width: 0; padding: 8px 12px; }
+  .wrap { padding: 12px; }
 }
 </style>

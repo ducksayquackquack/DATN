@@ -25,9 +25,9 @@
           <li>Tìm sản phẩm hoodie</li>
           <li>SP001 còn hàng không?</li>
           <li>Đơn HD202401001 đang ở trạng thái gì?</li>
-          <li>Doanh thu tháng này là bao nhiêu?</li>
-          <li>Top 5 sản phẩm bán chạy</li>
-          <li>Nhân viên nào có lịch làm gần nhất?</li>
+          <li>Hiện có bao nhiêu chat chờ nhân viên?</li>
+          <li>Đơn trễ cần xử lý</li>
+          <li>Tồn thấp</li>
         </ul>
       </div>
 

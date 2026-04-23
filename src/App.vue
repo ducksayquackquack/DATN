@@ -1,6 +1,6 @@
 <script setup>
-import { computed, onBeforeUnmount, watchEffect } from "vue"
-import { useRoute } from "vue-router"
+import { computed, onBeforeUnmount, onMounted, watchEffect } from "vue"
+import { useRoute, useRouter } from "vue-router"
 import GlobalToast from "./components/GlobalToast.vue"
 import GlobalConfirmDialog from "./components/GlobalConfirmDialog.vue"
 import DirtyWaveChatbot from "./components/chat/DirtyWaveChatbot.vue"
@@ -10,9 +10,10 @@ import { useConfirm } from "./composables/useConfirm"
 import { useInternalAssistant } from "./composables/useInternalAssistant"
 
 const route = useRoute()
+const router = useRouter()
 const OPS_THEME_CLASS = "ops-theme"
 
-const { showToast, success, error, warning, info, cartAdded } = useToast()
+const { showToast, success, error, warning, info } = useToast()
 const { askAlert, askConfirm, askPrompt } = useConfirm()
 const {
   context: sharedAssistantContext,
@@ -32,8 +33,7 @@ window.toast = {
   success,
   error,
   warning,
-  info,
-  cartAdded
+  info
 }
 
 window.showToast = showToast
@@ -92,6 +92,18 @@ const internalAssistantRole = computed(() => {
 
 const internalAssistantSource = computed(() => {
   return internalAssistantRole.value === "ADMIN" ? "ADMIN_PANEL" : "EMPLOYEE_PANEL"
+})
+
+const handleAssistantAuthRequired = () => {
+  const currentPath = route.fullPath || route.path || ""
+  if (currentPath.startsWith("/auth/staff-login")) return
+
+  warning("Phiên đăng nhập nội bộ đã hết hạn. Vui lòng đăng nhập lại.")
+  router.push("/auth/staff-login")
+}
+
+onMounted(() => {
+  window.addEventListener("assistant:auth-required", handleAssistantAuthRequired)
 })
 
 const internalAssistantContext = computed(() => {
@@ -153,6 +165,7 @@ const internalAssistantContext = computed(() => {
 
 onBeforeUnmount(() => {
   document.body.classList.remove(OPS_THEME_CLASS)
+  window.removeEventListener("assistant:auth-required", handleAssistantAuthRequired)
 })
 </script>
 

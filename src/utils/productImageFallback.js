@@ -70,6 +70,27 @@ const normalizeColor = (value = "") =>
     .replace(/\s+/g, " ")
     .trim();
 
+const extractProductCodeNumber = (value = "") => {
+  const raw = String(value || "").trim().toUpperCase();
+  if (!raw) return 0;
+
+  const spMatch = raw.match(/^SP0*(\d+)$/i);
+  if (spMatch) return Number(spMatch[1] || 0);
+
+  const suffixMatch = raw.match(/-(\d+)$/);
+  if (suffixMatch) return Number(suffixMatch[1] || 0);
+
+  const trailingDigits = raw.match(/(\d+)$/);
+  if (trailingDigits) return Number(trailingDigits[1] || 0);
+
+  return 0;
+};
+
+const isCuratedCatalogCode = (value = "") => {
+  const codeNum = extractProductCodeNumber(value);
+  return Number.isFinite(codeNum) && codeNum >= 1 && codeNum <= 20;
+};
+
 const variantColorByCode = {
   SP002: {
     do: img2,
@@ -170,6 +191,31 @@ const normalize = (value = "") =>
     .replace(/\p{M}/gu, "")
     .toLowerCase();
 
+const normalizeProductCode = (rawCode = "") => {
+  const code = String(rawCode || "").trim().toUpperCase();
+  if (!code) return "";
+
+  const spMatch = code.match(/^SP\s*0*(\d+)$/i);
+  if (spMatch?.[1]) {
+    const n = Number(spMatch[1]);
+    if (Number.isFinite(n) && n > 0) return `SP${String(n).padStart(3, "0")}`;
+  }
+
+  const legacyMatch = code.match(/^ATID070-0*(\d+)$/i);
+  if (legacyMatch?.[1]) {
+    const n = Number(legacyMatch[1]);
+    if (Number.isFinite(n) && n > 0) return `SP${String(n).padStart(3, "0")}`;
+  }
+
+  const spctMatch = code.match(/^SPCT\s*0*(\d+)[A-Z]?$/i);
+  if (spctMatch?.[1]) {
+    const n = Number(spctMatch[1]);
+    if (Number.isFinite(n) && n > 0) return `SP${String(n).padStart(3, "0")}`;
+  }
+
+  return code;
+};
+
 const fallbackByName = [
   { keywords: ["bomber", "da", "lon"], image: img1 },
   { keywords: ["bomber", "dang", "lung"], image: img2 },
@@ -189,11 +235,20 @@ const fallbackByName = [
   { keywords: ["camo"], image: img18 },
   { keywords: ["zip", "boxy"], image: img19 },
   { keywords: ["zip", "silk"], image: img20 },
+  { keywords: ["gray", "hoodie"], image: img20b },
+  { keywords: ["grey", "hoodie"], image: img20b },
+  { keywords: ["xam", "hoodie"], image: img20b },
+  { keywords: ["ghi", "hoodie"], image: img20b },
 ];
 
 export const fallbackImageForProduct = ({ id, maSanPham, tenSanPham } = {}) => {
-  const code = String(maSanPham || "").trim().toUpperCase();
+  const rawCode = String(maSanPham || "").trim().toUpperCase();
+  const code = normalizeProductCode(rawCode);
   if (code && byCode[code]) return byCode[code];
+
+  if (!isCuratedCatalogCode(code)) {
+    return "";
+  }
 
   const nameNorm = normalize(tenSanPham);
   if (nameNorm) {
@@ -217,7 +272,7 @@ export const fallbackImageForVariant = ({
   tenMauSac,
   maChiTietSanPham,
 } = {}) => {
-  const code = String(maSanPham || "").trim().toUpperCase();
+  const code = normalizeProductCode(maSanPham || maChiTietSanPham || "");
   const color = normalizeColor(tenMauSac);
 
   if (code && color && variantColorByCode[code]) {
@@ -231,14 +286,60 @@ export const fallbackImageForVariant = ({
   }
 
   const varCode = String(maChiTietSanPham || "").trim().toUpperCase();
-  if (code && varCode && variantOrderFallback[code]?.length) {
-    const suffix = varCode.replace(/.*?(\d+)([A-Z]?)$/, "$2");
-    // A -> 0, B -> 1, C -> 2 ... to match variant letter ordering.
+  const canUseSuffixHeuristic = /^SPCT\s*\d+[A-Z]$/i.test(varCode) && !color;
+  if (code && canUseSuffixHeuristic && variantOrderFallback[code]?.length) {
+    const suffixMatch = varCode.match(/([A-Z])$/);
+    const suffix = suffixMatch?.[1] || "";
     const index = suffix ? Math.max(0, suffix.charCodeAt(0) - 65) : 0;
     const list = variantOrderFallback[code];
     if (list[index]) return list[index];
-    if (list[0]) return list[0];
   }
 
-  return fallbackImageForProduct({ id, maSanPham, tenSanPham });
+  return fallbackImageForProduct({ id, maSanPham: code || maSanPham, tenSanPham });
+};
+
+/**
+ * Universal fallback image resolver for displaying product images across ANY Vue component.
+ * Priority: 1) Exact product code match  2) Product name match  3) Numeric code mapping  4) Fallback image by ID
+ * This function is designed to gracefully handle new products created after initial development.
+ * 
+ * @param {number|string} id - Product/variant ID
+ * @param {string} code - Product code (e.g., 'SP024')
+ * @param {string} name - Product name (e.g., 'Gray Hoodie')
+ * @returns {string} Fallback image URL
+ */
+export const fallbackImageFor = (id = 0, code = "", name = "") => {
+  // Try exact product code match first
+  const normalizedCode = normalizeProductCode(code);
+  if (byCode[normalizedCode]) {
+    return byCode[normalizedCode];
+  }
+
+  // Try name-based fallback
+  const nameNorm = normalize(name);
+  if (nameNorm) {
+    const found = fallbackByName.find((item) => item.keywords.every((k) => nameNorm.includes(k)));
+    if (found?.image) return found.image;
+  }
+
+  if (!isCuratedCatalogCode(normalizedCode)) {
+    return "";
+  }
+
+  // Try numeric code mapping (SP001 → 1, extracts number after SP)
+  if (normalizedCode && /^SP\d+$/i.test(normalizedCode)) {
+    const digits = Number(String(normalizedCode).replace(/\D+/g, ""));
+    if (Number.isFinite(digits) && digits > 0 && digits <= fallbackImages.length) {
+      return fallbackImages[digits - 1] || fallbackImages[0];
+    }
+  }
+
+  // Final fallback: use ID modulo fallback array length
+  const n = Number(id);
+  if (Number.isFinite(n) && n > 0) {
+    return fallbackImages[(n - 1) % fallbackImages.length];
+  }
+
+  // Default to first image
+  return fallbackImages[0] || "";
 };

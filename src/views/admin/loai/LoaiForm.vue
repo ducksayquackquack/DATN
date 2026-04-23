@@ -5,7 +5,8 @@ import { ArrowLeft, Save, Trash2 } from "lucide-vue-next"
 import {
   createLoai,
   updateLoai,
-  getLoaiById
+  getLoaiById,
+  getAllLoai
 } from "../../../services/loaiService"
 
 const router = useRouter()
@@ -36,12 +37,42 @@ onMounted(async () => {
 })
 
 async function save() {
+  const trimmedName = form.name.trim()
+
+  if (!trimmedName) {
+    window.toast?.error?.("Vui lòng nhập tên loại")
+    return
+  }
+
+  // Chỉ cho phép chữ cái (Unicode), số và khoảng trắng
+  if (/[^\p{L}\p{N}\s]/u.test(trimmedName)) {
+    window.toast?.error?.("Tên loại không được chứa ký tự đặc biệt")
+    return
+  }
+
+  // Kiểm tra trùng tên
+  try {
+    const res = await getAllLoai()
+    const list = res.data || []
+    const duplicate = list.find(
+      (item) =>
+        item.tenLoai?.trim().toLowerCase() === trimmedName.toLowerCase() &&
+        String(item.id) !== String(id)
+    )
+    if (duplicate) {
+      window.toast?.error?.("Tên loại đã tồn tại")
+      return
+    }
+  } catch {
+    // Nếu không kiểm tra được, vẫn cho phép lưu
+  }
+
   const confirmed = await window.confirmDialog?.(id ? "Bạn có chắc muốn cập nhật loại này?" : "Bạn có chắc muốn tạo loại mới?") ?? confirm(id ? "Cập nhật loại?" : "Tạo loại mới?")
   if (!confirmed) return
 
   const payload = {
     maLoai: form.code,
-    tenLoai: form.name,
+    tenLoai: trimmedName,
     trangThai:
       form.status === 'Ngừng hoạt động'
         ? 'Ngừng hoạt động'
@@ -226,5 +257,10 @@ async function save() {
   color: #64748b;
   border-color: #cbd5e1;
   font-weight: 600;
+}
+@media (max-width: 768px) {
+  .head { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .body { overflow-x: auto; }
+  table { min-width: 500px; }
 }
 </style>

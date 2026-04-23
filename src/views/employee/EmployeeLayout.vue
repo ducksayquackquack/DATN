@@ -97,12 +97,6 @@
       <div class="topbar">
         <div class="row">
 
-          <div class="search">
-            <Search :size="18" :stroke-width="2" />
-            <input placeholder="Tìm hoá đơn / khách / sản phẩm..." />
-            <kbd>Ctrl K</kbd>
-          </div>
-
           <div class="user-menu">
             <div class="time-display">
               <div class="time">{{ formatTime() }}</div>
@@ -514,9 +508,10 @@ watch(() => route.fullPath, () => {
 }
 
 .user-menu {
-  display:flex;
-  gap:10px;
-  align-items:center;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-left: auto;
 }
 
 .time-display {
@@ -682,6 +677,31 @@ watch(() => route.fullPath, () => {
   display: grid;
   place-items: center;
   padding: 0 5px;
+}
+
+@media (max-width: 1024px) {
+  .time-display { display: none; }
+  .user-info { display: none; }
+}
+@media (max-width: 768px) {
+  .app { grid-template-columns: 1fr !important; }
+  .sidebar {
+    position: fixed; top: 0; left: 0; z-index: 999;
+    width: 268px !important; height: 100vh;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+  }
+  .app:not(.sidebar-collapsed) .sidebar {
+    transform: translateX(0);
+    opacity: 1 !important; pointer-events: auto !important;
+  }
+  .app.sidebar-collapsed .sidebar {
+    transform: translateX(-100%);
+    width: 268px !important; padding: 10px !important;
+    opacity: 1 !important; pointer-events: auto !important;
+  }
+  .topbar .row { padding: 10px 12px; gap: 8px; }
+  .wrap { padding: 12px; }
 }
 </style>
 

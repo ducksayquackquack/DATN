@@ -39,7 +39,7 @@ const EDGE_GAP = 16;
 const TOP_GAP = 96;
 const BOTTOM_GAP = 24;
 const PANEL_WIDTH = 420;
-const PANEL_HEIGHT = 680;
+const PANEL_HEIGHT = 1330;
 const CLICK_DRAG_THRESHOLD = 6;
 
 export default {
@@ -85,21 +85,19 @@ export default {
       };
     },
     panelStyle() {
-      const top = this.getPanelTop();
-      return {
-        top: `${top}px`,
-        left:
-          this.side === "left"
-            ? `${EDGE_GAP + LAUNCHER_SIZE + 12}px`
-            : "auto",
-        right:
-          this.side === "right"
-            ? `${EDGE_GAP + LAUNCHER_SIZE + 12}px`
-            : "auto",
-        width: `${PANEL_WIDTH}px`,
-        height: `${PANEL_HEIGHT}px`,
-      };
-    },
+  return {
+    top: "24px",
+    right: this.side === "right" ? "24px" : "auto",
+    left: this.side === "left" ? "24px" : "auto",
+
+    width: "50vw",
+    height: "50vh",
+    minWidth: "720px",
+    minHeight: "620px",
+    maxWidth: "960px",
+    maxHeight: "80vh",
+  };
+},
   },
   mounted() {
     this.restoreFloatingState();
@@ -185,9 +183,10 @@ export default {
     },
 
     getPanelTop() {
-      const preferred = this.y - 16;
-      const maxTop = Math.max(16, window.innerHeight - PANEL_HEIGHT - 16);
-      return Math.min(Math.max(preferred, 16), maxTop);
+      // const preferred = this.y - 16;
+      // const maxTop = Math.max(16, window.innerHeight - PANEL_HEIGHT - 16);
+      // return Math.min(Math.max(preferred, 16), maxTop);
+      return 16;
     },
 
     handleResize() {
@@ -284,8 +283,6 @@ export default {
 .assistant-floating-panel {
   position: fixed;
   pointer-events: auto;
-  max-width: calc(100vw - 110px);
-  max-height: calc(100vh - 32px);
   overflow: hidden;
   border-radius: 24px;
   background: #fff;

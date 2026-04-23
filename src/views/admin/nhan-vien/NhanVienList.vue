@@ -15,13 +15,6 @@
         >
           + Thêm nhân viên
         </router-link>
-        <router-link
-          class="btn"
-          to="/admin/lich-lam-viec/ca-lam"
-          style="margin-left:8px"
-        >
-          Ca làm việc
-        </router-link>
       </div>
 
       <div class="body">
@@ -51,13 +44,13 @@
         <table class="table">
           <thead>
             <tr>
-              <th style="width:90px">Mã</th>
-              <th>Nhân viên</th>
-              <th style="width:220px">Email</th>
-              <th style="width:160px">SĐT</th>
-              <th style="width:140px">Vai trò</th>
-              <th style="width:140px">Trạng thái</th>
-              <th style="width:160px" class="right">Thao tác</th>
+              <th style="width:80px">Mã</th>
+              <th style="width:220px">Nhân viên</th>
+              <th>Email</th>
+              <th style="width:140px">SĐT</th>
+              <th style="width:110px;text-align:center">Vai trò</th>
+              <th style="width:140px;text-align:center">Trạng thái</th>
+              <th style="width:90px;text-align:center">Thao tác</th>
             </tr>
           </thead>
 
@@ -78,13 +71,13 @@
 
               <td>{{ item.phone }}</td>
 
-              <td>
+              <td style="text-align:center">
                 <span class="pill">
                   {{ item.role === "Quản trị hệ thống" ? "ADMIN" : "STAFF" }}
                 </span>
               </td>
 
-              <td>
+              <td style="text-align:center">
                 <span
                   class="pill"
                   :class="`status-${getAdminStatusTone(item.status)}`"
@@ -93,25 +86,14 @@
                 </span>
               </td>
 
-              <td class="right">
-                <div class="actions" style="
-                  display:flex;
-                  justify-content:flex-end;
-                  align-items:center;
-                  gap:8px;
-                ">
-                  <router-link
-                    class="iconbtn"
-                    :to="`/admin/nhan-vien/form/${item.id}`"
-                  >
-                    <span class="material-icons-outlined">visibility</span>
-                  </router-link>
-
-                  <!-- Just UI icon for now -->
-                  <button class="iconbtn">
-                    <Key size="16"/>
-                  </button>
-                </div>
+              <td style="text-align:center">
+                <router-link
+                  class="iconbtn"
+                  :to="`/admin/nhan-vien/form/${item.id}`"
+                  style="margin:0 auto"
+                >
+                  <span class="material-icons-outlined">visibility</span>
+                </router-link>
               </td>
             </tr>
           </tbody>
@@ -139,7 +121,7 @@ import {
   getAllNhanVien,
   updateNhanVien
 } from "../../../services/nhanVienService"
-import { Key, Check } from "lucide-vue-next"
+import { Check } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel } from "../../../utils/adminStatus"
 
 const router = useRouter()
@@ -229,5 +211,14 @@ async function toggleStatus(item) {
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid #d8dee9;
+}
+
+@media (max-width: 1024px) {
+  .head { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .filter-input, .filter-select { width: 100%; }
+}
+@media (max-width: 768px) {
+  .body { overflow-x: auto; }
+  table { min-width: 700px; }
 }
 </style>

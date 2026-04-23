@@ -46,17 +46,17 @@
               class="form-control"
               placeholder="Mời nhập giảm theo %"
               min="1"
-              max="100"
+              max="99"
               :disabled="isLoading"
             />
             <div
               class="hint"
               v-if="
                 formData.giaTriGiamGia !== null &&
-                (formData.giaTriGiamGia < 1 || formData.giaTriGiamGia > 100)
+                (formData.giaTriGiamGia < 1 || formData.giaTriGiamGia >= 100)
               "
             >
-              Giá trị giảm phải nằm trong khoảng 1 - 100 (%).
+              Giá trị giảm phải nằm trong khoảng 1 - 99 (%).
             </div>
           </div>
 
@@ -706,7 +706,7 @@ const isVariantMatchedApplyTarget = (variant) => {
 
 const displayPercent = computed(() => {
   const v = Number(formData.giaTriGiamGia);
-  if (!Number.isFinite(v) || v < 1 || v > 100) return null;
+  if (!Number.isFinite(v) || v < 1 || v >= 100) return null;
   return Math.round(v);
 });
 
@@ -1367,13 +1367,13 @@ const canSubmit = computed(() => {
   if (dateError.value) return false;
   if (formData.giaTriGiamGia === null || formData.giaTriGiamGia === "") return false;
   const v = Number(formData.giaTriGiamGia);
-  if (Number.isNaN(v) || v < 1 || v > 100) return false;
+  if (Number.isNaN(v) || v < 1 || v >= 100) return false;
   return true;
 });
 
 const submitCreate = async () => {
   if (!canSubmit.value) {
-    notifyWarning("Vui lòng nhập đúng và đủ thông tin bắt buộc (tên, ngày, % giảm 1-100).");
+    notifyWarning("Vui lòng nhập đúng và đủ thông tin bắt buộc (tên, ngày, % giảm 1-99).");
     return;
   }
 

@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { createHoaDon, addHoaDonItem, updateHoaDon, updateHoaDonBySystemEvent } from "../../../services/hoaDonService"
 import { getAllSanPham } from "../../../services/sanPhamService"
-import { createKhachHang, getAllKhachHang } from "../../../services/KhachHangService"
+import { getAllKhachHang } from "../../../services/KhachHangService"
 import { getAllNhanVien, getNhanVienByTaiKhoanId } from "../../../services/nhanVienService"
 import { ArrowLeft, Plus } from "lucide-vue-next"
 import { appendPaymentFlowTag, PAYMENT_FLOW_TAGS } from "../../../utils/paymentWorkflow"
@@ -35,13 +35,7 @@ const paymentMethod = ref("CASH")
 const orderNote = ref("")
 const discount = ref(0)
 const selectedVoucher = ref(null)
-const creatingCustomer = ref(false)
-const showQuickCustomerForm = ref(false)
-const quickCustomer = ref({
-  tenKhachHang: "",
-  soDienThoai: "",
-  email: ""
-})
+
 
 // Form thêm sản phẩm
 const searchKeyword = ref("")
@@ -171,69 +165,6 @@ const resolveCustomerIdFromResponse = (response) => {
   return found ? Number(found) : null
 }
 
-const resetQuickCustomerForm = () => {
-  quickCustomer.value = { tenKhachHang: "", soDienThoai: "", email: "" }
-}
-
-const quickCreateCustomer = async () => {
-  const name = String(quickCustomer.value.tenKhachHang || "").trim()
-  const phone = normalizedPhone(quickCustomer.value.soDienThoai)
-  const email = String(quickCustomer.value.email || "").trim()
-
-  if (!name) {
-    window.toast?.warning?.("Vui lòng nhập tên khách hàng")
-    return
-  }
-  if (!isValidVietnamPhone(phone)) {
-    window.toast?.warning?.("Số điện thoại khách hàng không hợp lệ")
-    return
-  }
-
-  creatingCustomer.value = true
-  try {
-    const payloadCandidates = [
-      { tenKhachHang: name, soDienThoai: phone, email, trangThai: "Hoạt động" },
-      { tenKhachHang: name, soDienThoai: phone, taiKhoanEmail: email, trangThai: "Hoạt động" },
-      { tenKhachHang: name, soDienThoai: phone, trangThai: "Hoạt động" }
-    ]
-
-    let createdId = null
-    let lastError = null
-    for (const payload of payloadCandidates) {
-      try {
-        const createRes = await createKhachHang(payload)
-        createdId = resolveCustomerIdFromResponse(createRes)
-        if (createdId) break
-      } catch (error) {
-        lastError = error
-      }
-    }
-
-    const khRes = await getAllKhachHang(0, 200)
-    khachHangList.value = toList(khRes?.data)
-
-    if (!createdId) {
-      const found = khachHangList.value.find((kh) =>
-        normalizedPhone(kh?.soDienThoai) === phone && String(kh?.tenKhachHang || "").trim() === name
-      )
-      createdId = found?.id ? Number(found.id) : null
-    }
-
-    if (!createdId) {
-      throw lastError || new Error("Không lấy được khách hàng vừa tạo")
-    }
-
-    customerId.value = createdId
-    showQuickCustomerForm.value = false
-    resetQuickCustomerForm()
-    window.toast?.success?.("Tạo nhanh khách hàng thành công")
-  } catch (error) {
-    window.toast?.error?.(error?.response?.data?.message || error?.message || "Không thể tạo nhanh khách hàng")
-  } finally {
-    creatingCustomer.value = false
-  }
-}
-
 // Thêm biến thể vào đơn; nếu đã có → cộng dồn số lượng
 const addLine = () => {
   if (!selectedVariant.value) {
@@ -245,9 +176,10 @@ const addLine = () => {
     window.toast?.warning?.("Số lượng không hợp lệ")
     return
   }
+  const stock = Number(selectedVariant.value.soLuongTon || 0)
   const existed = lines.value.find((l) => Number(l.spctId) === Number(selectedVariant.value.spctId))
   const nextQty = (existed?.soLuong ?? 0) + qty
-  if (nextQty > selectedVariant.value.soLuongTon) {
+  if (nextQty > stock) {
     window.toast?.warning?.("Số lượng vượt tồn kho")
     return
   }
@@ -312,9 +244,16 @@ const submitPosOrder = async () => {
     const orderId = createRes?.data?.hoaDon?.id ?? createRes?.data?.id
     if (!orderId) throw new Error("Không lấy được mã hóa đơn bán tại quầy")
 
-    // Bước 3: thêm từng sản phẩm
+    // Bước 3: thêm từng sản phẩm (validate tồn kho lần cuối trước khi gửi)
     for (const line of lines.value) {
-      await addHoaDonItem(orderId, { spctId: line.spctId, soLuong: Number(line.soLuong), giaBan: Number(line.giaBan) })
+      const stockCap = Number(line.soLuongTon || 0)
+      const qty = Number(line.soLuong || 0)
+      if (stockCap > 0 && qty > stockCap) {
+        window.toast?.error?.(`Sản phẩm "${line.tenSanPham || line.maSanPhamChiTiet}" vượt tồn kho (${qty} > ${stockCap})`)
+        saving.value = false
+        return
+      }
+      await addHoaDonItem(orderId, { spctId: line.spctId, soLuong: qty, giaBan: Number(line.giaBan) })
     }
 
     const isVnpay = paymentMethod.value.toUpperCase() === "VNPAY"
@@ -452,45 +391,7 @@ onMounted(loadData)
                         {{ kh.tenKhachHang || `KH #${kh.id}` }}
                       </option>
                     </select>
-                    <div class="quick-customer">
-                      <button
-                        class="btn btn-sm"
-                        type="button"
-                        :disabled="creatingCustomer"
-                        @click="showQuickCustomerForm = !showQuickCustomerForm"
-                      >
-                        {{ showQuickCustomerForm ? "Ẩn tạo nhanh" : "Tạo nhanh khách hàng" }}
-                      </button>
 
-                      <div v-if="showQuickCustomerForm" class="quick-customer-form">
-                        <input
-                          v-model="quickCustomer.tenKhachHang"
-                          type="text"
-                          placeholder="Tên khách hàng"
-                          :disabled="creatingCustomer"
-                        />
-                        <input
-                          v-model="quickCustomer.soDienThoai"
-                          type="text"
-                          placeholder="Số điện thoại"
-                          :disabled="creatingCustomer"
-                        />
-                        <input
-                          v-model="quickCustomer.email"
-                          type="email"
-                          placeholder="Email (tùy chọn)"
-                          :disabled="creatingCustomer"
-                        />
-                        <div class="quick-customer-actions">
-                          <button class="btn btn-sm" type="button" :disabled="creatingCustomer" @click="resetQuickCustomerForm">
-                            Làm mới
-                          </button>
-                          <button class="btn btn-sm" type="button" :disabled="creatingCustomer" @click="quickCreateCustomer">
-                            {{ creatingCustomer ? "Đang tạo..." : "Tạo và chọn" }}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
                   </div>
 
                   <div class="field">

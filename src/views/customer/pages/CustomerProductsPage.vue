@@ -3,9 +3,10 @@ import { computed, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import CustomerPageLayout from "../../../components/customer/CustomerPageLayout.vue"
 import { getAllSanPham } from "../../../services/sanPhamService"
-import { getAllDanhMuc } from "../../../services/danhMucService"
 import { resolveApiOrigin } from "../../../utils/apiOrigin"
 import { getProductImageOverride } from "../../../utils/productImageOverrides"
+import { fallbackImageForVariant } from "../../../utils/productImageFallback"
+import { computeSoldBySpct, computeSoldBySpctDirect, variantAvailableStock } from "../../../utils/stockCalculation"
 import img1 from "../../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
 import img2 from "../../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
 import img3 from "../../../assets/img/Jackets/bomber/bomber-gia-da.jpg?url"
@@ -35,7 +36,7 @@ const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, "")
 const loading = ref(false)
 const errorMessage = ref("")
 const products = ref([])
-const danhMucOptions = ref([])
+const soldBySpct = ref(new Map())
 const search = ref(String(route.query.q || ""))
 const sortBy = ref("newest")
 const selectedCategories = ref([])
@@ -123,12 +124,23 @@ const sortOptions = [
   { value: "popular", label: "Bán chạy nhất" },
 ]
 
+const CATEGORY_OPTIONS = ["Hoodie", "Bomber", "Coach"]
+
 const toNumber = (value) => {
   const n = Number(value)
   return Number.isFinite(n) ? n : 0
 }
 
 const normalizeText = (value) => String(value || "").trim().toLowerCase()
+
+const toCanonicalCategory = (value = "") => {
+  const normalized = normalizeText(value)
+  if (!normalized) return ""
+  if (normalized.includes("hoodie")) return "Hoodie"
+  if (normalized.includes("bomber")) return "Bomber"
+  if (normalized.includes("coach")) return "Coach"
+  return ""
+}
 
 const normalizeProductKey = (value = "") =>
   String(value || "")
@@ -170,6 +182,25 @@ const fallbackIndexByName = (name = "") => {
 const resolveProductId = (item) => {
   const id = Number(item?.id ?? item?.idSanPham ?? item?.sanPhamId ?? item?.productId)
   return Number.isFinite(id) && id > 0 ? id : 0
+}
+
+const normalizeCatalogProductCode = (value = "") => {
+  const raw = String(value || "").trim().toUpperCase()
+  if (!raw) return ""
+
+  const spMatch = raw.match(/^SP0*(\d{1,3})$/i)
+  if (spMatch?.[1]) {
+    const n = Number(spMatch[1])
+    if (Number.isFinite(n) && n >= 1 && n <= 20) return `SP${String(n).padStart(3, "0")}`
+  }
+
+  const legacyMatch = raw.match(/^ATID070-0*(\d{1,3})$/i)
+  if (legacyMatch?.[1]) {
+    const n = Number(legacyMatch[1])
+    if (Number.isFinite(n) && n >= 1 && n <= 20) return `SP${String(n).padStart(3, "0")}`
+  }
+
+  return ""
 }
 
 const isAbsoluteUrl = (value) => /^https?:\/\//i.test(value) || /^data:image\//i.test(value)
@@ -283,6 +314,25 @@ const isActiveStatus = (value = "") => {
   return !normalized.includes("ngung") && !normalized.includes("inactive")
 }
 
+const variantAvailableStockValue = (variant) => variantAvailableStock(variant, soldBySpct.value)
+
+const variantRemainingStockValue = (variant) => {
+  const explicitRemaining = Number(
+    variant?.soLuongCon
+    ?? variant?.soLuongTon
+    ?? variant?.tonKhoCon
+    ?? variant?.tonCon
+    ?? variant?.con
+    ?? NaN
+  )
+
+  if (Number.isFinite(explicitRemaining) && explicitRemaining >= 0) {
+    return explicitRemaining
+  }
+
+  return variantAvailableStockValue(variant)
+}
+
 const normalizeProduct = (item) => {
   const allVariants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
   const variants = allVariants.filter((variant) => isActiveStatus(variant?.trangThai || variant?.status))
@@ -293,9 +343,11 @@ const normalizeProduct = (item) => {
     price = Math.min(...variantPrices)
   }
 
-  const stock = variants.length
-    ? variants.reduce((sum, v) => sum + toNumber(v?.soLuong), 0)
-    : toNumber(item?.soLuong || 0)
+  const stockSource = allVariants.length ? allVariants : variants
+  const fallbackItemStock = toNumber((item?.soLuongCon ?? item?.soLuongTon ?? item?.tonKhoCon ?? item?.soLuong) || 0)
+  const stock = stockSource.length
+    ? stockSource.reduce((sum, v) => sum + variantRemainingStockValue(v), 0)
+    : fallbackItemStock
 
   const imageCandidate = pickImageValue([
     item?.anh,
@@ -309,15 +361,35 @@ const normalizeProduct = (item) => {
 
   const id = resolveProductId(item)
   const code = String(item?.maSanPham || item?.ma || "")
-  const category = String(item?.danhMuc?.tenDanhMuc || item?.loai?.tenLoai || "Thời trang nam")
+  const normalizedCode = normalizeCatalogProductCode(code) || code.trim().toUpperCase()
+  const rawCategory = String(item?.danhMuc?.tenDanhMuc || item?.loai?.tenLoai || "Thời trang nam")
+  const category = toCanonicalCategory(`${rawCategory} ${item?.tenSanPham || item?.name || ""}`) || rawCategory
   const overrideImage = getProductImageOverride({ id, maSanPham: code })[0]
   const active = isActiveStatus(item?.trangThai || item?.status) && variants.length > 0
+
+  const firstVariant = variants[0] || null
+  const firstVariantColor = String(
+    firstVariant?.mauSac?.tenMau
+    || firstVariant?.mauSac?.tenMauSac
+    || firstVariant?.mauSac?.name
+    || firstVariant?.tenMau
+    || ''
+  ).trim()
+  const curatedPrimaryImage = Boolean(normalizeCatalogProductCode(normalizedCode))
+    ? (fallbackImageForVariant({
+        id: Number(firstVariant?.id || id || 0),
+        maSanPham: normalizeCatalogProductCode(normalizedCode) || normalizedCode,
+        tenSanPham: item?.tenSanPham || item?.name || "",
+        tenMauSac: firstVariantColor,
+        maChiTietSanPham: firstVariant?.maSanPhamChiTiet || firstVariant?.maChiTiet || "",
+      }) || "")
+    : ""
 
   return {
     id,
     name: String(item?.tenSanPham || item?.name || "Sản phẩm"),
     code,
-    image: overrideImage || imageCandidate || fallbackImageFor(id, code, item?.tenSanPham || item?.name),
+    image: overrideImage || curatedPrimaryImage || imageCandidate || fallbackImageFor(id, code, item?.tenSanPham || item?.name),
     category,
     categoryKey: normalizeText(category),
     price,
@@ -329,19 +401,7 @@ const normalizeProduct = (item) => {
 
 const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(toNumber(value)) + "₫"
 
-const categoryOptions = computed(() => {
-  const set = new Set()
-
-  for (const item of danhMucOptions.value) {
-    const name = String(item || '').trim()
-    if (name) set.add(name)
-  }
-
-  for (const item of products.value) {
-    if (item.category) set.add(item.category)
-  }
-  return [...set]
-})
+const categoryOptions = computed(() => CATEGORY_OPTIONS)
 
 const priceBounds = computed(() => {
   if (!products.value.length) {
@@ -443,22 +503,22 @@ const loadProducts = async () => {
   errorMessage.value = ""
 
   try {
-    const [productRes, danhMucRes] = await Promise.all([
+    const [productRes, soldMapFromSpring] = await Promise.all([
       getAllSanPham(),
-      getAllDanhMuc().catch(() => ({ data: [] }))
+      computeSoldBySpct().catch(() => new Map())
     ])
+    let soldMap = soldMapFromSpring instanceof Map ? soldMapFromSpring : new Map()
+    if (!soldMap.size) {
+      soldMap = await computeSoldBySpctDirect().catch(() => new Map())
+    }
+    soldBySpct.value = soldMap instanceof Map ? soldMap : new Map()
 
     const source = Array.isArray(productRes?.data) ? productRes.data : []
-    const danhMucRaw = Array.isArray(danhMucRes?.data) ? danhMucRes.data : []
-
-    danhMucOptions.value = danhMucRaw
-      .map((item) => String(item?.tenDanhMuc || item?.name || '').trim())
-      .filter(Boolean)
 
     products.value = source.map(normalizeProduct)
   } catch {
+    soldBySpct.value = new Map()
     products.value = []
-    danhMucOptions.value = []
     errorMessage.value = "Không thể tải danh sách sản phẩm."
   } finally {
     loading.value = false
@@ -640,6 +700,11 @@ onMounted(loadProducts)
   display: grid;
   grid-template-columns: 270px minmax(0, 1fr);
   gap: 20px;
+  padding: 14px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(197, 22, 45, 0.08), transparent 32%),
+    linear-gradient(180deg, #fff 0%, #fffafc 100%);
 }
 
 .cp-sidebar {
@@ -652,9 +717,10 @@ onMounted(loadProducts)
 
 .cp-side-block {
   background: #fff;
-  border: 1px solid #e8d8db;
-  border-radius: 12px;
+  border: 1px solid #ead6db;
+  border-radius: 14px;
   padding: 14px;
+  box-shadow: 0 8px 24px rgba(28, 12, 18, 0.06);
 }
 
 .cp-side-block h3,
@@ -739,6 +805,7 @@ onMounted(loadProducts)
 
 .cp-content {
   min-width: 0;
+  padding: 6px 8px 10px;
 }
 
 .cp-header h1 {
@@ -762,11 +829,12 @@ onMounted(loadProducts)
 .cp-toolbar input,
 .cp-toolbar select {
   height: 44px;
-  border: 1px solid #e8d8db;
+  border: 1px solid #ebd2d7;
   border-radius: 12px;
   padding: 0 14px;
   font: inherit;
   background-color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 .cp-toolbar select {
   padding-right: 34px;
@@ -790,21 +858,29 @@ onMounted(loadProducts)
 .cp-grid {
   margin-top: 16px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .cp-card {
   display: flex;
   flex-direction: column;
-  border: 1px solid #e8d8db;
-  border-radius: 16px;
+  border: 1px solid #ead6db;
+  border-radius: 18px;
   background: #fff;
   overflow: hidden;
+  box-shadow: 0 12px 30px rgba(56, 21, 33, 0.08);
+  transition: transform 0.24s ease, box-shadow 0.24s ease, border-color 0.24s ease;
+}
+
+.cp-card:hover {
+  transform: translateY(-4px);
+  border-color: #dba0aa;
+  box-shadow: 0 18px 38px rgba(56, 21, 33, 0.14);
 }
 
 .cp-card-image {
-  height: 300px;
+  height: 260px;
   background: #f8f1f3;
 }
 
@@ -878,11 +954,17 @@ onMounted(loadProducts)
   margin: 0 12px 12px;
   height: 40px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 12px;
   background: linear-gradient(135deg, #c5162d 0%, #8f1121 100%);
   color: #fff;
   font-weight: 700;
   cursor: pointer;
+  transition: transform 0.18s ease, filter 0.18s ease;
+}
+
+.cp-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
 }
 
 .cp-empty {

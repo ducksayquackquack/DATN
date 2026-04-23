@@ -1571,4 +1571,14 @@ onUnmounted(() => {
     transform: rotate(360deg);
   }
 }
+
+@media (max-width: 900px) {
+  .giao-ca-container { flex-direction: column; }
+  .ho-body { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+  .ho-header { flex-wrap: wrap; gap: 8px; }
+  .ss-footer { flex-wrap: wrap; gap: 8px; }
+  .handover-actions { flex-wrap: wrap; }
+}
 </style>

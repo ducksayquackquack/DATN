@@ -1,13 +1,13 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { createHoaDon, addHoaDonItem, updateHoaDon, updateHoaDonBySystemEvent, getAllHoaDon, getHoaDonById } from "../../../services/hoaDonService"
-import { getAllSanPham } from "../../../services/sanPhamService"
-import { createKhachHang, getAllKhachHang } from "../../../services/KhachHangService"
+import { createHoaDon, addHoaDonItem, updateHoaDon, updateHoaDonBySystemEvent } from "../../../services/hoaDonService"
+import { getAllSanPham, getSanPhamById } from "../../../services/sanPhamService"
+import { getAllKhachHang } from "../../../services/KhachHangService"
 import { getAllNhanVien, getNhanVienByTaiKhoanId } from "../../../services/nhanVienService"
 import { getDiaChiByKhachHang } from "../../../services/diaChiService"
 import { quoteShippingFeeAll } from "../../../services/shippingQuoteService"
-import { Plus, Search, Trash2, X, Minus, ShoppingBag, MapPin, Truck } from "lucide-vue-next"
+import { Plus, Search, X, Minus, ShoppingBag, MapPin, Truck } from "lucide-vue-next"
 import { appendPaymentFlowTag, PAYMENT_FLOW_TAGS } from "../../../utils/paymentWorkflow"
 import { buildOrderLookupTrackingUrl } from "../../../utils/publicTrackingUrl"
 import VoucherSelector from "../../../components/voucher/VoucherSelector.vue"
@@ -15,7 +15,7 @@ import { resolveApiOrigin } from "../../../utils/apiOrigin"
 import { getProductImageOverride, getProductImageConfig } from "../../../utils/productImageOverrides"
 import { fallbackImageForVariant } from "../../../utils/productImageFallback"
 import { getActiveCampaignMap } from "../../../services/campaignPricingService"
-import logoFallback from "../../../assets/img/logo/new logo.png?url"
+import logoFallback from "../../../assets/img/logo/DirtyWaveLogo.png?url"
 import img1 from "../../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
 import img2 from "../../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
 import img3 from "../../../assets/img/Jackets/bomber/bomber-gia-da.jpg?url"
@@ -65,7 +65,9 @@ const currentSellerName = ref("")
 
 const nhanVienList = ref([])
 const khachHangList = ref([])
+const detectedGuestCustomerId = ref(null)
 const variants = ref([])
+const soldQtyBySpctSnapshot = ref(new Map())
 
 const cashierId = ref(null)
 const customerId = ref(null)
@@ -74,26 +76,80 @@ const paymentMethod = ref("CASH")
 const orderNote = ref("")
 const discount = ref(0)
 const selectedVoucher = ref(null)
-const creatingCustomer = ref(false)
 const showCustomerSearchModal = ref(false)
 const showHeaderMenu = ref(false)
 const customerPhoneSearch = ref("")
 const customerDraftName = ref("")
 const customerSearchInputRef = ref(null)
-const quickCustomer = ref({ tenKhachHang: "", soDienThoai: "", email: "" })
 
 const lines = ref([])
 const showProductModal = ref(false)
 const productSearchKeyword = ref("")
 
 const MAX_POS_TABS = 5
+const MAX_POS_DRAFT_SIZE = 3_500_000
 const posTabs = ref([null]) // array of draft snapshots; null = empty tab
 const activeTabIndex = ref(0)
+
+const posLayoutRef = ref(null)
+const posLeftWidthPercent = ref(58)
+const isResizingPanels = ref(false)
+const POS_LEFT_MIN = 42
+const POS_LEFT_MAX = 74
+let resizeStartX = 0
+let resizeStartWidth = 58
+
+const clampPosLeftWidth = (value) => Math.min(POS_LEFT_MAX, Math.max(POS_LEFT_MIN, Number(value || 58)))
+
+const onPanelResizeMove = (event) => {
+  const rect = posLayoutRef.value?.getBoundingClientRect?.()
+  if (!rect?.width) return
+  const deltaPercent = ((Number(event?.clientX || 0) - resizeStartX) / rect.width) * 100
+  posLeftWidthPercent.value = clampPosLeftWidth(resizeStartWidth + deltaPercent)
+}
+
+const stopPanelResize = () => {
+  isResizingPanels.value = false
+  window.removeEventListener("mousemove", onPanelResizeMove)
+  window.removeEventListener("mouseup", stopPanelResize)
+}
+
+const startPanelResize = (event) => {
+  if (window.innerWidth <= 900) return
+  isResizingPanels.value = true
+  resizeStartX = Number(event?.clientX || 0)
+  resizeStartWidth = Number(posLeftWidthPercent.value || 58)
+  window.addEventListener("mousemove", onPanelResizeMove)
+  window.addEventListener("mouseup", stopPanelResize)
+}
 
 const getPosDraftKey = () => {
   const role = String(localStorage.getItem("role") || "").trim().toUpperCase()
   const userId = String(localStorage.getItem("userId") || "").trim()
   return `banhang:tabs:${role || "UNKNOWN"}:${userId || "0"}`
+}
+
+function compactVoucherForDraft(voucher) {
+  if (!voucher || typeof voucher !== "object") return null
+  return {
+    id: Number(voucher.id || 0) || null,
+    tenPhieuGiamGia: String(voucher.tenPhieuGiamGia || ""),
+    maPhieuGiamGia: String(voucher.maPhieuGiamGia || "")
+  }
+}
+
+function safeDraftStringify(payload) {
+  const seen = new WeakSet()
+  return JSON.stringify(payload, (key, value) => {
+    if (typeof value === "object" && value !== null) {
+      if (seen.has(value)) return undefined
+      seen.add(value)
+    }
+    if (typeof value === "string" && value.length > 500) {
+      return value.slice(0, 500)
+    }
+    return value
+  })
 }
 
 function captureTabState() {
@@ -102,7 +158,7 @@ function captureTabState() {
     paymentMethod: String(paymentMethod.value || "CASH"),
     orderNote: String(orderNote.value || ""),
     discount: Number(discount.value || 0),
-    selectedVoucher: selectedVoucher.value || null,
+    selectedVoucher: compactVoucherForDraft(selectedVoucher.value),
     cashierId: cashierId.value ? Number(cashierId.value) : null,
     customerId: customerId.value ? Number(customerId.value) : null,
     selectedAddressId: selectedAddressId.value ?? null,
@@ -147,6 +203,7 @@ function applyTabState(state) {
     }
   }
   shippingProvider.value = String(state.shippingProvider || "GHN")
+  restoreAddressCascade()
   const lineRows = Array.isArray(state.lines) ? state.lines : []
   const restored = []
   for (const row of lineRows) {
@@ -207,10 +264,24 @@ function clearPosDraft() {
 function persistPosDraft() {
   try {
     posTabs.value[activeTabIndex.value] = captureTabState()
-    localStorage.setItem(getPosDraftKey(), JSON.stringify({
+    let serialized = safeDraftStringify({
       activeIndex: activeTabIndex.value,
       tabs: posTabs.value
-    }))
+    })
+
+    if (!serialized || serialized.length > MAX_POS_DRAFT_SIZE) {
+      serialized = safeDraftStringify({
+        activeIndex: 0,
+        tabs: [posTabs.value[activeTabIndex.value] || null]
+      })
+    }
+
+    if (!serialized || serialized.length > MAX_POS_DRAFT_SIZE) {
+      clearPosDraft()
+      return
+    }
+
+    localStorage.setItem(getPosDraftKey(), serialized)
   } catch { /* ignore */ }
 }
 
@@ -218,6 +289,12 @@ function restorePosDraft() {
   try {
     const raw = localStorage.getItem(getPosDraftKey())
     if (!raw) { posTabs.value = [null]; activeTabIndex.value = 0; return }
+    if (raw.length > MAX_POS_DRAFT_SIZE) {
+      clearPosDraft()
+      posTabs.value = [null]
+      activeTabIndex.value = 0
+      return
+    }
     const data = JSON.parse(raw)
     if (data && Array.isArray(data.tabs) && data.tabs.length > 0) {
       posTabs.value = data.tabs
@@ -232,6 +309,7 @@ function restorePosDraft() {
     }
     applyTabState(posTabs.value[activeTabIndex.value])
   } catch {
+    clearPosDraft()
     posTabs.value = [null]
     activeTabIndex.value = 0
   }
@@ -242,18 +320,264 @@ const customerAddresses = ref([])
 const selectedAddressId = ref(null)
 const manualAddress = ref({ soDienThoai: "", diaChiCuThe: "", phuongXa: "", quanHuyen: "", tinhThanh: "" })
 
-// Payment modal
+// Payment (inline, no modal)
 const showPaymentModal = ref(false)
 const paymentCash = ref(0)
 const paymentBank = ref(0)
 
+// Product grid search
+const posProductSearch = ref("")
+
+// Variant picker
+const variantPickerProduct = ref(null)
+const showVariantPicker = ref(false)
+
+// QR payment
+const showQrModal = ref(false)
+const showQrPaidModal = ref(false)
+const qrOrderId = ref(null)
+const qrAmount = ref(0)
+const qrContent = ref("")
+const qrPolling = ref(false)
+const qrState = ref("preview")
+const qrSummary = ref(null)
+const qrIsTaiQuay = ref(true)
+let qrPollTimer = null
+
+// Default VietQR config (can be edited in QR modal)
+const DEFAULT_VIETQR_BANK_ID = "970422"
+const DEFAULT_VIETQR_ACCOUNT = "0982345671"
+const DEFAULT_VIETQR_ACCOUNT_NAME = "DIRTY WAVE STORE"
+
+const qrBankId = ref(DEFAULT_VIETQR_BANK_ID)
+const qrAccount = ref(DEFAULT_VIETQR_ACCOUNT)
+const qrAccountName = ref(DEFAULT_VIETQR_ACCOUNT_NAME)
+
+function buildVietQrUrl(amount, content) {
+  const amt = Math.round(Number(amount || 0))
+  const desc = encodeURIComponent(String(content || "").slice(0, 25))
+  const bankId = String(qrBankId.value || DEFAULT_VIETQR_BANK_ID).trim()
+  const account = String(qrAccount.value || "").trim()
+  const accountName = String(qrAccountName.value || DEFAULT_VIETQR_ACCOUNT_NAME).trim()
+  return `https://img.vietqr.io/image/${bankId}-${account}-compact2.png?amount=${amt}&addInfo=${desc}&accountName=${encodeURIComponent(accountName)}`
+}
+
+function openQrPayment(orderId, amount, content, isTaiQuay = true) {
+  qrOrderId.value = orderId
+  qrAmount.value = amount
+  qrContent.value = content
+  qrIsTaiQuay.value = isTaiQuay
+  qrState.value = "preview"
+  qrSummary.value = null
+  showQrModal.value = true
+}
+
+function clearPosTabAfterCheckout() {
+  if (posTabs.value.length > 1) {
+    posTabs.value.splice(activeTabIndex.value, 1)
+    if (activeTabIndex.value >= posTabs.value.length) activeTabIndex.value = posTabs.value.length - 1
+  } else {
+    posTabs.value = [null]
+    activeTabIndex.value = 0
+  }
+  persistPosDraft()
+}
+
+async function confirmQrDemoPayment() {
+  if (!qrOrderId.value || qrPolling.value) return
+
+  qrPolling.value = true
+  qrState.value = "processing"
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    const trackingUrl = buildOrderLookupTrackingUrl({ maHoaDon: qrContent.value })
+    if (qrIsTaiQuay.value) {
+      // POS order starts at CHO_LAY_HANG → HOAN_TAT_POS is valid
+      await updateHoaDonBySystemEvent(qrOrderId.value, "HOAN_TAT_POS", "Hoàn tất bán hàng tại quầy", trackingUrl)
+    } else {
+      // Online transfer is paid successfully, auto-close order to completed.
+      try {
+        await updateHoaDon(qrOrderId.value, {
+          orderStatusCode: "HOAN_THANH",
+          statusNote: appendPaymentFlowTag("[ONLINE] Đã xác nhận thanh toán chuyển khoản", PAYMENT_FLOW_TAGS.VN_PAY_EMPLOYEE_CONFIRMED, "NV xác nhận thanh toán")
+        })
+      } catch {
+        await updateHoaDonBySystemEvent(qrOrderId.value, "XAC_NHAN_DON_HANG", "Đã xác nhận thanh toán chuyển khoản", trackingUrl)
+      }
+    }
+
+    qrSummary.value = {
+      orderId: qrOrderId.value,
+      maHoaDon: qrContent.value,
+      amount: Number(qrAmount.value || 0),
+      customerName: selectedCustomerInfo.value?.tenKhachHang || "Khách lẻ",
+      phone: shippingPhone.value || selectedCustomerInfo.value?.soDienThoai || "—",
+      address: shippingAddressText.value || "Mua tại quầy",
+      items: lines.value.map((line) => ({
+        name: line.tenSanPham || line.tenSanPhamChiTiet || line.maSanPhamChiTiet || "Sản phẩm",
+        color: line.mauSac || "",
+        size: line.kichThuoc || "",
+        qty: Number(line.soLuong || 0),
+        price: Number(line.giaBan || 0),
+        total: Number(line.thanhTien ?? (Number(line.soLuong || 0) * Number(line.giaBan || 0))),
+        image: line.image || "",
+        maSanPham: line.maSanPham || "",
+        idSanPham: line.idSanPham || 0
+      }))
+    }
+
+    clearPosTabAfterCheckout()
+    showQrModal.value = false
+    qrState.value = "paid"
+    showQrPaidModal.value = true
+    window.toast?.success?.("Đã thanh toán thành công (demo)")
+  } catch (error) {
+    qrState.value = "preview"
+    window.toast?.error?.(error?.response?.data?.message || error?.message || "Không thể hoàn tất thanh toán")
+  } finally {
+    qrPolling.value = false
+  }
+}
+
+function openQrOrderDetail() {
+  const id = Number(qrSummary.value?.orderId || qrOrderId.value || 0)
+  if (!id) return
+  showQrPaidModal.value = false
+  router.push(`${panelBasePath.value}/hoa-don/detail/${id}`)
+}
+
+function closeQrPaidModal() {
+  showQrPaidModal.value = false
+  qrSummary.value = null
+}
+
+function clearQrPolling() {
+  if (qrPollTimer) { clearInterval(qrPollTimer); qrPollTimer = null }
+  qrPolling.value = false
+}
+
+function cancelQrPayment() {
+  clearQrPolling()
+  qrState.value = "preview"
+  qrSummary.value = null
+  showQrModal.value = false
+}
+
+function formatCampaignLabel(label, percent) {
+  const normalized = String(label || "").trim().replace(/clearance/gi, "Giảm giá")
+  return normalized || `Giảm ${Number(percent || 0)}%`
+}
+
+// Product grouping for grid display
+const productGroups = computed(() => {
+  const kw = posProductSearch.value.trim().toLowerCase()
+  const groupMap = new Map()
+  for (const v of variants.value) {
+    const key = Number(v.idSanPham || 0) || v.tenSanPham
+    if (!groupMap.has(key)) {
+      groupMap.set(key, {
+        idSanPham: v.idSanPham,
+        tenSanPham: v.tenSanPham,
+        maSanPham: v.maSanPham,
+        image: v.image,
+        giaBan: v.giaBan,
+        giaBanGoc: v.giaBanGoc,
+        campaignPercent: v.campaignPercent,
+        variants: []
+      })
+    }
+    groupMap.get(key).variants.push(v)
+  }
+  let groups = [...groupMap.values()]
+  // Set price range and best image
+  for (const g of groups) {
+    const prices = g.variants.map(v => v.giaBan).filter(Boolean)
+    const basePrices = g.variants.map(v => Number(v.giaBanGoc || v.giaBan || 0)).filter(Boolean)
+    const discountVariants = g.variants.filter((v) => Number(v.campaignPercent || 0) > 0)
+    const featuredVariant = [...g.variants].sort((a, b) => Number(b.soLuongTon || 0) - Number(a.soLuongTon || 0))[0]
+    g.minPrice = Math.min(...prices)
+    g.maxPrice = Math.max(...prices)
+    g.minBasePrice = basePrices.length ? Math.min(...basePrices) : g.minPrice
+    g.maxBasePrice = basePrices.length ? Math.max(...basePrices) : g.maxPrice
+    g.maxCampaignPercent = discountVariants.length
+      ? Math.max(...discountVariants.map((v) => Number(v.campaignPercent || 0)))
+      : 0
+    g.hasDiscount = g.maxCampaignPercent > 0 && (g.minBasePrice > g.minPrice || g.maxBasePrice > g.maxPrice)
+    const campaignNames = [...new Set(discountVariants.map((v) => String(v.campaignName || "").trim()).filter(Boolean))]
+    const primaryCampaignName = campaignNames[0] || ""
+    g.campaignLabel = g.hasDiscount ? formatCampaignLabel(primaryCampaignName, g.maxCampaignPercent) : ""
+    g.totalStock = g.variants.reduce((s, v) => s + Number(v.soLuongTon || 0), 0)
+    g.displayColor = String(featuredVariant?.tenMau || g.variants[0]?.tenMau || "").trim()
+    g.displaySize = String(featuredVariant?.tenSize || g.variants[0]?.tenSize || "").trim()
+    // Use first variant image that's not logoFallback
+    const bestImg = g.variants.find(v => v.image && v.image !== logoFallback)
+    g.image = bestImg?.image || g.image || fallbackImageFor(g.idSanPham, g.maSanPham, g.tenSanPham)
+  }
+  if (kw) {
+    groups = groups.filter(g =>
+      [g.tenSanPham, g.maSanPham, ...g.variants.map(v => [v.maSanPhamChiTiet, v.tenMau, v.tenSize].join(" "))].join(" ").toLowerCase().includes(kw)
+    )
+  }
+  return groups
+})
+
+async function syncGroupVariantsBeforeOpen(group) {
+  const productId = Number(group?.idSanPham || 0)
+  if (!Number.isFinite(productId) || productId <= 0) return group
+
+  try {
+    const detailRes = await getSanPhamById(productId)
+    const detailRaw = detailRes?.data?.data || detailRes?.data || null
+    if (!detailRaw || typeof detailRaw !== "object") return group
+
+    const freshVariants = flattenVariants([detailRaw], soldQtyBySpctSnapshot.value)
+      .filter((item) => Number(item?.idSanPham || 0) === productId)
+
+    if (!freshVariants.length) return group
+
+    return {
+      ...group,
+      idSanPham: productId,
+      tenSanPham: detailRaw?.tenSanPham || group?.tenSanPham,
+      maSanPham: detailRaw?.maSanPham || group?.maSanPham,
+      variants: freshVariants
+    }
+  } catch {
+    return group
+  }
+}
+
+async function handleProductClick(group) {
+  // Always show variant picker so staff can see size/color/ton kho even for single-variant products.
+  // Sync from backend first so modal never shows stale variant count.
+  const syncedGroup = await syncGroupVariantsBeforeOpen(group)
+  variantPickerProduct.value = syncedGroup
+  showVariantPicker.value = true
+}
+
+function pickVariant(variant) {
+  addProductFromModal(variant)
+  showVariantPicker.value = false
+  variantPickerProduct.value = null
+}
+
+// Quick money buttons
+const quickMoneyAmounts = computed(() => {
+  const total = grandTotal.value
+  if (total <= 0) return []
+  const amounts = [total]
+  const rounded = [Math.ceil(total / 10000) * 10000, Math.ceil(total / 50000) * 50000, Math.ceil(total / 100000) * 100000]
+  for (const r of rounded) {
+    if (r > total && !amounts.includes(r)) amounts.push(r)
+  }
+  amounts.push(500000, 1000000)
+  return [...new Set(amounts)].sort((a, b) => a - b).slice(0, 4)
+})
 
 function applyPaymentMode(mode) {
   if (mode === 'CASH') {
-    // Single method: keep cash editable by staff, clear the other field.
     paymentBank.value = 0
   } else if (mode === 'BANK') {
-    // Single method: keep bank editable by staff, clear the other field.
     paymentCash.value = 0
   }
 }
@@ -262,6 +586,99 @@ function applyPaymentMode(mode) {
 const shippingFee = ref(0)
 const shippingLoading = ref(false)
 const shippingProvider = ref("GHN")
+
+// Address combobox data (provinces API)
+const provinces = ref([])
+const districts = ref([])
+const wards = ref([])
+const loadingProvinces = ref(false)
+
+async function loadProvinces() {
+  if (provinces.value.length) return
+  loadingProvinces.value = true
+  try {
+    const res = await fetch("https://provinces.open-api.vn/api/?depth=1")
+    provinces.value = await res.json()
+  } catch { provinces.value = [] }
+  finally { loadingProvinces.value = false }
+}
+
+async function restoreAddressCascade() {
+  const { tinhThanh, quanHuyen } = manualAddress.value
+  if (!tinhThanh) return
+  await loadProvinces()
+  const province = provinces.value.find(p => p.name === tinhThanh)
+  if (!province) return
+  try {
+    const res = await fetch(`https://provinces.open-api.vn/api/p/${province.code}?depth=2`)
+    const data = await res.json()
+    districts.value = data.districts || []
+  } catch { districts.value = []; return }
+  if (!quanHuyen) return
+  const district = districts.value.find(d => d.name === quanHuyen)
+  if (!district) return
+  try {
+    const res = await fetch(`https://provinces.open-api.vn/api/d/${district.code}?depth=2`)
+    const data = await res.json()
+    wards.value = data.wards || []
+  } catch { wards.value = [] }
+}
+
+async function onManualProvinceChange() {
+  districts.value = []
+  wards.value = []
+  manualAddress.value.quanHuyen = ""
+  manualAddress.value.phuongXa = ""
+  await loadProvinces()
+  const province = provinces.value.find(p => p.name === manualAddress.value.tinhThanh)
+  if (!province) return
+  try {
+    const res = await fetch(`https://provinces.open-api.vn/api/p/${province.code}?depth=2`)
+    const data = await res.json()
+    districts.value = data.districts || []
+  } catch { districts.value = [] }
+}
+
+async function onManualDistrictFocus() {
+  if (districts.value.length || !manualAddress.value.tinhThanh) return
+  await loadProvinces()
+  const province = provinces.value.find(p => p.name === manualAddress.value.tinhThanh)
+  if (!province) return
+  try {
+    const res = await fetch(`https://provinces.open-api.vn/api/p/${province.code}?depth=2`)
+    const data = await res.json()
+    districts.value = data.districts || []
+  } catch { districts.value = [] }
+}
+
+async function onManualWardFocus() {
+  if (wards.value.length || !manualAddress.value.quanHuyen) return
+  const district = districts.value.find(d => d.name === manualAddress.value.quanHuyen)
+  if (!district) return
+  try {
+    const res = await fetch(`https://provinces.open-api.vn/api/d/${district.code}?depth=2`)
+    const data = await res.json()
+    wards.value = data.wards || []
+  } catch { wards.value = [] }
+}
+
+async function onManualDistrictChange() {
+  wards.value = []
+  manualAddress.value.phuongXa = ""
+  const district = districts.value.find(d => d.name === manualAddress.value.quanHuyen)
+  if (!district) return
+  try {
+    const res = await fetch(`https://provinces.open-api.vn/api/d/${district.code}?depth=2`)
+    const data = await res.json()
+    wards.value = data.wards || []
+  } catch { wards.value = [] }
+}
+
+function onManualPhoneInput(event) {
+  const raw = String(event?.target?.value || "")
+  const digits = raw.replace(/\D+/g, "")
+  manualAddress.value.soDienThoai = digits
+}
 
 const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11, img12, img13, img14, img15, img16, img17, img18, img19, img20]
 const mappedFallbackByCodeNum = {
@@ -287,7 +704,7 @@ const mappedFallbackByCodeNum = {
   20: img20
 }
 const mappedFallbackByCode = {
-  SP001: img1,   // Bomber da lộn
+  SP001: img1,   // Bomber da lớn
   SP002: img2,   // Bomber dáng lửng
   SP003: img3,   // Bomber da có túi
   SP004: img4,   // Bomber cotton nhẹ
@@ -382,7 +799,7 @@ const staticColorImageRulesByName = [
   { keywords: ["zip", "silk"], images: [img20, img20b, img20c] }
 ]
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ═══════ Helpers ═══════════════════════════════════════đ═══════════════════════════════════════đ═══════════════════════════════════════đ—đ—đ
 
 const toList = (value) => {
   if (Array.isArray(value)) return value
@@ -427,54 +844,10 @@ function isEntityActive(entity = {}, defaultValue = true) {
   return defaultValue
 }
 
-const shouldCountOrderForStock = (detail = {}) => {
-  const order = detail?.hoaDon || detail || {}
-  const statusCode = String(order?.orderStatusCode || detail?.orderStatusCode || "").trim().toUpperCase()
-  const fulfillmentCode = String(order?.fulfillmentStatusCode || detail?.fulfillmentStatusCode || "").trim().toUpperCase()
-  const statusText = normalizeStatusText(order?.orderStatusName || order?.trangThai || order?.status || "")
-  const noteText = normalizeStatusText(order?.statusNote || detail?.statusNote || "")
-
-  if (statusCode.includes("HUY") || statusText.includes("huy") || noteText.includes("huy") || statusText.includes("cancel")) {
-    return false
-  }
-
-  const isFinalOrder = detail?.finalOrder === true || String(order?.businessClosureStatus || "").toUpperCase() === "CLOSED"
-  return isFinalOrder || statusCode === "HOAN_THANH" || fulfillmentCode === "DELIVERED" || statusText.includes("hoan thanh")
-}
+import { computeSoldBySpct, variantAvailableStock as _variantAvailableStock, variantStockValue as _variantStockValue } from "@/utils/stockCalculation"
 
 async function loadSoldQtyBySpct() {
-  try {
-    const hoaDonRes = await getAllHoaDon()
-    const hoaDons = toList(hoaDonRes?.data)
-    const orderIds = hoaDons
-      .map((order) => Number(order?.id))
-      .filter((orderId) => Number.isFinite(orderId) && orderId > 0)
-
-    if (!orderIds.length) return new Map()
-
-    const detailResponses = await Promise.all(
-      orderIds.map((orderId) => getHoaDonById(orderId).catch(() => null))
-    )
-
-    const soldBySpct = new Map()
-
-    for (const detailRes of detailResponses) {
-      const detail = detailRes?.data
-      if (!detail || !shouldCountOrderForStock(detail)) continue
-
-      const items = toList(detail?.items || detail?.hoaDonChiTiets || detail?.chiTietHoaDons || detail?.chiTiets)
-      for (const item of items) {
-        const spctId = Number(item?.spctId || item?.sanPhamChiTietId || item?.idSanPhamChiTiet || item?.chiTietSanPhamId || 0)
-        const qty = Number(item?.soLuong || item?.quantity || item?.soLuongMua || 0)
-        if (!Number.isFinite(spctId) || spctId <= 0 || !Number.isFinite(qty) || qty <= 0) continue
-        soldBySpct.set(spctId, Number(soldBySpct.get(spctId) || 0) + qty)
-      }
-    }
-
-    return soldBySpct
-  } catch {
-    return new Map()
-  }
+  return computeSoldBySpct()
 }
 
 const toVariantList = (product) => {
@@ -512,15 +885,11 @@ function hasCoreOrFlameToken(name = "") {
 }
 
 function variantStockValue(variant) {
-  return Number(variant?.soLuong ?? variant?.soLuongTon ?? variant?.tonKho ?? variant?.ton ?? 0)
+  return _variantStockValue(variant)
 }
 
 function variantAvailableStockForPos(variant, soldBySpct = new Map()) {
-  const baseStock = variantStockValue(variant)
-  const spctId = Number(variant?.id || variant?.spctId || variant?.sanPhamChiTietId || 0)
-  if (!Number.isFinite(spctId) || spctId <= 0) return baseStock
-  const soldQty = Number(soldBySpct.get(spctId) || 0)
-  return Math.max(0, baseStock - soldQty)
+  return _variantAvailableStock(variant, soldBySpct)
 }
 
 function variantIdentityKeyForPos(variant) {
@@ -602,7 +971,7 @@ function mergeProductsForPos(products = []) {
 }
 
 const formatCurrency = (value) =>
-  new Intl.NumberFormat("vi-VN").format(Number(value || 0)) + "₫"
+  new Intl.NumberFormat("vi-VN").format(Number(value || 0)) + " đ"
 
 function isImageString(value = "") {
   const raw = String(value || "").trim()
@@ -648,6 +1017,12 @@ function normalizeSearchText(value = "") {
     .trim()
 }
 
+function normalizeDisplayName(value = "") {
+  return String(value || "")
+    .replace(/([\p{Ll}\p{Lo}\p{M}])I(?=[\p{Ll}\p{Lo}\p{M}])/gu, "$1i")
+    .trim()
+}
+
 function getMappedFallbackByName(name = "") {
   const normalized = normalizeProductKey(name)
   if (!normalized) return ""
@@ -680,7 +1055,9 @@ function fallbackImageFor(id, code = "", name = "") {
   const mappedByName = getMappedFallbackByName(name)
   if (mappedByName) return mappedByName
 
-  if (allowCuratedCodeMap) {
+  // Only use code-number mapping if product name also matches a known product line
+  const nameConfirmsCurated = !!getMappedFallbackByName(name)
+  if (allowCuratedCodeMap && nameConfirmsCurated) {
     const codeDigits = String(normalizedCode).replace(/\D+/g, "")
     const codeNum = Number(codeDigits)
     if (Number.isFinite(codeNum) && codeNum > 0 && mappedFallbackByCodeNum[codeNum]) {
@@ -688,27 +1065,8 @@ function fallbackImageFor(id, code = "", name = "") {
     }
   }
 
-  const normalizedId = Number(id)
-  if (Number.isFinite(normalizedId) && normalizedId > 0) {
-    if (allowCuratedCodeMap && mappedFallbackByCodeNum[normalizedId]) return mappedFallbackByCodeNum[normalizedId]
-    const nameIndex = fallbackIndexByName(name)
-    if (nameIndex >= 0) return fallbackImages[nameIndex] || logoFallback
-    return fallbackImages[(normalizedId - 1) % fallbackImages.length]
-  }
-
-  const digits = String(code || "").replace(/\D+/g, "")
-  const codeNum = Number(digits)
-  if (Number.isFinite(codeNum) && codeNum > 0) {
-    if (allowCuratedCodeMap && mappedFallbackByCodeNum[codeNum]) return mappedFallbackByCodeNum[codeNum]
-    const nameIndex = fallbackIndexByName(name)
-    if (nameIndex >= 0) return fallbackImages[nameIndex] || logoFallback
-    return fallbackImages[(codeNum - 1) % fallbackImages.length]
-  }
-
-  const nameIndex = fallbackIndexByName(name)
-  if (nameIndex >= 0) return fallbackImages[nameIndex] || logoFallback
-
-  return fallbackImages[0] || logoFallback
+  // For products without a name match, return the logo fallback
+  return logoFallback
 }
 
 function extractProductCodeNumber(value = "") {
@@ -892,7 +1250,7 @@ function buildVariantLabel(product, variant, options = {}) {
   const colorName = normalizeDisplayColorName(variant?.mauSac?.tenMauSac || variant?.mauSac?.tenMau)
   if (sizeName) parts.push(`Size ${sizeName}`)
   if (includeColor && colorName) parts.push(colorName)
-  return parts.filter(Boolean).join(" • ")
+  return parts.filter(Boolean).join(" ⬢ ")
 }
 
 const flattenVariants = (products, soldBySpct = new Map()) =>
@@ -905,6 +1263,28 @@ const flattenVariants = (products, soldBySpct = new Map()) =>
     const productCode = String(product?.maSanPham || product?.ma || "").trim().toUpperCase()
 
     const activeVariants = toVariantList(product).filter((variant) => isEntityActive(variant, true))
+
+    // If product has no variants at all, create a synthetic entry so it appears in POS
+    if (!activeVariants.length) {
+      const productDirectImage = pickImageValue(product)
+      const resolvedImage =
+        productDirectImage ||
+        (overrideImage ? toImageUrl(overrideImage) : "") ||
+        fallbackImageFor(product?.id, productCode, product?.tenSanPham)
+      return [{
+        spctId: product.id,
+        maSanPham: productCode,
+        maSanPhamChiTiet: productCode,
+        tenSanPham: product.tenSanPham || "Sản phẩm",
+        label: product.tenSanPham || "Sản phẩm",
+        tenMau: "",
+        tenSize: "",
+        idSanPham: Number(product?.id || 0),
+        giaBan: Number(product?.giaBan ?? 0),
+        soLuongTon: Number(product?.soLuong ?? product?.soLuongTon ?? 0),
+        image: resolvedImage
+      }]
+    }
 
     return activeVariants.map((v) => {
       const colorId = hideColorForProduct ? 0 : Number(v?.mauSac?.id || v?.mauSacId || v?.idMauSac || 0)
@@ -927,19 +1307,24 @@ const flattenVariants = (products, soldBySpct = new Map()) =>
         : ""
       const priorityStaticImage = hasStaticPalette ? staticColorImage : ""
       const codeNum = extractProductCodeNumber(productCode)
-      const hasCuratedImage = !!(staticColorImageMap[codeNum] || mappedFallbackByCodeNum[codeNum] || mappedFallbackByCode[productCode])
+      // Only use curated images for products whose name actually matches a known product line
+      const nameMatchesCurated = !!(getMappedFallbackByName(product?.tenSanPham))
+      const hasCuratedImage = nameMatchesCurated && !!(staticColorImageMap[codeNum] || mappedFallbackByCodeNum[codeNum] || mappedFallbackByCode[productCode])
       const forcedCatalogImage =
         /^SP\d+$/i.test(productCode) && hasCuratedImage
           ? (staticColorImage || fallbackImageFor(product?.id, productCode, product?.tenSanPham))
           : ""
+      // API images always take priority over static fallbacks
+      // BUT: if we have a color-matched static image from a known palette, prefer it
+      // over generic API images that may not be color-specific
       const resolvedImage =
-        forcedCatalogImage ||
         priorityStaticImage ||
         variantDirectImage ||
+        productDirectImage ||
+        forcedCatalogImage ||
         configColorResolved ||
         staticColorImage ||
         configGalleryImage ||
-        productDirectImage ||
         (overrideImage ? toImageUrl(overrideImage) : "") ||
         fallbackImageForVariant({
           id: Number(product?.id || 0),
@@ -985,7 +1370,7 @@ const availableStockForVariant = (variant) => {
 
 const rawStockForVariant = (variant) => Number(variant?.soLuongTon || 0)
 
-// ─── Computed ────────────────────────────────────────────────────────────────
+// ═══════ Computed ═══════════════════════════════════════đ═══════════════════════════════════════đ═══════════════════════════════════════đ—đ
 
 const filteredProductVariants = computed(() => {
   const kw = productSearchKeyword.value.trim().toLowerCase()
@@ -1040,6 +1425,107 @@ const selectedCustomerPhone = computed(() =>
   String(selectedCustomerInfo.value?.soDienThoai || "").trim()
 )
 
+const POS_GUEST_CACHE_KEY = "pos:guest-customer-id"
+const POS_GUEST_ENV_ID = Number(import.meta.env.VITE_POS_GUEST_CUSTOMER_ID || 0)
+
+const normalizeLooseText = (value = "") =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+const isGuestLikeCustomer = (kh = {}) => {
+  const name = normalizeLooseText(kh?.tenKhachHang || "")
+  const code = normalizeLooseText(kh?.maKhachHang || "")
+  const email = normalizeLooseText(kh?.email || kh?.taiKhoan?.email || "")
+  return (
+    name.includes("khach le") ||
+    name.includes("khach vang lai") ||
+    name.includes("guest") ||
+    code.includes("khachle") ||
+    code.includes("guest") ||
+    email.startsWith("guest")
+  )
+}
+
+const guestCustomerCandidate = computed(() => {
+  const list = Array.isArray(khachHangList.value) ? khachHangList.value : []
+  return list.find((kh) => isGuestLikeCustomer(kh)) || null
+})
+
+async function detectGuestCustomerIdAcrossPages() {
+  try {
+    const immediateId = Number(guestCustomerCandidate.value?.id || 0)
+    if (immediateId > 0) {
+      detectedGuestCustomerId.value = immediateId
+      try { localStorage.setItem(POS_GUEST_CACHE_KEY, String(immediateId)) } catch { /* ignore */ }
+      return immediateId
+    }
+
+    const pageSize = 200
+    let page = 0
+    let totalPages = 1
+    const maxPages = 20
+
+    while (page < totalPages && page < maxPages) {
+      const res = await getAllKhachHang(page, pageSize)
+      const payload = res?.data
+      const list = toList(payload)
+      const matched = list.find((kh) => isGuestLikeCustomer(kh))
+      const matchedId = Number(matched?.id || 0)
+      if (matchedId > 0) {
+        detectedGuestCustomerId.value = matchedId
+        try { localStorage.setItem(POS_GUEST_CACHE_KEY, String(matchedId)) } catch { /* ignore */ }
+        return matchedId
+      }
+
+      const parsedTotalPages = Number(payload?.totalPages || 0)
+      if (Number.isFinite(parsedTotalPages) && parsedTotalPages > 0) {
+        totalPages = parsedTotalPages
+      } else if (list.length < pageSize) {
+        break
+      } else {
+        totalPages = page + 2
+      }
+      page += 1
+    }
+  } catch { /* ignore */ }
+  return null
+}
+
+function resolveFallbackCustomerId() {
+  if (guestCustomerCandidate.value?.id) {
+    const resolvedId = Number(guestCustomerCandidate.value.id)
+    if (resolvedId) {
+      try { localStorage.setItem(POS_GUEST_CACHE_KEY, String(resolvedId)) } catch { /* ignore */ }
+      return resolvedId
+    }
+  }
+
+  const cachedId = Number(localStorage.getItem(POS_GUEST_CACHE_KEY) || 0)
+  if (cachedId > 0) {
+    return cachedId
+  }
+
+  if (Number(detectedGuestCustomerId.value || 0) > 0) {
+    return Number(detectedGuestCustomerId.value)
+  }
+
+  if (POS_GUEST_ENV_ID > 0) {
+    try { localStorage.setItem(POS_GUEST_CACHE_KEY, String(POS_GUEST_ENV_ID)) } catch { /* ignore */ }
+    return POS_GUEST_ENV_ID
+  }
+
+  // Do not fallback to a real customer id (e.g. #1) because it will attach
+  // guest orders to real customer profiles.
+  return null
+}
+
 const defaultStatusCode = computed(() =>
   paymentMethod.value.toUpperCase() === "VNPAY" ? "CHO_LAY_HANG" : "HOAN_THANH"
 )
@@ -1049,12 +1535,25 @@ const selectedAddress = computed(() => {
   return customerAddresses.value.find((a) => Number(a.id) === Number(selectedAddressId.value)) || null
 })
 
+const hasManualAddressInput = computed(() => {
+  const a = manualAddress.value || {}
+  return [a.soDienThoai, a.diaChiCuThe, a.tinhThanh, a.quanHuyen, a.phuongXa].some((v) => String(v || "").trim())
+})
+
+const useManualAddress = computed(() => {
+  if (taiQuay.value) return false
+  if (selectedAddress.value) return false
+  if (selectedAddressId.value === "manual") return true
+  if (!customerAddresses.value.length) return true
+  return hasManualAddressInput.value
+})
+
 const shippingAddressText = computed(() => {
   if (taiQuay.value) return "Mua tại quầy"
   if (selectedAddress.value) {
     return [selectedAddress.value.diaChiCuThe, selectedAddress.value.phuongXa, selectedAddress.value.quanHuyen, selectedAddress.value.tinhThanh].filter(Boolean).join(", ")
   }
-  if (selectedAddressId.value === "manual") {
+  if (useManualAddress.value) {
     return [manualAddress.value.diaChiCuThe, manualAddress.value.phuongXa, manualAddress.value.quanHuyen, manualAddress.value.tinhThanh].filter(Boolean).join(", ")
   }
   return ""
@@ -1063,7 +1562,7 @@ const shippingAddressText = computed(() => {
 const shippingPhone = computed(() => {
   if (taiQuay.value) return ""
   if (selectedAddress.value) return selectedAddress.value.soDienThoai || ""
-  if (selectedAddressId.value === "manual") return manualAddress.value.soDienThoai || ""
+  if (useManualAddress.value) return manualAddress.value.soDienThoai || ""
   return selectedCustomerInfo.value?.soDienThoai || ""
 })
 
@@ -1071,19 +1570,19 @@ const shippingPhone = computed(() => {
 const shippingProvince = computed(() => {
   if (taiQuay.value) return ""
   if (selectedAddress.value) return selectedAddress.value.tinhThanh || ""
-  if (selectedAddressId.value === "manual") return manualAddress.value.tinhThanh || ""
+  if (useManualAddress.value) return manualAddress.value.tinhThanh || ""
   return ""
 })
 const shippingDistrict = computed(() => {
   if (taiQuay.value) return ""
   if (selectedAddress.value) return selectedAddress.value.quanHuyen || ""
-  if (selectedAddressId.value === "manual") return manualAddress.value.quanHuyen || ""
+  if (useManualAddress.value) return manualAddress.value.quanHuyen || ""
   return ""
 })
 const shippingWard = computed(() => {
   if (taiQuay.value) return ""
   if (selectedAddress.value) return selectedAddress.value.phuongXa || ""
-  if (selectedAddressId.value === "manual") return manualAddress.value.phuongXa || ""
+  if (useManualAddress.value) return manualAddress.value.phuongXa || ""
   return ""
 })
 
@@ -1123,12 +1622,33 @@ watch([taiQuay, shippingProvider, shippingProvince, shippingDistrict, shippingWa
 watch(customerId, async (newId) => {
   customerAddresses.value = []
   selectedAddressId.value = null
-  if (!newId) return
+  if (!newId) {
+    if (!taiQuay.value) selectedAddressId.value = "manual"
+    return
+  }
   try {
     const res = await getDiaChiByKhachHang(newId)
-    customerAddresses.value = Array.isArray(res?.data) ? res.data : []
-    if (customerAddresses.value.length) selectedAddressId.value = Number(customerAddresses.value[0].id)
-  } catch { /* no addresses */ }
+    const raw = Array.isArray(res?.data) ? res.data : []
+    const addrKey = a => [a.diaChiCuThe, a.phuongXa, a.quanHuyen, a.tinhThanh].filter(Boolean).join('|')
+    customerAddresses.value = [...new Map(raw.map(a => [addrKey(a), a])).values()]
+    if (customerAddresses.value.length) {
+      selectedAddressId.value = Number(customerAddresses.value[0].id)
+    } else {
+      selectedAddressId.value = "manual"
+    }
+  } catch {
+    selectedAddressId.value = "manual"
+  }
+})
+
+// Load provinces when switching to delivery mode
+watch(taiQuay, (val) => {
+  if (!val) {
+    loadProvinces()
+    if (!selectedAddress.value && !customerAddresses.value.length) {
+      selectedAddressId.value = "manual"
+    }
+  }
 })
 
 watch(
@@ -1151,7 +1671,7 @@ watch(
   { deep: true }
 )
 
-// ─── Cart actions ────────────────────────────────────────────────────────────
+// ═══════ Cart actions ═══════════════════════════════════════đ═══════════════════════════════════════đ════════════════════════════════đ—đ—đ
 
 function addProductFromModal(variant) {
   const available = availableStockForVariant(variant)
@@ -1165,12 +1685,17 @@ function addProductFromModal(variant) {
   } else {
     lines.value.push({ ...variant, soLuong: 1 })
   }
-  showProductModal.value = false
-  productSearchKeyword.value = ""
+  window.toast?.success?.(`Đã thêm ${variant.tenSanPham}`)
+}
+
+function getLineMaxQty(line) {
+  const currentQty = Number(line?.soLuong || 0)
+  return currentQty + availableStockForVariant(line)
 }
 
 function incQty(line) {
-  if (line.soLuong >= line.soLuongTon) {
+  const maxQty = getLineMaxQty(line)
+  if (line.soLuong >= maxQty) {
     window.toast?.warning?.("Đã đạt tồn kho tối đa")
     return
   }
@@ -1183,13 +1708,14 @@ function decQty(line) {
 
 function setQty(line, value) {
   const num = Math.floor(Number(value) || 0)
+  const maxQty = getLineMaxQty(line)
   if (num <= 0) {
     line.soLuong = 1
     window.toast?.warning?.("Số lượng phải lớn hơn 0")
     return
   }
-  if (num > line.soLuongTon) {
-    line.soLuong = line.soLuongTon
+  if (num > maxQty) {
+    line.soLuong = maxQty
     window.toast?.warning?.("Số lượng không được vượt tồn kho")
     return
   }
@@ -1202,7 +1728,16 @@ function removeLine(index) {
 
 const applyDiscount = (amount) => { discount.value = Number(amount || 0) }
 
-const onImgError = (e) => { e.target.src = logoFallback }
+const onImgError = (e) => {
+  const img = e?.target
+  if (!img) return
+  if (img.dataset.fallbackApplied === "1") {
+    img.onerror = null
+    return
+  }
+  img.dataset.fallbackApplied = "1"
+  img.src = logoFallback
+}
 
 function openPaymentModal() {
   if (!lines.value.length) { window.toast?.warning?.("Chưa có sản phẩm trong đơn"); return }
@@ -1217,12 +1752,14 @@ function openPaymentModal() {
 }
 
 function confirmPayment() {
-  if (paymentRemaining.value > 0) { window.toast?.warning?.("Số tiền nhập chưa đủ"); return }
-  showPaymentModal.value = false
+  // For BANK (chuyển khoản) skip the paymentRemaining check — QR will be shown after order creation
+  if (paymentMethod.value !== 'BANK' && paymentRemaining.value > 0) {
+    window.toast?.warning?.("Số tiền nhập chưa đủ"); return
+  }
   submitPosOrder()
 }
 
-// ─── Quick customer ──────────────────────────────────────────────────────────
+// ═══════ Quick customer ═══════════════════════════════════════đ═══════════════════════════════════════đ════════════════════════════════đ
 
 const normalizedPhone = (value) => String(value || "").replace(/\s+/g, "")
 const canonicalPhone = (value) => {
@@ -1250,14 +1787,9 @@ const hasExactPhoneMatch = computed(() => {
   return khachHangList.value.some((kh) => canonicalPhone(kh?.soDienThoai) === keyword)
 })
 
-const canCreateCustomerFromSearch = computed(() =>
-  isValidVietnamPhone(customerPhoneSearch.value) && !hasExactPhoneMatch.value
-)
-
 const openCustomerSearchModal = async () => {
   showCustomerSearchModal.value = true
   customerPhoneSearch.value = selectedCustomerPhone.value || ""
-  customerDraftName.value = selectedCustomerInfo.value?.tenKhachHang || ""
   await nextTick()
   customerSearchInputRef.value?.focus?.()
 }
@@ -1268,7 +1800,7 @@ const closeCustomerSearchModal = () => {
 
 const selectCustomerFromSearch = (customer) => {
   customerId.value = Number(customer?.id) || null
-  customerPhoneSearch.value = String(customer?.soDienThoai || "")
+  customerPhoneSearch.value = ""
   customerDraftName.value = String(customer?.tenKhachHang || "")
   closeCustomerSearchModal()
 }
@@ -1280,74 +1812,14 @@ const selectFirstCustomerFromSearch = () => {
 
 const chooseGuestCustomer = () => {
   customerId.value = null
+  customerAddresses.value = []
+  selectedAddressId.value = "manual"
   customerPhoneSearch.value = ""
-  customerDraftName.value = ""
   closeCustomerSearchModal()
   window.toast?.success?.("Đã chọn khách lẻ")
 }
 
-const resolveCustomerIdFromResponse = (response) => {
-  const candidates = [response?.data?.id, response?.data?.data?.id, response?.data?.khachHang?.id, response?.data?.content?.id]
-  return Number(candidates.find((id) => Number(id) > 0)) || null
-}
-
-const resetQuickCustomerForm = () => {
-  quickCustomer.value = { tenKhachHang: "", soDienThoai: "", email: "" }
-}
-
-const quickCreateCustomer = async (options = {}) => {
-  const name = String(quickCustomer.value.tenKhachHang || "").trim()
-  const phone = normalizedPhone(quickCustomer.value.soDienThoai)
-  const email = String(quickCustomer.value.email || "").trim()
-  if (!name) { window.toast?.warning?.("Vui lòng nhập tên khách hàng"); return }
-  if (!isValidVietnamPhone(phone)) { window.toast?.warning?.("Số điện thoại không hợp lệ"); return }
-
-  creatingCustomer.value = true
-  try {
-    const payloadCandidates = [
-      { tenKhachHang: name, soDienThoai: phone, email, trangThai: "Hoạt động" },
-      { tenKhachHang: name, soDienThoai: phone, taiKhoanEmail: email, trangThai: "Hoạt động" },
-      { tenKhachHang: name, soDienThoai: phone, trangThai: "Hoạt động" }
-    ]
-    let createdId = null
-    let lastError = null
-    for (const payload of payloadCandidates) {
-      try {
-        const createRes = await createKhachHang(payload)
-        createdId = resolveCustomerIdFromResponse(createRes)
-        if (createdId) break
-      } catch (error) { lastError = error }
-    }
-    const khRes = await getAllKhachHang(0, 200)
-    khachHangList.value = toList(khRes?.data)
-    if (!createdId) {
-      const found = khachHangList.value.find((kh) => normalizedPhone(kh?.soDienThoai) === phone && String(kh?.tenKhachHang || "").trim() === name)
-      createdId = found?.id ? Number(found.id) : null
-    }
-    if (!createdId) throw lastError || new Error("Không lấy được khách hàng vừa tạo")
-    customerId.value = createdId
-    customerDraftName.value = name
-    customerPhoneSearch.value = phone
-    if (options.closeCustomerModal) closeCustomerSearchModal()
-    resetQuickCustomerForm()
-    window.toast?.success?.("Tạo nhanh khách hàng thành công")
-  } catch (error) {
-    window.toast?.error?.(error?.response?.data?.message || error?.message || "Không thể tạo nhanh khách hàng")
-  } finally {
-    creatingCustomer.value = false
-  }
-}
-
-const createCustomerFromSearch = async () => {
-  quickCustomer.value = {
-    tenKhachHang: customerDraftName.value,
-    soDienThoai: customerPhoneSearch.value,
-    email: ""
-  }
-  await quickCreateCustomer({ closeCustomerModal: true })
-}
-
-// ─── Employee context ────────────────────────────────────────────────────────
+// ═══════ Employee context ═══════════════════════════════════════đ═══════════════════════════════════════đ════════════════════đ═══════—đ
 
 const resolveCurrentSellerContext = async () => {
   // Try to get nhanVien linked to the current taiKhoan
@@ -1389,12 +1861,34 @@ const resolveCurrentSellerContext = async () => {
   return null
 }
 
-// ─── Submit POS order ────────────────────────────────────────────────────────
+// ═══════ Submit POS order ═══════════════════════════════════════đ═══════════════════════════════════════đ════════════════════đ═══════—đ
 
 const submitPosOrder = async () => {
   if (!cashierId.value) { window.toast?.warning?.("Vui lòng chọn nhân viên bán hàng"); return }
   if (!lines.value.length) { window.toast?.warning?.("Chưa có sản phẩm trong đơn"); return }
   if (!taiQuay.value && !shippingAddressText.value) { window.toast?.warning?.("Vui lòng chọn địa chỉ giao hàng"); return }
+
+  const selectedCustomer = khachHangList.value.find((kh) => Number(kh.id) === Number(customerId.value)) ?? null
+  const orderType = taiQuay.value ? "POS" : "ONLINE"
+  const addressText = shippingAddressText.value || "Mua tại quầy"
+  const phoneRaw = shippingPhone.value || selectedCustomer?.soDienThoai || ""
+  const phone = canonicalPhone(phoneRaw)
+
+  if (!taiQuay.value && useManualAddress.value) {
+    const hasAllAddressParts = Boolean(
+      String(manualAddress.value.diaChiCuThe || "").trim() &&
+      String(manualAddress.value.tinhThanh || "").trim() &&
+      String(manualAddress.value.quanHuyen || "").trim()
+    )
+    if (!hasAllAddressParts) {
+      window.toast?.warning?.("Vui lòng nhập số nhà, tỉnh và quận/huyện (phường/xã có thể bỏ trống)")
+      return
+    }
+    if (!phone || !/^0\d{8,10}$/.test(phone)) {
+      window.toast?.warning?.("Số điện thoại nhận hàng không hợp lệ")
+      return
+    }
+  }
 
   const invalidQtyLines = lines.value.filter((l) => Number(l.soLuong || 0) <= 0)
   if (invalidQtyLines.length) {
@@ -1404,24 +1898,48 @@ const submitPosOrder = async () => {
 
   saving.value = true
   try {
-    const selectedCustomer = khachHangList.value.find((kh) => Number(kh.id) === Number(customerId.value)) ?? null
-    const orderType = taiQuay.value ? "POS" : "DELIVERY"
-    const addressText = shippingAddressText.value || "Mua tại quầy"
-    const phone = shippingPhone.value || selectedCustomer?.soDienThoai || ""
+    let effectiveCustomerId = Number(selectedCustomer?.id || 0) || null
+    if (!effectiveCustomerId) {
+      effectiveCustomerId = resolveFallbackCustomerId()
+    }
 
+    const effectiveCustomer = khachHangList.value.find((kh) => Number(kh?.id) === Number(effectiveCustomerId)) || selectedCustomer
     const shipCost = taiQuay.value ? 0 : Number(shippingFee.value || 0)
+    const apiPayMethod = resolveApiPaymentMethod(paymentMethod.value)
+    const orderStatusCode = orderType === "POS"
+      ? (paymentMethod.value.toUpperCase() === "VNPAY" || paymentMethod.value.toUpperCase() === "BANK" ? "CHO_LAY_HANG" : "HOAN_THANH")
+      : (paymentMethod.value.toUpperCase() === "VNPAY" ? "CHO_LAY_HANG" : "CHO_XAC_NHAN")
+    const statusNote = `[${orderType}] ${orderNote.value || "Đơn bán hàng"}`
+    const normalizedPhone = phone || canonicalPhone(effectiveCustomer?.soDienThoai || "")
 
     const createPayload = {
       nhanVienId: Number(cashierId.value),
-      soDienThoaiNhanHang: phone,
+      soDienThoaiNhanHang: normalizedPhone,
       diaChiNhanHang: addressText,
       phiShip: shipCost,
-      phuongThucThanhToan: resolveApiPaymentMethod(paymentMethod.value),
+      giaSauGiamGia: Number(discount.value || 0),
+      thanhTien: Number(grandTotal.value || 0),
+      phuongThucThanhToan: apiPayMethod,
+      orderStatusCode,
+      statusNote,
       orderType
     }
-    if (selectedCustomer?.id) createPayload.khachHangId = Number(selectedCustomer.id)
+    if (effectiveCustomerId) createPayload.khachHangId = Number(effectiveCustomerId)
 
+    // Validate tồn kho lần cuối trước khi gửi API
+    for (const line of lines.value) {
+      const stockCap = Number(line.soLuongTon || 0)
+      const qty = Number(line.soLuong || 0)
+      if (stockCap > 0 && qty > stockCap) {
+        window.toast?.error?.(`Sản phẩm "${line.tenSanPham || line.maSanPhamChiTiet}" vượt tồn kho (${qty} > ${stockCap})`)
+        saving.value = false
+        return
+      }
+    }
+
+    console.log('[POS] createPayload:', JSON.stringify(createPayload))
     const createRes = await createHoaDon(createPayload)
+    console.log('[POS] createRes:', JSON.stringify(createRes?.data))
     const orderId = createRes?.data?.hoaDon?.id ?? createRes?.data?.id
     if (!orderId) throw new Error("Không lấy được mã hóa đơn")
 
@@ -1430,23 +1948,24 @@ const submitPosOrder = async () => {
     }
 
     const isVnpay = paymentMethod.value.toUpperCase() === "VNPAY"
-    const apiPayMethod = resolveApiPaymentMethod(paymentMethod.value)
+    const isBank = paymentMethod.value.toUpperCase() === "BANK"
 
     try {
       const updatePayload = {
         nhanVienId: Number(cashierId.value),
-        soDienThoaiNhanHang: phone,
+        soDienThoaiNhanHang: normalizedPhone,
         diaChiNhanHang: addressText,
         phiShip: shipCost,
         giaSauGiamGia: Number(discount.value || 0),
         thanhTien: Number(grandTotal.value || 0),
         phuongThucThanhToan: apiPayMethod,
+        orderStatusCode,
         orderType,
         statusNote: isVnpay
           ? appendPaymentFlowTag(`[${orderType}] ${orderNote.value || "Đơn bán hàng"}`, PAYMENT_FLOW_TAGS.VN_PAY_EMPLOYEE_CONFIRMED, "NV xác nhận VNPay")
           : `[${orderType}] ${orderNote.value || "Đơn bán hàng"}`
       }
-      if (selectedCustomer?.id) updatePayload.khachHangId = Number(selectedCustomer.id)
+      if (effectiveCustomerId) updatePayload.khachHangId = Number(effectiveCustomerId)
       await updateHoaDon(orderId, updatePayload)
     } catch (updateErr) {
       console.warn("updateHoaDon failed, retrying without extra fields:", updateErr)
@@ -1459,7 +1978,11 @@ const submitPosOrder = async () => {
       } catch { /* order was already created, continue */ }
     }
 
-    if (taiQuay.value && !isVnpay) {
+    // For BANK (chuyển khoản): show QR payment modal instead of completing POS
+    if (isBank) {
+      const maHoaDon = createRes?.data?.hoaDon?.maHoaDon ?? createRes?.data?.maHoaDon ?? `HD${orderId}`
+      openQrPayment(orderId, grandTotal.value, maHoaDon, taiQuay.value)
+    } else if (taiQuay.value && !isVnpay) {
       try {
         const trackingUrl = buildOrderLookupTrackingUrl({ maHoaDon: createRes?.data?.hoaDon?.maHoaDon || createRes?.data?.maHoaDon })
         await updateHoaDonBySystemEvent(orderId, "HOAN_TAT_POS", "Hoàn tất bán hàng tại quầy", trackingUrl)
@@ -1473,24 +1996,34 @@ const submitPosOrder = async () => {
       window.toast?.success?.("Tạo đơn thành công — chờ khách xác nhận VNPay")
     }
 
-    // Remove current tab after successful order
-    if (posTabs.value.length > 1) {
-      posTabs.value.splice(activeTabIndex.value, 1)
-      if (activeTabIndex.value >= posTabs.value.length) activeTabIndex.value = posTabs.value.length - 1
-    } else {
-      posTabs.value = [null]
-      activeTabIndex.value = 0
+    // Remove current tab after successful order (skip for BANK — tab removed after QR confirms)
+    if (!isBank) {
+      if (posTabs.value.length > 1) {
+        posTabs.value.splice(activeTabIndex.value, 1)
+        if (activeTabIndex.value >= posTabs.value.length) activeTabIndex.value = posTabs.value.length - 1
+      } else {
+        posTabs.value = [null]
+        activeTabIndex.value = 0
+      }
+      persistPosDraft()
+      router.push(`${panelBasePath.value}/hoa-don/detail/${orderId}`)
     }
-    persistPosDraft()
-    router.push(`${panelBasePath.value}/hoa-don/detail/${orderId}`)
   } catch (error) {
-    window.toast?.error?.(error?.response?.data?.message || error.message || "Không thể tạo đơn")
+    console.error('[POS] submitPosOrder error:', error?.response?.status, JSON.stringify(error?.response?.data), error.message)
+    const responseData = error?.response?.data || {}
+    const detailText = [
+      responseData?.message,
+      responseData?.error,
+      responseData?.details,
+      Array.isArray(responseData?.errors) ? responseData.errors.join("; ") : ""
+    ].filter(Boolean).join(" | ")
+    window.toast?.error?.(detailText || error.message || "Không thể tạo đơn")
   } finally {
     saving.value = false
   }
 }
 
-// ─── Load data ───────────────────────────────────────────────────────────────
+// ═══════ Load data ═══════════════════════════════════════đ═══════════════════════════════════════đ═══════════════════════════════════════đ
 
 const loadData = async () => {
   loading.value = true
@@ -1503,7 +2036,9 @@ const loadData = async () => {
     ])
     nhanVienList.value = toList(nvRes?.data)
     khachHangList.value = toList(khRes?.data)
+    await detectGuestCustomerIdAcrossPages()
     const rawProducts = toList(spRes?.data)
+    soldQtyBySpctSnapshot.value = soldBySpct
     const mergedProducts = mergeProductsForPos(rawProducts)
     variants.value = flattenVariants(mergedProducts, soldBySpct)
 
@@ -1540,320 +2075,394 @@ const loadData = async () => {
   }
 }
 
-onMounted(loadData)
+onMounted(() => {
+  loadData()
+  loadProvinces()
+  // Suppress parent .content overflow to prevent double scrollbars on POS page
+  const content = document.querySelector('.content')
+  if (content) content.style.overflow = 'hidden'
+})
 onBeforeUnmount(() => {
+  clearQrPolling()
+  stopPanelResize()
   persistPosDraft()
+  // Restore parent .content overflow for other pages
+  const content = document.querySelector('.content')
+  if (content) content.style.overflow = ''
 })
 </script>
 
 <template>
-  <main class="bh-page">
-    <!-- Header -->
-    <header class="bh-header">
-      <div>
-        <h1 class="bh-title">Bán hàng</h1>
-        <p class="bh-subtitle">Người bán: <strong>{{ currentSellerName || nhanVienList.find(nv => Number(nv.id) === Number(cashierId))?.tenNhanVien || '—' }}</strong></p>
-      </div>
-      <div class="bh-header-actions">
-        <div class="bh-dropdown-wrap">
-          <button class="bh-btn bh-btn-primary" type="button" @click="showHeaderMenu = !showHeaderMenu">
-            <span>+ Tạo đơn hàng</span>
-          </button>
-          <div v-if="showHeaderMenu" class="bh-dropdown-menu" @click="showHeaderMenu = false">
-            <button type="button" @click="router.push(`${panelBasePath}/hoa-don/list`)">Quản lý đơn hàng</button>
-            <button type="button" @click="router.push(`${panelBasePath}/lich-lam-viec/ca-lam`)">Ca làm việc</button>
+  <main class="pos-page">
+    <div v-if="loading" class="pos-loading">Đang tải dữ liệu bán hàng...</div>
+
+    <div v-else ref="posLayoutRef" class="pos-layout" :class="{ 'is-resizing': isResizingPanels }" :style="{ '--pos-left-width': `${posLeftWidthPercent}%` }">
+      <!-- ═══ LEFT: Trainify-style product grid ═══ -->
+      <div class="pos-left">
+        <div class="pos-left-header">
+          <div class="pos-left-title">
+            <ShoppingBag :size="18" />
+            Thêm sản phẩm
+          </div>
+          <div class="pos-search-bar">
+            <Search :size="15" class="pos-search-icon" />
+            <input v-model="posProductSearch" type="text" placeholder="Tìm sản phẩm, mã, màu, size..." />
           </div>
         </div>
+        <div class="pos-product-grid">
+          <div
+            v-for="group in productGroups"
+            :key="group.idSanPham || group.tenSanPham"
+            class="pos-product-card"
+            :class="{ 'is-out': group.totalStock <= 0 }"
+            @click="group.totalStock > 0 && handleProductClick(group)"
+          >
+            <div class="pos-product-img">
+              <img :src="group.image || logoFallback" :alt="normalizeDisplayName(group.tenSanPham)" @error="onImgError" />
+              <div class="pos-product-img-overlay">
+                <div class="pos-product-hover-cta">
+                  <span class="pos-product-hover-icon"><Plus :size="18" /></span>
+                  <span class="pos-product-hover-text">Thêm vào hóa đơn</span>
+                </div>
+              </div>
+            </div>
+            <div class="pos-product-info">
+              <div class="pos-product-name">{{ normalizeDisplayName(group.tenSanPham) }}</div>
+              <div class="pos-product-code">{{ group.maSanPham }}</div>
+              <div class="pos-product-price-row">
+                <div class="pos-product-price-main">
+                  <div class="pos-product-price">
+                    <template v-if="group.minPrice === group.maxPrice">{{ formatCurrency(group.minPrice) }}</template>
+                    <template v-else>{{ formatCurrency(group.minPrice) }} - {{ formatCurrency(group.maxPrice) }}</template>
+                  </div>
+                  <div class="pos-product-old-price" :class="{ 'is-placeholder': !group.hasDiscount }">
+                    <template v-if="group.hasDiscount">
+                      <template v-if="group.minBasePrice === group.maxBasePrice">{{ formatCurrency(group.minBasePrice) }}</template>
+                      <template v-else>{{ formatCurrency(group.minBasePrice) }} - {{ formatCurrency(group.maxBasePrice) }}</template>
+                    </template>
+                    <template v-else>0 đ</template>
+                  </div>
+                </div>
+                <div class="pos-product-discount-slot">
+                  <span v-if="group.hasDiscount" class="pos-product-discount-pill">{{ group.campaignLabel }}</span>
+                  <span v-else class="pos-product-discount-pill is-placeholder">Giảm giá</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-if="!productGroups.length" class="pos-empty-products">Không tìm thấy sản phẩm</div>
+        </div>
       </div>
-    </header>
 
-    <!-- POS Tabs (hoá đơn chờ) -->
-    <div class="bh-tabs-bar">
-      <button
-        v-for="(tab, idx) in posTabs" :key="idx"
-        class="bh-tab-btn" :class="{ active: idx === activeTabIndex }"
-        @click="switchPosTab(idx)"
+      <div
+        class="pos-resize-gutter"
+        title="Kéo để thay đổi độ rộng phần Thêm sản phẩm"
+        @mousedown.prevent="startPanelResize"
       >
-        Hoá đơn {{ idx + 1 }}
-        <span v-if="posTabs.length > 1" class="bh-tab-close" @click.stop="removePosTab(idx)">&times;</span>
-      </button>
-      <button v-if="posTabs.length < MAX_POS_TABS" class="bh-tab-btn bh-tab-add" @click="addPosTab()">+</button>
-    </div>
+        <span class="pos-resize-handle"></span>
+      </div>
 
-    <div v-if="loading" class="bh-loading">Đang tải dữ liệu bán hàng...</div>
-
-    <template v-else>
-      <div class="bh-layout">
-        <!-- ─── Left: Sản phẩm ─── -->
-        <div class="bh-main">
-          <div class="bh-card">
-            <!-- Products header -->
-            <div class="bh-card-head">
-              <h2>Sản phẩm</h2>
-              <div class="bh-card-actions">
-                <button class="bh-btn bh-btn-primary" type="button" @click="showProductModal = true">
-                  <Plus :size="15" /><span>THÊM SẢN PHẨM</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- Cart items -->
-            <div class="bh-cart">
-              <div v-if="!lines.length" class="bh-cart-empty">
-                <ShoppingBag :size="36" />
-                <p>Chưa có sản phẩm — bấm "Thêm sản phẩm" để bắt đầu</p>
-              </div>
-
-              <div v-for="(line, idx) in lines" :key="line.spctId" class="bh-cart-item">
-                <!-- Thumbnail -->
-                <div class="bh-cart-thumb">
-                  <img :src="line.image || logoFallback" :alt="line.tenSanPham" @error="onImgError" />
-                </div>
-
-                <!-- Info -->
-                <div class="bh-cart-info">
-                  <div class="bh-cart-name">{{ line.tenSanPham }}</div>
-                  <div class="bh-cart-meta">
-                    <span class="bh-cart-code">{{ line.maSanPhamChiTiet }}</span>
-                    <span v-if="line.tenMau" class="bh-dot">·</span>
-                    <span v-if="line.tenMau">{{ line.tenMau }}</span>
-                    <span v-if="line.tenSize" class="bh-dot">·</span>
-                    <span v-if="line.tenSize">{{ line.tenSize }}</span>
-                  </div>
-                </div>
-
-                <!-- Price -->
-                <div class="bh-cart-price">
-                  {{ formatCurrency(line.giaBan) }}
-                  <span v-if="line.campaignPercent" class="bh-cart-campaign-badge">-{{ line.campaignPercent }}%</span>
-                </div>
-
-                <!-- Qty controls -->
-                <div class="bh-cart-qty">
-                  <button class="bh-qty-btn" type="button" @click="decQty(line)" :disabled="line.soLuong <= 1">
-                    <Minus :size="14" />
-                  </button>
-                  <input type="number" class="bh-qty-input" :value="line.soLuong" min="1" :max="line.soLuongTon" @change="setQty(line, $event.target.value)" />
-                  <button class="bh-qty-btn" type="button" @click="incQty(line)" :disabled="line.soLuong >= line.soLuongTon">
-                    <Plus :size="14" />
-                  </button>
-                </div>
-
-                <!-- Delete -->
-                <button class="bh-cart-delete" type="button" @click="removeLine(idx)">
-                  <Trash2 :size="16" />
-                </button>
-              </div>
-
-              <!-- Cart total -->
-              <div v-if="lines.length" class="bh-cart-total">
-                <span>Tổng tiền</span>
-                <strong>{{ formatCurrency(subtotal) }}</strong>
-              </div>
+      <!-- ═══ RIGHT: Invoice Panel ═══ -->
+      <div class="pos-right">
+        <!-- Invoice header with tabs -->
+        <div class="pos-invoice-header">
+          <div class="pos-invoice-title">
+            <span class="material-icons-outlined" style="font-size:18px">receipt_long</span>
+            Hoá đơn
+          </div>
+          <div class="pos-tabs">
+            <button
+              v-for="(tab, idx) in posTabs" :key="idx"
+              class="pos-tab" :class="{ active: idx === activeTabIndex }"
+              @click="switchPosTab(idx)"
+            >
+              #{{ idx + 1 }}
+              <span v-if="posTabs.length > 1" class="pos-tab-x" @click.stop="removePosTab(idx)">&times;</span>
+            </button>
+            <button v-if="posTabs.length < MAX_POS_TABS" class="pos-tab pos-tab-add" @click="addPosTab()">+</button>
+          </div>
+          <div class="pos-invoice-actions">
+            <div class="pos-order-mode" role="group" aria-label="Chế độ đơn hàng">
+              <button type="button" :class="{ active: taiQuay }" @click="taiQuay = true">Tại quầy</button>
+              <button type="button" :class="{ active: !taiQuay }" @click="taiQuay = false">Giao hàng</button>
             </div>
           </div>
         </div>
 
-        <!-- ─── Right: Customer + Payment ─── -->
-        <div class="bh-sidebar">
-          <!-- Customer panel -->
-          <div class="bh-card">
-            <div class="bh-card-head">
-              <h2>Thông tin khách hàng</h2>
-              <div class="bh-card-actions">
-                <button class="bh-btn bh-btn-outline" type="button" @click="openCustomerSearchModal">
-                  Tìm khách hàng
-                </button>
-              </div>
-            </div>
-            <div class="bh-card-body">
-              <div class="bh-kv">
-                <span class="bh-k">Tên khách hàng</span>
-                <span class="bh-v">{{ selectedCustomerLabel }}</span>
-              </div>
+        <!-- Scrollable content area -->
+        <div class="pos-right-scroll">
+        <!-- Customer section -->
+        <div class="pos-section pos-customer-section">
+          <div class="pos-section-head">
+            <span class="material-icons-outlined" style="font-size:16px">person</span>
+            KHÁCH HÀNG
+          </div>
+          <div class="pos-customer-row">
+            <input
+              type="text"
+              class="pos-input"
+              placeholder="Tên hoặc SĐT khách hàng..."
+              :value="selectedCustomerLabel !== 'Khách lẻ' ? selectedCustomerLabel : ''"
+              readonly
+              @click="openCustomerSearchModal"
+            />
+            <button class="pos-btn-outline pos-btn-sm" type="button" @click="chooseGuestCustomer">
+              <span class="material-icons-outlined" style="font-size:14px">person_outline</span>
+              Khách lẻ
+            </button>
+          </div>
+          <div class="pos-cashier-row">
+            <select class="pos-select pos-select-sm" v-model.number="cashierId" :disabled="isEmployeePanel">
+              <option :value="null">Chọn Nhân viên bán hàng</option>
+              <option v-for="nv in nhanVienList" :key="nv.id" :value="Number(nv.id)">
+                {{ nv.tenNhanVien || `Nhân viên #${nv.id}` }}
+              </option>
+            </select>
+          </div>
+        </div>
 
-              <div class="bh-kv">
-                <span class="bh-k">Số điện thoại</span>
-                <span class="bh-v">{{ selectedCustomerPhone || '—' }}</span>
-              </div>
-
-              <!-- Address section (for delivery mode) -->
-              <template v-if="!taiQuay">
-                <div class="bh-address-section">
-                  <div class="bh-address-label"><MapPin :size="14" /> Địa chỉ giao hàng</div>
-                  <select v-if="customerAddresses.length" class="bh-select" v-model="selectedAddressId">
-                    <option v-for="addr in customerAddresses" :key="addr.id" :value="Number(addr.id)">
-                      {{ [addr.diaChiCuThe, addr.phuongXa, addr.quanHuyen, addr.tinhThanh].filter(Boolean).join(', ') }}
-                    </option>
-                    <option value="manual">Nhập địa chỉ mới</option>
-                  </select>
-                  <div v-if="!customerAddresses.length || selectedAddressId === 'manual'" class="bh-address-form">
-                    <input v-model="manualAddress.soDienThoai" type="text" placeholder="Số điện thoại nhận hàng" class="bh-input" />
-                    <input v-model="manualAddress.diaChiCuThe" type="text" placeholder="Số nhà, tên đường..." class="bh-input" />
-                    <input v-model="manualAddress.phuongXa" type="text" placeholder="Phường/Xã" class="bh-input" />
-                    <input v-model="manualAddress.quanHuyen" type="text" placeholder="Quận/Huyện" class="bh-input" />
-                    <input v-model="manualAddress.tinhThanh" type="text" placeholder="Tỉnh/Thành phố" class="bh-input" />
-                  </div>
-                </div>
-              </template>
-
-
-              <!-- Shipping fee (delivery mode) -->
-              <div v-if="!taiQuay" class="bh-shipping-fee">
-                <div class="bh-shipping-fee-row">
-                  <span><Truck :size="14" /> Đơn vị vận chuyển</span>
-                  <select class="bh-select bh-select-sm" v-model="shippingProvider">
-                    <option value="GHN">GHN (Giao Hàng Nhanh)</option>
-                    <option value="GHTK">GHTK (Giao Hàng Tiết Kiệm)</option>
-                  </select>
-                </div>
-                <div v-if="shippingProvince" class="bh-shipping-fee-row" style="margin-top: 8px;">
-                  <span>Phí vận chuyển</span>
-                  <strong v-if="shippingLoading">Đang tính...</strong>
-                  <strong v-else>{{ formatCurrency(shippingFee) }}</strong>
-                </div>
-              </div>
-
-              <p v-if="taiQuay" class="bh-hint">Tại quầy: chỉ cần chọn sản phẩm và thanh toán.</p>
-            </div>
+        <!-- Cart items -->
+        <div class="pos-cart-section" :class="{ 'is-scrollable': lines.length > 6 }">
+          <div v-if="!lines.length" class="pos-cart-empty">
+            <ShoppingBag :size="28" />
+            <p>Chưa có sản phẩm</p>
+            <small>Chọn sản phẩm từ danh sách bên trái</small>
           </div>
 
-          <!-- Payment panel -->
-          <div class="bh-card">
-            <div class="bh-card-head bh-payment-head">
-              <h2>Thông tin thanh toán</h2>
-              <label class="bh-toggle">
-                <span class="bh-toggle-label">{{ taiQuay ? 'Tại quầy' : 'Giao hàng' }}</span>
-                <input type="checkbox" v-model="taiQuay" />
-                <span class="bh-toggle-track"></span>
-              </label>
+          <div v-for="(line, idx) in lines" :key="line.spctId" class="pos-cart-item">
+            <div class="pos-cart-item-img">
+              <img :src="line.image || logoFallback" :alt="normalizeDisplayName(line.tenSanPham)" @error="onImgError" />
             </div>
-            <div class="bh-card-body">
-              <div class="bh-field">
-                <label>Người tạo đơn</label>
-                <select class="bh-select" v-model.number="cashierId" :disabled="isEmployeePanel">
-                  <option :value="null">Chọn nhân viên</option>
-                  <option v-for="nv in nhanVienList" :key="nv.id" :value="Number(nv.id)">
-                    {{ nv.tenNhanVien || `NV #${nv.id}` }}
-                  </option>
-                </select>
+            <div class="pos-cart-item-body">
+              <div class="pos-cart-item-name">{{ normalizeDisplayName(line.tenSanPham) }}</div>
+              <div class="pos-cart-item-meta">
+                <span>{{ line.maSanPhamChiTiet }}</span>
+                <span v-if="line.tenMau">{{ line.tenMau }}</span>
+                <span v-if="line.tenSize">{{ line.tenSize }}</span>
               </div>
-
-              <div class="bh-field">
-                <label>Giảm giá (voucher)</label>
-                <VoucherSelector
-                  :subtotal="subtotal"
-                  :customer-id="customerId"
-                  :auto-select="true"
-                  @update:voucher="selectedVoucher = $event"
-                  @discount-changed="applyDiscount"
-                />
+            </div>
+            <div class="pos-cart-item-right">
+              <div class="pos-qty">
+                <button @click="decQty(line)" :disabled="line.soLuong <= 1">−</button>
+                <input type="number" :value="line.soLuong" min="1" @change="setQty(line, $event.target.value)" />
+                <button @click="incQty(line)" :disabled="line.soLuong >= getLineMaxQty(line)">+</button>
               </div>
-
-              <div class="bh-field">
-                <label>Ghi chú</label>
-                <input class="bh-input" v-model="orderNote" type="text" placeholder="Ghi chú đơn hàng..." />
+              <div class="pos-cart-price-stack">
+                <div class="pos-cart-item-total">
+                  {{ formatCurrency(line.giaBan * line.soLuong) }}
+                  <span v-if="Number(line.giaBanGoc || 0) > Number(line.giaBan || 0)" class="pos-cart-item-old-price">{{ formatCurrency(line.giaBanGoc * line.soLuong) }}</span>
+                </div>
+                <div v-if="Number(line.campaignPercent || 0) > 0" class="pos-cart-discount-badge">
+                  {{ formatCampaignLabel(line.campaignName, line.campaignPercent) }}
+                </div>
               </div>
+              <button class="pos-cart-item-remove" @click="removeLine(idx)"><X :size="16" /></button>
+            </div>
+          </div>
+        </div>
 
-              <!-- Summary -->
-              <div class="bh-summary">
-                <div class="bh-pay-row"><span>Tiền hàng</span><strong>{{ formatCurrency(subtotal) }}</strong></div>
-                <div class="bh-pay-row bh-pay-discount"><span>Giảm giá</span><strong>- {{ formatCurrency(discount) }}</strong></div>
-                <div v-if="!taiQuay" class="bh-pay-row"><span><Truck :size="14" /> Phí ship ({{ shippingProvider }})</span><strong>{{ shippingLoading ? '...' : formatCurrency(shippingFee) }}</strong></div>
-                <div class="bh-pay-row bh-pay-total"><span>Tổng số tiền</span><strong>{{ formatCurrency(grandTotal) }}</strong></div>
-              </div>
+        <!-- Discount -->
+        <div class="pos-section">
+          <div class="pos-section-head">
+            <span class="material-icons-outlined" style="font-size:16px">local_offer</span>
+            MÃ GIẢM GIÁ
+          </div>
+          <VoucherSelector
+            :subtotal="subtotal"
+            :customer-id="customerId"
+            :auto-select="true"
+            @update:voucher="selectedVoucher = $event"
+            @discount-changed="applyDiscount"
+          />
+        </div>
 
+        <!-- Note -->
+        <div class="pos-section">
+          <div class="pos-section-head">
+            <span class="material-icons-outlined" style="font-size:16px">edit_note</span>
+            GHI CHÚ
+          </div>
+          <input class="pos-input" v-model="orderNote" type="text" placeholder="Ghi chú đơn hàng..." />
+        </div>
+
+        <!-- Address (delivery mode) -->
+        <template v-if="!taiQuay">
+          <div class="pos-section">
+            <div class="pos-section-head">
+              <MapPin :size="14" /> ĐỊA CHỈ GIAO HÀNG
+            </div>
+            <select v-if="customerAddresses.length" class="pos-select" v-model="selectedAddressId">
+              <option v-for="addr in customerAddresses" :key="addr.id" :value="Number(addr.id)">
+                {{ [addr.diaChiCuThe, addr.phuongXa, addr.quanHuyen, addr.tinhThanh].filter(Boolean).join(', ') }}
+              </option>
+              <option value="manual">Nhập địa chỉ mới</option>
+            </select>
+            <div v-if="!customerAddresses.length || selectedAddressId === 'manual'" class="pos-address-form">
+              <input v-model="manualAddress.soDienThoai" type="text" inputmode="numeric" placeholder="SĐT nhận hàng" class="pos-input" @input="onManualPhoneInput" />
+              <input v-model="manualAddress.diaChiCuThe" type="text" placeholder="Số nhà, tên đường..." class="pos-input" />
+              <select v-model="manualAddress.tinhThanh" class="pos-select" @change="onManualProvinceChange" @focus="loadProvinces">
+                <option value="">Tỉnh / Thành phố</option>
+                <option v-for="p in provinces" :key="p.code" :value="p.name">{{ p.name }}</option>
+              </select>
+              <select v-model="manualAddress.quanHuyen" class="pos-select" :disabled="!manualAddress.tinhThanh" @change="onManualDistrictChange" @focus="onManualDistrictFocus">
+                <option value="">Quận / Huyện</option>
+                <option v-for="d in districts" :key="d.code" :value="d.name">{{ d.name }}</option>
+              </select>
+              <select v-model="manualAddress.phuongXa" class="pos-select" :disabled="!manualAddress.quanHuyen" @focus="onManualWardFocus">
+                <option value="">Phường / Xã</option>
+                <option v-for="w in wards" :key="w.code" :value="w.name">{{ w.name }}</option>
+              </select>
+            </div>
+            <div class="pos-shipping-row">
+              <select class="pos-select pos-select-sm" v-model="shippingProvider">
+                <option value="GHN">Giao Hàng Nhanh</option>
+                <option value="GHTK">Giao Hàng Tiết Kiệm</option>
+              </select>
+              <span v-if="shippingLoading">Đang tính...</span>
+              <strong v-else>{{ formatCurrency(shippingFee) }}</strong>
+            </div>
+          </div>
+        </template>
+        <!-- Summary + Payment (INLINE) -->
+        <div class="pos-payment-section">
+          <div class="pos-summary-row">
+            <span>Tạm tính</span>
+            <span>{{ formatCurrency(subtotal) }}</span>
+          </div>
+          <div v-if="discount > 0" class="pos-summary-row pos-discount-row">
+            <span>Giảm giá{{ selectedVoucher ? ` (${selectedVoucher.tenPhieuGiamGia || ''})` : '' }}</span>
+            <span>-{{ formatCurrency(discount) }}</span>
+          </div>
+          <div v-if="!taiQuay" class="pos-summary-row">
+            <span>Phí ship</span>
+            <span>{{ formatCurrency(shippingFee) }}</span>
+          </div>
+          <div class="pos-summary-row pos-total-row">
+            <strong>Tổng cộng</strong>
+            <strong class="pos-total-amount">{{ formatCurrency(grandTotal) }}</strong>
+          </div>
+
+          <!-- Payment method -->
+          <div class="pos-pay-methods">
+            <span class="pos-section-head" style="margin-bottom:6px">
+              <span class="material-icons-outlined" style="font-size:16px">payments</span>
+              PHƯƠNG THỨC THANH TOÁN
+            </span>
+            <div class="pos-pay-tabs">
               <button
-                class="bh-btn bh-btn-primary bh-btn-submit"
-                type="button"
-                :disabled="saving || !lines.length"
-                @click="openPaymentModal"
+                :class="{ active: paymentMethod === 'CASH' }"
+                @click="paymentMethod = 'CASH'; applyPaymentMode('CASH')"
               >
-                {{ saving ? 'ĐANG TẠO ĐƠN...' : 'XÁC NHẬN ĐẶT HÀNG' }}
+                <span class="material-icons-outlined" style="font-size:15px">payments</span>
+                Tiền mặt
+              </button>
+              <button
+                :class="{ active: paymentMethod === 'BANK' }"
+                @click="paymentMethod = 'BANK'; applyPaymentMode('BANK')"
+              >
+                <span class="material-icons-outlined" style="font-size:15px">account_balance</span>
+                Chuyển khoản
               </button>
             </div>
           </div>
-        </div>
-      </div>
-    </template>
 
-    <!-- ─── Customer search modal ─── -->
+          <!-- Tiền khách đưa -->
+          <div class="pos-cash-input" v-if="paymentMethod === 'CASH' || paymentMethod === 'BOTH'">
+            <div class="pos-section-head" style="margin-bottom:4px">
+              <span class="material-icons-outlined" style="font-size:16px">account_balance_wallet</span>
+              TIỀN KHÁCH ĐƯA
+            </div>
+            <input
+              type="number"
+              class="pos-input pos-input-lg"
+              v-model.number="paymentCash"
+              min="0"
+              placeholder="0"
+            />
+            <div class="pos-quick-amounts">
+              <button
+                v-for="amt in quickMoneyAmounts" :key="amt"
+                type="button"
+                @click="paymentCash = amt"
+              >{{ formatCurrency(amt) }}</button>
+            </div>
+          </div>
+
+          <!-- Tiền thừa -->
+          <div class="pos-change-section" v-if="paymentMethod === 'CASH' || paymentMethod === 'BOTH'">
+            <div class="pos-summary-row">
+              <span>Tiền thừa</span>
+              <strong class="pos-change-amount">{{ formatCurrency(paymentChange) }}</strong>
+            </div>
+          </div>
+
+          <!-- Action buttons -->
+          <div class="pos-action-btns">
+            <button
+              class="pos-btn-pay"
+              type="button"
+              :disabled="saving || !lines.length || (paymentMethod === 'CASH' && paymentRemaining > 0)"
+              @click="confirmPayment"
+            >
+              <span class="material-icons-outlined" style="font-size:18px">check_circle</span>
+              {{ saving ? 'Đang xử lý...' : 'Thanh toán' }}
+            </button>
+            <button
+              class="pos-btn-cancel"
+              type="button"
+              @click="applyTabState(null)"
+              :disabled="!lines.length"
+            >
+              <span class="material-icons-outlined" style="font-size:16px">delete_outline</span>
+              Huỷ đơn
+            </button>
+          </div>
+        </div>
+        </div><!-- end pos-right-scroll -->
+      </div>
+    </div>
+
+    <!-- ═══ Variant Picker Modal ═══ -->
     <Teleport to="body">
       <Transition name="bh-modal">
-        <div
-          v-if="showCustomerSearchModal"
-          class="bh-modal-overlay"
-          @click.self="closeCustomerSearchModal"
-          @keydown.esc="closeCustomerSearchModal"
-        >
-          <div class="bh-modal-box bh-customer-modal">
-            <div class="bh-modal-head bh-customer-modal-head">
-              <div class="bh-customer-head-copy">
-                <h2>Tìm khách hàng theo SĐT</h2>
+        <div v-if="showVariantPicker && variantPickerProduct" class="bh-modal-overlay" @click.self="showVariantPicker = false">
+          <div class="pos-variant-modal">
+            <div class="pos-variant-modal-head">
+              <div class="pos-variant-head-main">
+                <h3>{{ variantPickerProduct.tenSanPham }}</h3>
+                <p>Chọn biến thể để thêm nhanh vào hóa đơn</p>
               </div>
-              <div class="bh-customer-modal-tools">
-                <div class="bh-customer-counter">{{ customerSearchResults.length }} kết quả</div>
-                <button class="bh-btn bh-btn-sm bh-customer-guest-btn" type="button" @click="chooseGuestCustomer">
-                  Khách lẻ
-                </button>
+              <div class="pos-variant-head-actions">
+                <div class="pos-variant-head-count">{{ variantPickerProduct.variants.length }} biến thể</div>
+                <button @click="showVariantPicker = false"><X :size="18" /></button>
               </div>
-              <button class="bh-modal-close" @click="closeCustomerSearchModal"><X :size="20" /></button>
             </div>
-            <div class="bh-modal-search">
-              <Search :size="18" class="bh-modal-search-icon" />
-              <input
-                ref="customerSearchInputRef"
-                v-model="customerPhoneSearch"
-                type="text"
-                placeholder="Nhập số điện thoại khách hàng..."
-                @keydown.enter.prevent="selectFirstCustomerFromSearch"
-              />
-            </div>
-
-            <div class="bh-customer-modal-body">
-              <div class="bh-customer-table-wrap">
-                <table v-if="customerSearchResults.length" class="bh-customer-table">
-                  <thead>
-                    <tr>
-                      <th>Tên khách hàng</th>
-                      <th>Số điện thoại</th>
-                      <th class="right">Thao tác</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="kh in customerSearchResults"
-                      :key="kh.id"
-                      :class="{ 'is-selected': Number(kh.id) === Number(customerId) }"
-                      @dblclick="selectCustomerFromSearch(kh)"
-                    >
-                      <td>{{ kh.tenKhachHang || `KH #${kh.id}` }}</td>
-                      <td>{{ kh.soDienThoai || '—' }}</td>
-                      <td class="right">
-                        <button class="bh-btn bh-btn-outline bh-btn-sm" type="button" @click="selectCustomerFromSearch(kh)">
-                          Chọn
-                        </button>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-                <div v-else class="bh-modal-empty">Không tìm thấy khách hàng theo số điện thoại</div>
-              </div>
-
-              <div v-if="canCreateCustomerFromSearch" class="bh-customer-create">
-                <p>Chưa có khách hàng này. Nhập tên để tạo mới:</p>
-                <input
-                  v-model="customerDraftName"
-                  class="bh-input"
-                  type="text"
-                  placeholder="Tên khách hàng"
-                  :disabled="creatingCustomer"
-                  @keydown.enter.prevent="createCustomerFromSearch"
-                />
-                <div class="bh-customer-create-actions">
-                  <button class="bh-btn bh-btn-primary bh-btn-sm" type="button" :disabled="creatingCustomer || !customerDraftName.trim()" @click="createCustomerFromSearch">
-                    {{ creatingCustomer ? 'Đang tạo...' : 'Tạo mới và chọn' }}
-                  </button>
+            <div class="pos-variant-grid">
+              <div
+                v-for="(v, idx) in variantPickerProduct.variants"
+                :key="v.spctId"
+                class="pos-variant-item"
+                :class="{ 'is-out': availableStockForVariant(v) <= 0 }"
+                :style="{ animationDelay: `${idx * 45}ms` }"
+                @click="availableStockForVariant(v) > 0 && pickVariant(v)"
+              >
+                <div class="pos-variant-media">
+                  <img :src="v.image || logoFallback" :alt="v.tenSanPham" @error="onImgError" />
+                </div>
+                <div class="pos-variant-details">
+                  <div class="pos-variant-topline">
+                    <span class="pos-variant-code">{{ v.maSanPhamChiTiet || v.maSanPham || `SPCT${v.spctId}` }}</span>
+                    <span class="pos-variant-stock" :class="{ 'is-low': availableStockForVariant(v) <= 5 }">Còn {{ availableStockForVariant(v) }}</span>
+                  </div>
+                  <div class="pos-variant-attrs">
+                    <span v-if="v.tenMau" class="pos-variant-pill pos-variant-pill-color">Màu: <b>{{ v.tenMau }}</b></span>
+                    <span class="pos-variant-pill pos-variant-pill-size" :class="{ 'solo': !v.tenMau }">Size: <b>{{ v.tenSize || 'Free size' }}</b></span>
+                  </div>
+                  <div class="pos-variant-price-line">
+                    <div class="pos-variant-price">{{ formatCurrency(v.giaBan) }}</div>
+                    <div v-if="Number(v.giaBanGoc || 0) > Number(v.giaBan || 0)" class="pos-variant-old-price">{{ formatCurrency(v.giaBanGoc) }}</div>
+                  </div>
+                  <div class="pos-variant-action">Chạm để thêm vào hóa đơn</div>
                 </div>
               </div>
             </div>
@@ -1862,20 +2471,19 @@ onBeforeUnmount(() => {
       </Transition>
     </Teleport>
 
-    <!-- ─── Product selection modal ─── -->
+    <!-- ═══ Product Select Modal ═══ -->
     <Teleport to="body">
       <Transition name="bh-modal">
         <div v-if="showProductModal" class="bh-modal-overlay" @click.self="showProductModal = false">
           <div class="bh-modal-box bh-product-modal">
-            <div class="bh-modal-head">
-              <div class="bh-product-modal-head-copy">
+            <div class="bh-modal-head bh-product-modal-head">
+              <div>
                 <h2>Thêm sản phẩm</h2>
-                <p>Chọn nhanh biến thể theo màu, size và tồn kho khả dụng.</p>
+                <p>Chọn trong form thay vì hiển thị hết ngoài màn hình chính.</p>
               </div>
-              <div class="bh-modal-counter">{{ filteredProductVariants.length }} biến thể</div>
               <button class="bh-modal-close" @click="showProductModal = false"><X :size="20" /></button>
             </div>
-            <div class="bh-modal-search">
+            <div class="bh-modal-search bh-product-search">
               <Search :size="18" class="bh-modal-search-icon" />
               <input v-model="productSearchKeyword" type="text" placeholder="Tìm tên, mã sản phẩm, màu, size..." />
             </div>
@@ -1894,20 +2502,14 @@ onBeforeUnmount(() => {
                 <div class="bh-modal-item-info">
                   <div class="bh-modal-item-top">
                     <div class="bh-modal-item-code">{{ variant.maSanPhamChiTiet || variant.maSanPham }}</div>
-                    <div class="bh-modal-item-stock" :class="{ 'is-low': rawStockForVariant(variant) <= 5 }">
-                      Tồn: {{ rawStockForVariant(variant) }}
-                    </div>
+                    <div class="bh-modal-item-stock" :class="{ 'is-low': rawStockForVariant(variant) <= 5 }">Tồn: {{ rawStockForVariant(variant) }}</div>
                   </div>
                   <div class="bh-modal-item-name">{{ variant.tenSanPham }}</div>
                   <div class="bh-modal-item-variant-line">
                     <span class="bh-modal-item-variant-pill">Màu: <strong>{{ variant.tenMau || 'Mặc định' }}</strong></span>
                     <span class="bh-modal-item-variant-pill">Size: <strong>{{ variant.tenSize || 'Free size' }}</strong></span>
                   </div>
-                  <div class="bh-modal-item-price">
-                    <span v-if="variant.campaignPercent" class="bh-modal-item-price-original">{{ formatCurrency(variant.giaBanGoc) }}</span>
-                    {{ formatCurrency(variant.giaBan) }}
-                    <span v-if="variant.campaignPercent" class="bh-modal-campaign-badge">-{{ variant.campaignPercent }}%</span>
-                  </div>
+                  <div class="bh-modal-item-price">{{ formatCurrency(variant.giaBan) }}</div>
                 </div>
               </div>
             </div>
@@ -1916,109 +2518,181 @@ onBeforeUnmount(() => {
       </Transition>
     </Teleport>
 
-    <!-- ─── Payment modal ─── -->
+    <!-- ═══ Customer Search Modal ═══ -->
     <Teleport to="body">
       <Transition name="bh-modal">
-        <div v-if="showPaymentModal" class="bh-modal-overlay" @click.self="showPaymentModal = false">
-          <div class="bh-modal-box bh-pay-modal">
-            <div class="bh-modal-head">
-              <h2>Thanh toán</h2>
-              <button class="bh-modal-close" @click="showPaymentModal = false"><X :size="20" /></button>
+        <div
+          v-if="showCustomerSearchModal"
+          class="bh-modal-overlay"
+          @click.self="closeCustomerSearchModal"
+        >
+          <div class="bh-modal-box bh-customer-modal">
+            <div class="bh-modal-head bh-customer-modal-head">
+              <h2>Tìm khách hàng</h2>
+              <button class="bh-modal-close" @click="closeCustomerSearchModal"><X :size="20" /></button>
             </div>
-            <div class="bh-pay-modal-body">
-              <!-- Tổng tiền -->
-              <div class="bh-pay-modal-total">
-                <div class="bh-pay-modal-total-main">
-                  <span>Tổng số tiền</span>
-                  <strong>{{ formatCurrency(grandTotal) }}</strong>
+            <div class="bh-modal-search">
+              <Search :size="18" class="bh-modal-search-icon" />
+              <input
+                ref="customerSearchInputRef"
+                v-model="customerPhoneSearch"
+                type="text"
+                placeholder="Nhập SĐT khách hàng..."
+                @keydown.enter.prevent="selectFirstCustomerFromSearch"
+              />
+            </div>
+            <div class="bh-customer-modal-body">
+              <div class="bh-customer-table-wrap">
+                <table v-if="customerSearchResults.length" class="bh-customer-table">
+                  <thead><tr><th>Tên</th><th>SĐT</th><th class="right">Thao tác</th></tr></thead>
+                  <tbody>
+                    <tr v-for="kh in customerSearchResults" :key="kh.id" @dblclick="selectCustomerFromSearch(kh)">
+                      <td>{{ kh.tenKhachHang || `KH #${kh.id}` }}</td>
+                      <td>{{ kh.soDienThoai || '—' }}</td>
+                      <td class="right">
+                        <button class="pos-btn-outline pos-btn-sm" @click="selectCustomerFromSearch(kh)">Chọn</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div v-else class="bh-modal-empty">Không tìm thấy</div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- ═══ QR Payment Modal ═══ -->
+    <Teleport to="body">
+      <Transition name="bh-modal">
+        <div v-if="showQrModal" class="bh-modal-overlay" @click.self="cancelQrPayment">
+          <div class="pos-qr-modal">
+            <div class="pos-qr-header">
+              <div class="pos-qr-header-main">
+                <div class="pos-qr-badge">
+                  <span class="material-icons-outlined">qr_code_2</span>
+                </div>
+                <div>
+                  <div class="pos-qr-title">Thanh toán chuyển khoản</div>
+                  <div class="pos-qr-sub">#{{ qrContent }}</div>
+                </div>
+              </div>
+              <button class="pos-qr-close" type="button" @click="cancelQrPayment"><X :size="16" /></button>
+            </div>
+            <div class="pos-qr-body">
+              <div class="pos-qr-amount">{{ formatCurrency(qrAmount) }}</div>
+              <div class="pos-qr-img">
+                <img :src="buildVietQrUrl(qrAmount, qrContent)" alt="VietQR" />
+              </div>
+              <div class="pos-qr-content">
+                Nội dung CK: <strong>{{ qrContent }}</strong>
+              </div>
+              <div v-if="qrState === 'processing'" class="pos-qr-waiting">
+                <span class="pos-qr-spinner"></span>
+                Đang chờ thanh toán...
+              </div>
+
+              <p class="pos-qr-note">
+                Demo: bấm Thanh toán để tự động xác nhận, không cần quét QR.
+              </p>
+
+              <div class="pos-qr-actions">
+                <button class="pos-btn-pay" style="width:100%" :disabled="qrPolling" @click="confirmQrDemoPayment">
+                  {{ qrPolling ? 'Đang chờ thanh toán...' : 'Thanh toán' }}
+                </button>
+                <button class="pos-btn-cancel" style="width:100%" @click="cancelQrPayment">
+                  <X :size="14" /> Huỷ thanh toán
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- ═══ QR Paid Detail Modal (separate, matches Customer Profile style) ═══ -->
+    <Teleport to="body">
+      <Transition name="bh-modal">
+        <div v-if="showQrPaidModal && qrSummary" class="qr-paid-overlay" @click.self="closeQrPaidModal">
+          <div class="qr-paid-modal">
+            <div class="qr-paid-header">
+              <div class="qr-paid-header-inner">
+                <div class="qr-paid-check-icon">
+                  <span class="material-icons-outlined">check_circle</span>
+                </div>
+                <div>
+                  <div class="qr-paid-header-title">Thanh toán thành công</div>
+                  <div class="qr-paid-header-code">#{{ qrSummary.maHoaDon }}</div>
+                </div>
+              </div>
+              <button class="qr-paid-header-close" @click="closeQrPaidModal">✕</button>
+            </div>
+            <div class="qr-paid-body">
+              <!-- Info grid -->
+              <div class="qr-paid-info">
+                <div class="qr-paid-info-item">
+                  <span class="qr-paid-label">Trạng thái</span>
+                  <span class="qr-paid-value"><span class="qr-paid-status-badge success">✓ Đã thanh toán</span></span>
+                </div>
+                <div class="qr-paid-info-item">
+                  <span class="qr-paid-label">Phương thức</span>
+                  <span class="qr-paid-value">Chuyển khoản</span>
+                </div>
+                <div class="qr-paid-info-item">
+                  <span class="qr-paid-label">Khách hàng</span>
+                  <span class="qr-paid-value">{{ qrSummary.customerName }}</span>
+                </div>
+                <div class="qr-paid-info-item">
+                  <span class="qr-paid-label">Điện thoại</span>
+                  <span class="qr-paid-value">{{ qrSummary.phone }}</span>
+                </div>
+                <div class="qr-paid-info-item full">
+                  <span class="qr-paid-label">Địa chỉ</span>
+                  <span class="qr-paid-value">{{ qrSummary.address }}</span>
                 </div>
               </div>
 
-              <!-- Mode selector: 4 tabs -->
-              <div class="bh-pay-mode-tabs">
-                <button
-                  type="button"
-                  class="bh-pay-mode-tab"
-                  :class="{ 'is-active': paymentMethod === 'CASH' }"
-                  @click="paymentMethod = 'CASH'; applyPaymentMode('CASH')"
-                >Tiền mặt</button>
-                <button
-                  type="button"
-                  class="bh-pay-mode-tab"
-                  :class="{ 'is-active': paymentMethod === 'BANK' }"
-                  @click="paymentMethod = 'BANK'; applyPaymentMode('BANK')"
-                >Chuyển khoản</button>
-
-                <button
-                  type="button"
-                  class="bh-pay-mode-tab"
-                  :class="{ 'is-active': paymentMethod === 'BOTH' }"
-                  @click="paymentMethod = 'BOTH'; applyPaymentMode('BOTH')"
-                >Tiền mặt + CK</button>
-              </div>
-
-              <!-- Inputs -->
-              <div class="bh-pay-modal-inputs" :class="{ 'bh-pay-modal-inputs--single': paymentMethod !== 'BOTH' }">
-                <!-- Tiền mặt -->
-                <div
-                  v-if="paymentMethod === 'CASH' || paymentMethod === 'BOTH'"
-                  class="bh-pay-modal-col"
-                  :class="{ 'bh-pay-modal-col--single': paymentMethod !== 'BOTH' }"
-                >
-                  <div class="bh-pay-modal-col-head">
-                    <label>Tiền mặt</label>
-                    <span v-if="paymentMethod === 'BOTH'" class="bh-pay-modal-remaining">
-                      Còn lại: <b>{{ formatCurrency(paymentRemainingCash) }}</b>
-                    </span>
+              <!-- Product list -->
+              <div class="qr-paid-products" v-if="qrSummary.items?.length">
+                <h4>Sản phẩm</h4>
+                <div class="qr-paid-product-list">
+                  <div class="qr-paid-product-row" v-for="(item, idx) in qrSummary.items" :key="idx">
+                    <div class="qr-paid-product-img">
+                      <img
+                        :src="item.image || fallbackImageFor(item.idSanPham, item.maSanPham, item.name)"
+                        :alt="item.name"
+                        @error="$event.target.src = fallbackImageFor(item.idSanPham, item.maSanPham, item.name) || logoFallback"
+                      />
+                    </div>
+                    <div class="qr-paid-product-info">
+                      <span class="qr-paid-product-name">{{ item.name }}</span>
+                      <span class="qr-paid-product-meta" v-if="item.color || item.size">
+                        <template v-if="item.color">Màu: {{ item.color }}</template>
+                        <template v-if="item.color && item.size"> • </template>
+                        <template v-if="item.size">Size: {{ item.size }}</template>
+                      </span>
+                      <span class="qr-paid-product-qty">SL: {{ item.qty }} × {{ formatCurrency(item.price) }}</span>
+                    </div>
+                    <div class="qr-paid-product-total">{{ formatCurrency(item.total) }}</div>
                   </div>
-                  <input
-                    type="number"
-                    class="bh-input"
-                    v-model.number="paymentCash"
-                    min="0"
-                    placeholder="Nhập tiền mặt..."
-                  />
-                </div>
-                <!-- Chuyển khoản -->
-                <div
-                  v-if="paymentMethod === 'BANK' || paymentMethod === 'BOTH'"
-                  class="bh-pay-modal-col"
-                  :class="{ 'bh-pay-modal-col--single': paymentMethod !== 'BOTH' }"
-                >
-                  <div class="bh-pay-modal-col-head">
-                    <label>Chuyển khoản</label>
-                    <span v-if="paymentMethod === 'BOTH'" class="bh-pay-modal-remaining">
-                      Còn lại: <b>{{ formatCurrency(paymentRemainingBank) }}</b>
-                    </span>
-                  </div>
-                  <input
-                    type="number"
-                    class="bh-input"
-                    v-model.number="paymentBank"
-                    min="0"
-                    placeholder="Nhập chuyển khoản..."
-                  />
                 </div>
               </div>
 
-
-
-              <!-- Summary -->
-              <div class="bh-pay-modal-summary">
-                <div class="bh-pay-modal-row"><span>Đã nhập</span><strong>{{ formatCurrency(paymentEntered) }}</strong></div>
-                <div class="bh-pay-modal-row"><span>Tiền thiếu</span><strong class="bh-text-danger">{{ formatCurrency(paymentRemaining) }}</strong></div>
-                <div class="bh-pay-modal-row"><span>Tiền thừa</span><strong class="bh-text-success">{{ formatCurrency(paymentChange) }}</strong></div>
+              <!-- Totals -->
+              <div class="qr-paid-totals">
+                <div class="qr-paid-total-line grand">
+                  <span>Tổng cộng</span>
+                  <strong>{{ formatCurrency(qrSummary.amount) }}</strong>
+                </div>
               </div>
 
-              <div class="bh-pay-modal-actions">
-                <button class="bh-btn bh-btn-outline" type="button" @click="showPaymentModal = false">Đóng</button>
-                <button
-                  class="bh-btn bh-btn-primary"
-                  type="button"
-                  :disabled="saving || paymentRemaining > 0"
-                  @click="confirmPayment"
-                >
-                  {{ saving ? 'Đang xử lý...' : 'Xong' }}
+              <!-- Actions -->
+              <div class="qr-paid-actions">
+                <button class="qr-paid-detail-btn" @click="openQrOrderDetail">
+                  <span class="material-icons-outlined" style="font-size:18px">open_in_new</span>
+                  Xem chi tiết đầy đủ
                 </button>
               </div>
             </div>
@@ -2030,1313 +2704,1560 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* ── POS Tabs ── */
-.bh-tabs-bar {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
+/* PPP POS Page Layout PPP */
+.pos-page {
+  padding: 0;
+  background: #eef1f6;
+  margin: -8px -28px -28px;
+  width: calc(100% + 56px);
+  overflow: hidden;
+  font-size: 16px;
+  font-family: "Be Vietnam Pro", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: #0f172a;
 }
-.bh-tab-btn {
-  display: inline-flex;
+.pos-loading { text-align: center; padding: 60px; color: #64748b; font-weight: 600; }
+
+.pos-layout {
+  display: grid;
+  grid-template-columns: minmax(0, var(--pos-left-width, 58%)) 2px minmax(0, calc(100% - var(--pos-left-width, 58%)));
+  gap: 12px;
+  padding: 12px 16px;
+  height: calc(100vh - 80px);
+  max-height: calc(100vh - 80px);
+  overflow: hidden;
+  background: #eef1f6;
+}
+
+.pos-layout.is-resizing {
+  user-select: none;
+  cursor: col-resize;
+}
+
+.pos-resize-gutter {
+  position: relative;
+  width: 2px;
+  background: #d1d5db;
+  cursor: col-resize;
+  align-self: stretch;
+  transition: background 0.2s ease;
+}
+
+.pos-resize-gutter:hover,
+.pos-layout.is-resizing .pos-resize-gutter {
+  background: #9ca3af;
+}
+
+.pos-resize-handle {
+  display: none;
+}
+
+/* PPP Left Panel - Trainify product grid PPP */
+.pos-left {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.06);
+}
+.pos-left-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 72px;
+  padding: 10px 16px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border-radius: 14px 14px 0 0;
+}
+.pos-left-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 800;
+  font-size: 18px;
+  color: #111;
+  white-space: nowrap;
+}
+.pos-search-bar {
+  flex: 1;
+  display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
-  border: 1px solid #d1d5db;
-  border-radius: 10px 10px 0 0;
-  background: #f1f5f9;
-  color: #475569;
+  background: #f3f4f6;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+.pos-search-bar input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  color: #111;
+}
+.pos-search-icon { color: #9ca3af; flex-shrink: 0; }
+
+/* Product Card Grid */
+.pos-product-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-content: start;
+  background: #f8fafc;
+  border-radius: 0 0 14px 14px;
+}
+.pos-product-card {
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  overflow: clip;
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+  display: flex;
+  flex-direction: column;
+  box-shadow: none;
+}
+.pos-product-card:hover {
+  transform: translateY(-1px);
+  border-color: #94a3b8;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+.pos-product-card.is-out { opacity: .4; cursor: not-allowed; }
+.pos-product-card.is-out:hover { transform: none; box-shadow: none; border-color: #e5e7eb; }
+.pos-product-img {
+  width: 100%;
+  height: 308px;
+  min-height: 308px;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: #e7edf2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  position: relative;
+  box-sizing: border-box;
+  border-bottom: 1px solid #e5e7eb;
+}
+.pos-product-img img {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
+  object-position: center 18%;
+  display: block;
+  border-radius: 0;
+}
+.pos-product-img-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(30, 41, 59, 0.05) 52%, rgba(239, 68, 68, 0.09));
+  opacity: 0;
+  transition: opacity .2s ease, background .2s ease;
+  pointer-events: none;
+}
+.pos-product-card:hover .pos-product-img-overlay {
+  opacity: 1;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(15, 23, 42, 0.3) 45%, rgba(220, 38, 38, 0.28));
+}
+.pos-product-hover-cta {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  color: #fff;
   font-size: 13px;
+  font-weight: 800;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.pos-product-hover-icon {
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(12px) saturate(1.1);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.2);
+  opacity: 0;
+  transform: translateY(2px) scale(0.98);
+  transition: all .18s ease;
+}
+.pos-product-hover-text {
+  opacity: 0;
+  transform: translateY(5px);
+  transition: all .18s ease;
+}
+.pos-product-card:hover .pos-product-hover-icon {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.pos-product-card:hover .pos-product-hover-text {
+  opacity: 1;
+  transform: translateY(0);
+}
+.pos-stock-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: #bbf7d0;
+  border: 1px solid #86efac;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #166534;
+  line-height: 1.4;
+}
+.pos-stock-badge.is-low {
+  background: #ffedd5;
+  border-color: #fdba74;
+  color: #c2410c;
+}
+.pos-product-info {
+  padding: 12px 12px 12px;
+  flex-shrink: 0;
+  min-height: 94px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-top: none;
+}
+.pos-product-name {
+  font-weight: 800;
+  font-size: 14px;
+  color: #0f172a;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 2px;
+}
+.pos-product-code {
+  font-size: 12.5px;
+  color: #9ca3af;
+  font-weight: 800;
+}
+.pos-product-attrs {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+.pos-attr-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #edf1f5;
+  color: #475569;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.pos-product-price-row {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 34px;
+}
+.pos-product-price-main {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+.pos-product-price {
+  font-weight: 800;
+  font-size: 18px;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+.pos-product-old-price {
+  font-size: 13px;
+  color: #94a3b8;
+  text-decoration: line-through;
+}
+.pos-product-old-price.is-placeholder {
+  visibility: hidden;
+}
+.pos-product-discount-slot {
+  min-height: 17px;
+  display: flex;
+  align-items: flex-start;
+}
+.pos-product-discount-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 17px;
+  padding: 2px 7px;
+  border-radius: 9px;
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #dc2626;
+  font-size: 11.5px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.pos-product-discount-pill.is-placeholder {
+  visibility: hidden;
+}
+.pos-empty-products {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 40px;
+  color: #9ca3af;
   font-weight: 600;
+  font-size: 14px;
+}
+
+/* PPP Right Panel PPP */
+.pos-right {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.06);
+  height: auto;
+}
+.pos-right-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 4px 14px 16px;
+  background: #f8fafc;
+  border-radius: 0 0 14px 14px;
+}
+
+/* Invoice header */
+.pos-invoice-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 72px;
+  padding: 10px 14px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border-radius: 14px 14px 0 0;
+}
+.pos-invoice-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 800;
+  font-size: 18px;
+  color: #111;
+  white-space: nowrap;
+}
+.pos-invoice-actions { margin-left: auto; }
+.pos-invoice-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pos-order-mode {
+  display: inline-flex;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.pos-order-mode button {
+  border: none;
+  background: #fff;
+  color: #64748b;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.pos-order-mode button + button {
+  border-left: 1px solid #d1d5db;
+}
+.pos-order-mode button.active {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+.pos-icon-btn {
+  width: 32px; height: 32px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #475569;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.pos-icon-btn:hover { background: #f1f5f9; }
+
+/* Tabs */
+.pos-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.pos-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
   cursor: pointer;
   transition: all .15s;
 }
-.bh-tab-btn.active {
-  background: #fff;
-  color: #b91c1c;
-  border-bottom-color: #fff;
-  box-shadow: 0 -2px 6px rgba(0,0,0,.05);
+.pos-tab.active {
+  background: #f1f5f9;
+  color: #1e293b;
+  border-color: #94a3b8;
 }
-.bh-tab-btn:hover:not(.active) { background: #e2e8f0; }
-.bh-tab-close {
-  font-size: 16px;
-  line-height: 1;
-  color: #94a3b8;
-  cursor: pointer;
-}
-.bh-tab-close:hover { color: #ef4444; }
-.bh-tab-add {
-  font-size: 18px;
-  font-weight: 700;
-  color: #b91c1c;
-  border-style: dashed;
-}
-/* ── Page ── */
-.bh-page {
-  padding: 24px;
-  min-height: 100vh;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 16px;
-}
-.bh-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 20px;
-}
-.bh-title {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 800;
-  color: #111827;
-}
-.bh-subtitle {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: #64748b;
-}
-.bh-header-actions { position: relative; }
-.bh-dropdown-wrap { position: relative; display: inline-block; }
-.bh-dropdown-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.10);
-  z-index: 50;
-  min-width: 180px;
-  padding: 4px 0;
-}
-.bh-dropdown-menu button {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 10px 16px;
-  border: none;
-  background: none;
+.pos-tab-x {
   font-size: 14px;
-  color: #334155;
+  line-height: 1;
+  color: #9ca3af;
   cursor: pointer;
 }
-.bh-dropdown-menu button:hover { background: #f1f5f9; }
-.bh-loading {
-  text-align: center;
-  padding: 40px;
-  color: #64748b;
-  font-weight: 600;
-}
+.pos-tab-x:hover { color: #475569; }
+.pos-tab-add { border-style: dashed; color: #475569; font-weight: 800; }
 
-/* ── Layout ── */
-.bh-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(360px, 1fr);
-  gap: 20px;
-  align-items: start;
-}
-.bh-main {
-  display: grid;
-  gap: 20px;
-}
-.bh-sidebar {
-  display: grid;
-  gap: 16px;
-  position: sticky;
-  top: 80px;
-}
-
-/* ── Card ── */
-.bh-card {
+/* Sections — card style like Trainify */
+.pos-section {
+  padding: 16px 18px;
   background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 16px;
-  overflow: hidden;
+  border-radius: 12px;
+  margin-top: 12px;
+  border: 1px solid #ececec;
+  box-shadow: 0 1px 4px rgba(15,23,42,0.04);
 }
-.bh-card-head {
+.pos-customer-section {
+  padding: 16px 18px 18px;
+  border-color: #e2e8f0;
+  box-shadow: none;
+}
+.pos-section-head {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid #eef2f7;
-}
-.bh-card-head h2 {
-  margin: 0;
-  font-size: 16px;
+  gap: 4px;
+  font-size: 12.5px;
   font-weight: 800;
-  color: #111827;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: 12px;
 }
-.bh-card-actions {
+
+/* Customer row */
+.pos-customer-row {
   display: flex;
   gap: 8px;
+  margin-bottom: 4px;
 }
-.bh-card-body {
-  padding: 18px 20px;
-  display: grid;
-  gap: 14px;
+.pos-customer-row .pos-input { flex: 1; }
+.pos-cashier-row {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+.pos-cashier-row::before {
+  content: 'Nhân viên tạo đơn:';
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+.pos-cashier-row .pos-select-sm {
+  flex: 0 0 auto;
+  width: min(100%, 280px);
+  border-color: #cbd5e1;
+  background: #fff;
+  min-height: 36px;
 }
 
-/* ── Buttons ── */
-.bh-btn {
-  border: none;
-  border-radius: 10px;
-  padding: 10px 16px;
+/* Inputs */
+.pos-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
   font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
+  font-size: 14px;
+  color: #111;
+  background: #fff;
+  box-sizing: border-box;
+}
+.pos-input:focus { outline: none; border-color: #475569; box-shadow: 0 0 0 2px rgba(71,85,105,.12); }
+.pos-input-lg { font-size: 15px; padding: 9px 12px; font-weight: 700; }
+
+.pos-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  color: #111;
+  background: #fff;
+  box-sizing: border-box;
+}
+.pos-select:focus { outline: none; border-color: #475569; }
+.pos-select-sm { padding: 5px 8px; font-size: 12px; }
+
+/* Buttons */
+.pos-btn-outline {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  transition: all 0.15s ease;
-}
-.bh-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.bh-btn-primary {
-  background: linear-gradient(135deg, #dc2626, #b91c1c);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(185,28,28,0.25);
-}
-.bh-btn-primary:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(185,28,28,0.3);
-}
-.bh-btn-outline {
+  gap: 4px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
   background: #fff;
   color: #374151;
-  border: 1px solid #d1d5db;
-}
-.bh-btn-outline:hover:not(:disabled) {
-  border-color: #9ca3af;
-  background: #f9fafb;
-}
-.bh-btn-sm {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
   padding: 7px 12px;
-  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
 }
-.bh-btn-submit {
-  width: 100%;
-  justify-content: center;
-  padding: 14px;
-  font-size: 15px;
-  letter-spacing: 0.04em;
-  border-radius: 12px;
-  margin-top: 4px;
-}
+.pos-btn-outline:hover { background: #f9fafb; border-color: #9ca3af; }
+.pos-btn-sm { padding: 5px 10px; font-size: 12px; }
 
-/* ── Cart ── */
-.bh-cart {
-  padding: 6px 0;
+/* PPP Cart — card style PPP */
+.pos-cart-section {
+  background: #fff;
+  border-radius: 12px;
+  margin-top: 8px;
+  border: 1px solid #ececec;
+    box-shadow: 0 1px 4px rgba(15,23,42,0.04);
+  overflow: hidden;
 }
-.bh-cart-empty {
+.pos-cart-section.is-scrollable {
+  max-height: 560px;
+  overflow-y: auto;
+}
+.pos-cart-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 40px 20px;
-  color: #94a3b8;
-}
-.bh-cart-empty p {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-}
-.bh-cart-item {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 20px;
-  border-bottom: 1px solid #f3f4f6;
-  transition: background 0.15s;
-}
-.bh-cart-item:last-of-type {
-  border-bottom: none;
-}
-.bh-cart-item:hover {
-  background: #fafbfc;
-}
-
-/* Thumbnail */
-.bh-cart-thumb {
-  width: 52px;
-  height: 52px;
-  border-radius: 10px;
-  overflow: hidden;
-  background: #f1f5f9;
-  flex-shrink: 0;
-  border: 1px solid #e5e7eb;
-}
-.bh-cart-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.bh-cart-thumb-placeholder {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-  color: #94a3b8;
-}
-
-/* Info */
-.bh-cart-info {
-  flex: 1;
-  min-width: 0;
-}
-.bh-cart-name {
-  font-weight: 700;
-  font-size: 14px;
-  color: #111827;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.bh-cart-meta {
-  display: flex;
-  gap: 4px;
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 2px;
-}
-.bh-cart-code {
+  gap: 6px;
+  padding: 32px 16px;
   color: #9ca3af;
 }
-.bh-dot {
-  color: #d1d5db;
-}
+.pos-cart-empty p { margin: 0; font-size: 13px; font-weight: 600; }
+.pos-cart-empty small { font-size: 11.5px; }
 
-/* Price */
-.bh-cart-price {
-  font-weight: 700;
-  font-size: 14px;
-  color: #111827;
-  min-width: 100px;
-  text-align: right;
-  flex-shrink: 0;
+.pos-cart-item {
   display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #f0f0f0;
   align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  flex-wrap: wrap;
+  transition: background .1s;
 }
-.bh-cart-campaign-badge {
-  font-size: 11px;
-  font-weight: 700;
-  background: #dc2626;
-  color: #fff;
-  padding: 1px 5px;
-  border-radius: 4px;
-}
-
-/* Qty controls */
-.bh-cart-qty {
-  display: flex;
-  align-items: center;
-  gap: 0;
+.pos-cart-item:last-child { border-bottom: none; }
+.pos-cart-item:hover { background: #f8fafc; }
+.pos-cart-item-img {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f3f4f6;
   flex-shrink: 0;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  padding: 3px;
+  box-sizing: border-box;
+}
+.pos-cart-item-img img { width: 100%; height: 100%; object-fit: contain; background: #f8fafc; border-radius: 6px; }
+.pos-cart-item-body { flex: 1; min-width: 0; }
+.pos-cart-item-name {
+  font-weight: 700;
+  font-size: 14.5px;
+  color: #111;
+  line-height: 1.35;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.bh-qty-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: #f9fafb;
-  color: #374151;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.bh-qty-btn:hover:not(:disabled) {
-  background: #f1f5f9;
-}
-.bh-qty-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-.bh-qty-value {
-  width: 36px;
-  text-align: center;
-  font-weight: 700;
-  font-size: 14px;
-  color: #111827;
-  border-left: 1px solid #d1d5db;
-  border-right: 1px solid #d1d5db;
-  line-height: 32px;
-}
-
-.bh-qty-input {
-  width: 48px;
-  height: 32px;
-  border: 0;
-  border-left: 1px solid #d1d5db;
-  border-right: 1px solid #d1d5db;
-  background: transparent;
-  text-align: center;
-  font-weight: 700;
-  font-size: 14px;
-  color: #111827;
-  outline: none;
-  -moz-appearance: textfield;
-}
-.bh-qty-input::-webkit-outer-spin-button,
-.bh-qty-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-/* Delete */
-.bh-cart-delete {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  border: none;
-  background: #fef2f2;
-  color: #dc2626;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.15s;
-}
-.bh-cart-delete:hover {
-  background: #fee2e2;
-}
-
-/* Cart total */
-.bh-cart-total {
+.pos-cart-item-meta {
   display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 16px;
-  padding: 14px 20px;
-  border-top: 1px solid #e5e7eb;
-  font-size: 15px;
-  color: #374151;
-}
-.bh-cart-total strong {
-  font-size: 18px;
-  color: #dc2626;
-  font-weight: 800;
-}
-
-/* ── Customer panel ── */
-.bh-kv {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 14px;
-}
-.bh-k {
-  color: #64748b;
-  font-weight: 600;
-}
-.bh-v {
-  color: #111827;
-  font-weight: 700;
-}
-.bh-hint {
-  margin: 0;
-  font-size: 12px;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 11px;
   color: #94a3b8;
-  line-height: 1.5;
-}
-.bh-select {
-  width: 100%;
-  padding: 10px 34px 10px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 10px;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  color: #111827;
-  background-color: #fff;
-}
-.bh-select:focus {
-  outline: none;
-  border-color: #dc2626;
-  box-shadow: 0 0 0 3px rgba(220,38,38,0.1);
-}
-.bh-select:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.bh-input {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 10px;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  color: #111827;
-  background: #fff;
-}
-.bh-input:focus {
-  outline: none;
-  border-color: #dc2626;
-  box-shadow: 0 0 0 3px rgba(220,38,38,0.1);
-}
-
-.bh-quick-form {
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-  border: 1px dashed #d1d5db;
-  border-radius: 10px;
-  background: #f9fafb;
-}
-.bh-quick-form input {
-  width: 100%;
-  padding: 9px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font: inherit;
-  font-size: 13px;
-  color: #111827;
-}
-.bh-quick-form input:focus {
-  outline: none;
-  border-color: #dc2626;
-}
-.bh-quick-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-/* ── Payment panel ── */
-.bh-payment-head {
-  gap: 12px;
-}
-.bh-field {
-  display: grid;
-  gap: 6px;
-}
-.bh-field label {
-  font-size: 13px;
-  font-weight: 700;
-  color: #374151;
-}
-.bh-summary {
-  display: grid;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
-}
-.bh-pay-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 14px;
-  color: #374151;
-}
-.bh-pay-row strong {
-  font-weight: 700;
-}
-.bh-pay-discount strong {
-  color: #dc2626;
-}
-.bh-pay-total {
   margin-top: 4px;
-  padding-top: 10px;
-  border-top: 1px dashed #d1d5db;
-  font-size: 16px;
-  font-weight: 800;
 }
-.bh-pay-total strong {
-  font-size: 18px;
+.pos-cart-item-old-price {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  text-decoration: line-through;
+  font-weight: 600;
+  margin-top: 1px;
+  min-height: 14px;
+}
+.pos-cart-discount-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
   color: #dc2626;
-  font-weight: 800;
-}
-
-.bh-customer-modal {
-  width: min(980px, calc(100vw - 36px));
-  max-width: 980px;
-  max-height: 90vh;
-  grid-template-rows: auto auto 1fr;
-}
-.bh-customer-modal-head {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  padding: 18px 72px 14px 22px;
-  align-items: center;
-  gap: 12px;
-}
-.bh-customer-modal .bh-modal-close {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-}
-.bh-customer-modal .bh-customer-head-copy h2 {
-  margin: 0;
-  font-size: 30px;
-  font-weight: 900;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-}
-.bh-customer-modal-tools {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.bh-customer-counter {
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: #eff6ff;
-  color: #1d4ed8;
-  border: 1px solid #bfdbfe;
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 10.5px;
+  font-weight: 700;
   white-space: nowrap;
 }
-.bh-customer-guest-btn {
-  min-width: 108px;
-  height: 38px;
+
+.pos-cart-item-right {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-right: 8px;
+}
+.pos-cart-price-stack {
+  order: 1;
+  width: 168px;
+  min-width: 168px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+.pos-cart-item-total {
+  font-weight: 900;
+  font-size: 16px;
+  color: #111;
+  text-align: right;
+  line-height: 1.3;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.pos-cart-item-remove {
+  order: 3;
+  width: 26px; height: 26px;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  background: #fff1f2;
+  color: #dc2626;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  border: 1px solid #dc2626;
-  background: #dc2626;
-  color: #ffffff;
+  padding: 0;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .1s;
+  margin-left: 2px;
+  align-self: center;
+}
+.pos-cart-item-remove :deep(svg) {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+.pos-cart-item-remove:hover {
+  background: #fecdd3;
+  border-color: #ef4444;
+  color: #991b1b;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.22);
+}
+
+/* Qty controls */
+.pos-qty {
+  order: 2;
+  display: flex;
+  align-items: center;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-left: 0;
+}
+.pos-qty button {
+  width: 34px;
+  height: 28px;
+  border: none;
+  background: #f9fafb;
+  color: #374151;
+  font-size: 15px;
   font-weight: 800;
-}
-.bh-customer-guest-btn:hover {
-  background: #b91c1c;
-  border-color: #b91c1c;
-}
-.bh-customer-modal-body {
-  padding: 16px;
+  cursor: pointer;
   display: grid;
+  place-items: center;
+}
+.pos-qty button:hover:not(:disabled) { background: #e5e7eb; }
+.pos-qty button:disabled { opacity: .3; cursor: not-allowed; }
+.pos-qty input {
+  width: 40px;
+  height: 28px;
+  border: none;
+  border-left: 1px solid #d1d5db;
+  border-right: 1px solid #d1d5db;
+  text-align: center;
+  font-weight: 800;
+  font-size: 14px;
+  color: #111;
+  background: transparent;
+  outline: none;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.pos-qty input::-webkit-outer-spin-button,
+.pos-qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* PPP Payment Section PPP */
+.pos-payment-section {
+  padding: 18px;
+  background: #fff;
+  border-radius: 12px;
+  margin-top: 12px;
+  margin-bottom: 4px;
+  border: 1px solid #ececec;
+  box-shadow: 0 1px 4px rgba(15,23,42,0.04);
+}
+
+.pos-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13.5px;
+  color: #374151;
+  padding: 4px 0;
+}
+.pos-discount-row span:last-child { color: #166534; }
+.pos-total-row {
+  padding: 10px 0 6px;
+  margin-top: 6px;
+  border-top: 1px dashed #d1d5db;
+  font-size: 16px;
+}
+.pos-total-amount { color: #0f172a; font-size: 22px; font-weight: 900; letter-spacing: -0.02em; }
+
+/* Payment methods */
+.pos-pay-methods { margin-top: 10px; }
+.pos-pay-tabs {
+  display: flex;
+  gap: 8px;
+}
+.pos-pay-tabs button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 10px 8px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+  color: #374151;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .15s;
+}
+.pos-pay-tabs button:hover { border-color: #94a3b8; background: #f8fafc; }
+.pos-pay-tabs button.active {
+  border-color: #1e293b;
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+/* Cash input */
+.pos-cash-input { margin-top: 6px; }
+.pos-quick-amounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 5px;
+}
+.pos-quick-amounts button {
+  padding: 5px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+  background: #f9fafb;
+  color: #374151;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .15s;
+}
+.pos-quick-amounts button:hover { border-color: #475569; background: #f1f5f9; color: #1e293b; }
+
+.pos-change-section { margin-top: 8px; }
+.pos-change-amount { color: #111; font-weight: 800; }
+
+/* Toggle delivery */
+.pos-toggle-delivery {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #374151;
+  cursor: pointer;
+}
+.pos-toggle-delivery input { accent-color: #dc2626; width: 16px; height: 16px; }
+
+/* Address form */
+.pos-address-form { display: grid; gap: 6px; margin-top: 6px; }
+.pos-shipping-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+.pos-shipping-row strong { color: #0f172a; white-space: nowrap; }
+
+/* Action buttons */
+.pos-action-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pos-btn-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #6b7280;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pos-btn-cancel:hover { background: #f1f5f9; color: #475569; border-color: #94a3b8; }
+.pos-btn-cancel:disabled { opacity: .4; cursor: not-allowed; }
+.pos-btn-pay {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 11px 14px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(220,38,38,.24);
+  transition: all .15s;
+}
+.pos-btn-pay:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 7px 18px rgba(185,28,28,.3); }
+.pos-btn-pay:disabled { opacity: .5; cursor: not-allowed; }
+
+/* PPP Variant Picker Modal PPP */
+.pos-variant-modal {
+  background: #fff;
+  border-radius: 20px;
+  max-width: 760px;
+  width: calc(100vw - 64px);
+  max-height: 88vh;
+  overflow: auto;
+  box-shadow: 0 26px 70px rgba(15, 23, 42, .26);
+}
+.pos-variant-modal-head {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 24px;
+  border-bottom: 1px solid #eef2f7;
+}
+.pos-variant-head-main { min-width: 0; }
+.pos-variant-head-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.pos-variant-modal-head h3 {
+  margin: 0;
+  font-size: 25px;
+  font-weight: 900;
+  line-height: 1.25;
+  color: #0f172a;
+}
+.pos-variant-head-main p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 600;
+}
+.pos-variant-head-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 7px 12px;
+}
+.pos-variant-modal-head button {
+  width: 36px; height: 36px;
+  border: none; border-radius: 10px;
+  background: #f3f4f6; color: #475569;
+  display: grid; place-items: center;
+  cursor: pointer;
+}
+.pos-variant-modal-head button:hover { background: #fee2e2; color: #dc2626; }
+.pos-variant-grid {
+  padding: 14px 18px 18px;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 14px;
+}
+.pos-variant-item {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 14px;
+  padding: 18px 16px;
+  border: 1px solid #dbe2ea;
+  border-radius: 14px;
+  cursor: pointer;
+  background: linear-gradient(180deg, #ffffff, #fbfcfe);
+  transition: all .18s ease;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  animation: posVariantCardIn .36s ease both;
+}
+.pos-variant-item:hover {
+  border-color: #fda4af;
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 1px rgba(244, 63, 94, 0.24), 0 12px 28px rgba(220, 38, 38, 0.14), 0 0 24px rgba(37, 99, 235, 0.16);
+}
+.pos-variant-item.is-out { opacity: .4; cursor: not-allowed; }
+.pos-variant-media {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #dbe2ea;
+  background: radial-gradient(circle at 20% 20%, #f4f4ff 0%, #eef2ff 42%, #f8fafc 100%);
+  min-height: 130px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pos-variant-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.pos-variant-details { flex: 1; min-width: 0; }
+.pos-variant-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pos-variant-code {
+  font-size: 12px;
+  font-weight: 800;
+  color: #94a3b8;
+}
+.pos-variant-attrs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.pos-variant-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 5px 12px;
+  gap: 4px;
+}
+.pos-variant-pill-color {
+  border: 1.5px solid #94a3b8;
+  background: #1e293b;
+  color: #f1f5f9;
+}
+.pos-variant-pill-color b { color: #fff; font-weight: 800; }
+.pos-variant-pill-size {
+  border: 1.5px solid #fda4af;
+  background: #fff1f2;
+  color: #be123c;
+}
+.pos-variant-pill-size b { color: #be123c; font-weight: 900; }
+.pos-variant-pill-size.solo {
+  font-size: 15px;
+  padding: 7px 16px;
+  border-width: 2px;
+  background: #fce7f3;
+  border-color: #f43f5e;
+  color: #9f1239;
+  box-shadow: 0 0 0 3px rgba(244,63,94,.12);
+}
+.pos-variant-pill-size.solo b { font-size: 16px; }
+.pos-variant-stock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1.5px solid #86efac;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 14px;
+  font-weight: 900;
+  padding: 4px 13px;
+  line-height: 1.2;
+}
+.pos-variant-stock.is-low {
+  border-color: #fdba74;
+  background: #ffedd5;
+  color: #c2410c;
+}
+.pos-variant-price-line {
+  margin-top: 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.pos-variant-price {
+  font-weight: 900;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -0.025em;
+  color: #0f172a;
+}
+.pos-variant-old-price {
+  font-size: 14px;
+  color: #94a3b8;
+  font-weight: 700;
+  text-decoration: line-through;
+}
+.pos-variant-action {
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+@keyframes posVariantCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* PPP QR Modal PPP */
+.pos-qr-modal {
+  background: #f8fafc;
+  border-radius: 20px;
+  max-width: 520px;
+  width: min(520px, calc(100vw - 28px));
+  text-align: left;
+  box-shadow: 0 20px 50px rgba(0,0,0,.18);
+  overflow: hidden;
+}
+.pos-qr-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  color: #fff;
+}
+.pos-qr-header-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pos-qr-body {
+  padding: 18px 16px 16px;
+}
+.pos-qr-badge {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.16);
+  color: #fff;
+  display: grid; place-items: center;
+  flex-shrink: 0;
+}
+.pos-qr-title { font-weight: 800; font-size: 24px; line-height: 1.1; color: #fff; }
+.pos-qr-sub { font-size: 12px; color: rgba(254, 226, 226, 0.95); font-weight: 600; margin-top: 2px; }
+.pos-qr-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.32);
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.pos-qr-close:hover { background: rgba(255,255,255,0.2); }
+.pos-qr-amount {
+  font-weight: 900;
+  font-size: 42px;
+  line-height: 1.05;
+  color: #dc2626;
+  letter-spacing: -0.02em;
+  margin-bottom: 10px;
+  text-align: center;
+}
+.pos-qr-img { margin: 0 auto 12px; max-width: 280px; }
+.pos-qr-img img {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid #fecaca;
+  background: #fff;
+  padding: 8px;
+}
+.pos-qr-content {
+  font-size: 14px;
+  color: #475569;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.pos-qr-waiting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #b91c1c;
+  margin-bottom: 12px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fef2f2;
+  min-height: 40px;
+}
+.pos-qr-spinner {
+  width: 18px; height: 18px;
+  border: 3px solid #fecaca;
+  border-top-color: #dc2626;
+  border-radius: 50%;
+  animation: qr-spin 1s linear infinite;
+}
+@keyframes qr-spin { to { transform: rotate(360deg); } }
+.pos-qr-note { font-size: 12px; color: #64748b; margin-bottom: 12px; text-align: center; }
+.pos-qr-actions {
+  display: grid;
+  gap: 8px;
+}
+
+/* ═══ QR Paid Detail Modal (matches Customer Profile order-detail) ═══ */
+.qr-paid-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+  animation: qrPaidFadeIn .2s ease;
+}
+@keyframes qrPaidFadeIn { from { opacity: 0 } to { opacity: 1 } }
+.qr-paid-modal {
+  background: #fff; border-radius: 20px;
+  width: 100%; max-width: 660px; max-height: 92vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.25);
+  animation: qrPaidSlideUp .25s ease;
+}
+@keyframes qrPaidSlideUp { from { transform: translateY(24px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+
+/* Header — sidebar dark gradient + chess pattern */
+.qr-paid-header {
+  position: relative;
+  isolation: isolate;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 18px 22px;
+  background:
+    radial-gradient(circle at 14% 10%, rgba(239, 68, 68, 0.2), transparent 44%),
+    linear-gradient(165deg, #0a0a0f 0%, #17161e 46%, #07070b 100%);
+  border-radius: 20px 20px 0 0;
+}
+.qr-paid-header::before {
+  content: "";
+  position: absolute; inset: 0;
+  border-radius: 20px 20px 0 0;
+  pointer-events: none;
+  opacity: 0.25;
+  z-index: 0;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.07) 0 1px, transparent 1px 18px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 18px);
+}
+.qr-paid-header-inner {
+  display: flex; align-items: center; gap: 12px;
+  position: relative; z-index: 1;
+}
+.qr-paid-check-icon {
+  width: 42px; height: 42px;
+  border-radius: 12px;
+  background: rgba(220, 38, 38, 0.25);
+  border: 1px solid rgba(255,255,255,0.18);
+  display: grid; place-items: center;
+  color: #fca5a5;
+  flex-shrink: 0;
+}
+.qr-paid-check-icon .material-icons-outlined { font-size: 24px; }
+.qr-paid-header-title {
+  font-weight: 800; font-size: 18px; color: #fff; line-height: 1.2;
+}
+.qr-paid-header-code {
+  font-size: 12px; color: rgba(254, 226, 226, 0.9); font-weight: 600; margin-top: 2px;
+}
+.qr-paid-header-close {
+  position: relative; z-index: 1;
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.1);
+  color: #fff; font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s;
+}
+.qr-paid-header-close:hover { background: rgba(255,255,255,0.2); }
+
+.qr-paid-body { padding: 22px; display: flex; flex-direction: column; gap: 18px; }
+
+/* Info grid */
+.qr-paid-info {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  background: #f8fafc; border-radius: 14px; padding: 16px 18px;
+}
+.qr-paid-info-item { display: flex; flex-direction: column; gap: 3px; }
+.qr-paid-info-item.full { grid-column: 1 / -1; }
+.qr-paid-label {
+  font-size: 11px; color: #94a3b8; text-transform: uppercase;
+  letter-spacing: 0.5px; font-weight: 600;
+}
+.qr-paid-value { font-size: 15px; color: #1e293b; font-weight: 500; }
+.qr-paid-status-badge {
+  padding: 3px 10px; border-radius: 6px; font-size: 13px; font-weight: 600;
+  display: inline-block; width: fit-content;
+}
+.qr-paid-status-badge.success { background: #dcfce7; color: #166534; }
+
+/* Product list */
+.qr-paid-products h4 { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: #111; }
+.qr-paid-product-list { display: flex; flex-direction: column; gap: 10px; }
+.qr-paid-product-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: 12px; background: #f9fafb;
+  border: 1px solid #f1f5f9;
+}
+.qr-paid-product-img {
+  flex-shrink: 0; width: 60px; height: 60px;
+  border-radius: 10px; overflow: hidden;
+  background: #f1f5f9;
+}
+.qr-paid-product-img img { width: 100%; height: 100%; object-fit: cover; }
+.qr-paid-product-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.qr-paid-product-name {
+  font-size: 14px; font-weight: 600; color: #1e293b;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.qr-paid-product-meta { font-size: 12px; color: #475569; }
+.qr-paid-product-qty { font-size: 13px; color: #64748b; }
+.qr-paid-product-total { font-size: 15px; font-weight: 700; color: #111; white-space: nowrap; }
+
+/* Totals */
+.qr-paid-totals {
+  border-top: 1px solid #e5e7eb; padding-top: 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.qr-paid-total-line { display: flex; justify-content: space-between; font-size: 15px; color: #334155; }
+.qr-paid-total-line.grand {
+  font-size: 17px; padding-top: 8px;
+  border-top: 1px dashed #d1d5db; color: #111;
+}
+.qr-paid-total-line.grand strong { color: #dc2626; }
+
+/* Actions */
+.qr-paid-actions {
+  padding-top: 4px;
+}
+.qr-paid-detail-btn {
+  width: 100%;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 14px 20px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  color: #fff;
+  font-size: 15px; font-weight: 700;
+  cursor: pointer;
+  transition: opacity .15s, transform .1s;
+  box-shadow: 0 3px 10px rgba(220, 38, 38, 0.28);
+}
+.qr-paid-detail-btn:hover { opacity: 0.92; transform: translateY(-1px); box-shadow: 0 5px 16px rgba(220,38,38,.35); }
+.qr-paid-detail-btn:active { transform: translateY(0); }
+
+/* PPP Customer Search Modal PPP */
+.bh-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,.5);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 9999;
+  padding: 20px;
   overflow: auto;
 }
+.bh-modal-box {
+  background: #fff;
+  border-radius: 16px;
+  max-width: 640px;
+  width: 100%;
+  max-height: 80vh;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  box-shadow: 0 20px 50px rgba(0,0,0,.2);
+  overflow: hidden;
+}
+.bh-customer-modal {
+  width: min(800px, calc(100vw - 40px));
+  max-width: 800px;
+}
+.bh-customer-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+.bh-customer-modal-head h2 { margin: 0; font-size: 18px; font-weight: 800; }
+.bh-modal-close {
+  width: 32px; height: 32px;
+  border-radius: 8px; border: none;
+  background: #f3f4f6; color: #475569;
+  display: grid; place-items: center; cursor: pointer;
+}
+.bh-modal-close:hover { background: #fee2e2; color: #dc2626; }
+.bh-modal-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-bottom: 1px solid #eee;
+}
+.bh-modal-search-icon { color: #9ca3af; flex-shrink: 0; }
+.bh-modal-search input {
+  flex: 1;
+  border: none; outline: none;
+  font: inherit; font-size: 14px; font-weight: 600;
+  color: #111; background: transparent;
+}
+.bh-customer-modal-body { padding: 14px; overflow: auto; display: grid; gap: 12px; }
 .bh-customer-table-wrap {
   border: 1px solid #e5e7eb;
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: auto;
-  max-height: 60vh;
+  max-height: 50vh;
 }
 .bh-customer-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 15px;
+  font-size: 14px;
 }
 .bh-customer-table th,
 .bh-customer-table td {
-  padding: 12px 14px;
-  border-bottom: 1px solid #eef2f7;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0f0f0;
   text-align: left;
 }
 .bh-customer-table thead th {
   background: #f8fafc;
-  color: #64748b;
-  font-size: 13px;
+  color: #6b7280;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   position: sticky;
   top: 0;
   z-index: 1;
 }
-.bh-customer-table tbody tr {
-  transition: background-color 0.15s ease;
-}
-.bh-customer-table tbody tr:hover {
-  background: #f8fafc;
-}
-.bh-customer-table tbody tr.is-selected {
-  background: #eef2ff;
-}
-.bh-customer-table tbody td:first-child {
-  font-weight: 700;
-  color: #111827;
-}
-.right {
-  text-align: right !important;
-}
+.bh-customer-table tbody tr:hover { background: #f8fafc; }
+.right { text-align: right !important; }
 .bh-customer-create {
   border: 1px dashed #d1d5db;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #f9fafb;
   padding: 12px;
   display: grid;
   gap: 8px;
 }
-.bh-customer-create p {
-  margin: 0;
-  color: #334155;
-  font-size: 13px;
-  font-weight: 600;
-}
-.bh-customer-create-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-@media (max-width: 900px) {
-  .bh-customer-modal {
-    width: 100%;
-    max-width: 100%;
-    max-height: 94vh;
-  }
-  .bh-customer-modal-head {
-    grid-template-columns: 1fr;
-    padding: 16px 56px 12px 16px;
-    gap: 10px;
-    align-items: start;
-  }
-  .bh-customer-modal .bh-customer-head-copy h2 {
-    font-size: 20px;
-  }
-  .bh-customer-modal-tools {
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-  .bh-customer-table {
-    font-size: 14px;
-  }
-  .bh-customer-table-wrap {
-    max-height: 62vh;
-  }
-}
-
-/* ── Modal ── */
-.bh-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(15,23,42,0.5);
-  backdrop-filter: blur(4px);
-  display: grid;
-  place-items: center;
-  z-index: 9999;
-  padding: 20px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  box-sizing: border-box;
-}
-.bh-modal-box {
-  background: #fff;
-  border-radius: 20px;
-  width: min(100%, 640px);
-  max-width: 640px;
-  max-height: 80vh;
-  display: grid;
-  grid-template-rows: auto auto 1fr;
-  box-shadow: 0 24px 60px rgba(15,23,42,0.2);
-  overflow: hidden;
-  box-sizing: border-box;
-}
-.bh-product-modal {
-  width: min(1180px, calc(100vw - 40px));
-  max-width: 1180px;
-  max-height: 88vh;
-  background:
-    radial-gradient(circle at top right, rgba(239, 68, 68, 0.08), transparent 24%),
-    linear-gradient(180deg, #ffffff 0%, #fffafa 100%);
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  box-sizing: border-box;
-}
-.bh-modal-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 18px 24px 14px;
-  border-bottom: 1px solid #eef2f7;
-}
-.bh-modal-head h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 800;
-  color: #111827;
-}
-.bh-product-modal .bh-modal-head {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 14px;
-  padding: 18px 70px 12px 22px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 250, 250, 0.96));
-}
-.bh-product-modal-head-copy {
-  min-width: 0;
-  flex: 1;
-}
-.bh-product-modal-head-copy h2 {
-  font-size: 16px;
-  letter-spacing: -0.02em;
-}
-.bh-product-modal-head-copy p {
-  margin: 4px 0 0;
-  color: #7c6b70;
-  font-size: 12px;
-  font-weight: 600;
-}
-.bh-modal-counter {
-  padding: 10px 16px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #fee2e2, #fecaca);
-  border: 1px solid rgba(185, 28, 28, 0.3);
-  color: #991b1b;
-  font-size: 14px;
-  font-weight: 900;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-.bh-modal-close {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  border: none;
-  background: #f1f5f9;
-  color: #475569;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-}
-.bh-product-modal .bh-modal-close {
-  position: absolute;
-  top: 18px;
-  right: 20px;
-}
-.bh-modal-close:hover {
-  background: #fee2e2;
-  color: #dc2626;
-}
-.bh-modal-search {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 24px;
-  border-bottom: 1px solid #eef2f7;
-}
-.bh-modal-search-icon {
-  color: #94a3b8;
-  flex-shrink: 0;
-}
-.bh-modal-search input {
-  width: 100%;
-  border: none;
-  outline: none;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  color: #0f172a;
-  background: transparent;
-}
-.bh-modal-search input::placeholder {
-  color: #94a3b8;
-}
-.bh-product-modal .bh-modal-search {
-  margin: 0 18px;
-  padding: 12px 16px;
-  border: 1px solid #eadde0;
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,250,250,0.98));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
-  box-sizing: border-box;
-}
-.bh-product-modal .bh-modal-search:focus-within {
-  border-color: #f87171;
-  box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.14);
-}
-.bh-modal-list {
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 14px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  grid-auto-rows: max-content;
-  align-items: start;
-  gap: 14px;
-}
-.bh-product-grid {
-  padding: 14px 18px 18px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  align-content: start;
-  box-sizing: border-box;
-}
+.bh-customer-create p { margin: 0; font-size: 13px; color: #374151; font-weight: 600; }
 .bh-modal-empty {
-  grid-column: 1 / -1;
   text-align: center;
-  padding: 32px;
-  color: #94a3b8;
-  font-weight: 600;
-}
-.bh-modal-item {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-  padding: 0;
-  border-radius: 16px;
-  border: 2px solid #1a1a1a;
-  background: #ffffff;
-  cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.22s ease;
-  position: relative;
-  overflow: hidden;
-}
-.bh-modal-item:hover {
-  transform: translateY(-3px);
-  border-color: #000000;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
-}
-.bh-modal-item-disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-.bh-modal-item-disabled:hover {
-  transform: none;
-  border-color: #d1d5db;
-  box-shadow: none;
-}
-.bh-modal-item-img {
-  width: 100%;
-  height: 250px;
-  overflow: hidden;
-  background: #f5f5f5;
-  flex-shrink: 0;
-}
-.bh-modal-item-img img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  object-position: center center;
-  display: block;
-}
-.bh-modal-item-placeholder {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-  color: #94a3b8;
-}
-.bh-modal-item-info {
-  padding: 14px 16px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-}
-.bh-modal-item-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.bh-modal-item-code {
-  max-width: 60%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: #f3f4f6;
-  color: #374151;
-  font-size: 12px;
-  font-weight: 700;
-  border: 1px solid #d1d5db;
-}
-.bh-modal-item-stock {
-  flex-shrink: 0;
-  padding: 5px 11px;
-  border-radius: 999px;
-  background: #bbf7d0;
-  color: #14532d;
-  font-size: 13px;
-  font-weight: 800;
-  border: 1px solid #86efac;
-}
-.bh-modal-item-stock.is-low {
-  background: #fed7aa;
-  color: #9a3412;
-  border-color: #fdba74;
-}
-.bh-modal-item-name {
-  font-weight: 700;
-  font-size: 17px;
-  color: #111827;
-  line-height: 1.35;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.bh-modal-item-variant-line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.bh-modal-item-variant-pill {
-  padding: 7px 14px;
-  border-radius: 999px;
-  background: #e5e7eb;
-  border: 1px solid #9ca3af;
-  color: #111827;
-  font-size: 13px;
-  font-weight: 800;
-}
-.bh-modal-item-variant-pill strong {
-  font-weight: 900;
-}
-.bh-modal-item-price {
-  font-weight: 900;
-  color: #b91c1c;
-  font-size: 24px;
-  line-height: 1.1;
-  margin-top: 4px;
-  padding-top: 10px;
-  border-top: 1px solid #e5e7eb;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.65);
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.bh-modal-item-price-original {
-  font-size: 14px;
-  font-weight: 500;
-  color: #9ca3af;
-  text-decoration: line-through;
-  text-shadow: none;
-}
-.bh-modal-campaign-badge {
-  font-size: 12px;
-  font-weight: 700;
-  background: #dc2626;
-  color: #fff;
-  padding: 1px 6px;
-  border-radius: 4px;
-  text-shadow: none;
-}
+  padding: 24px;
 
-/* ── Modal transition ── */
-.bh-modal-enter-active { transition: opacity 0.2s ease; }
-.bh-modal-enter-active .bh-modal-box { transition: transform 0.25s cubic-bezier(.25,.8,.25,1), opacity 0.2s ease; }
-.bh-modal-leave-active { transition: opacity 0.15s ease; }
-.bh-modal-leave-active .bh-modal-box { transition: transform 0.15s ease, opacity 0.15s ease; }
-.bh-modal-enter-from { opacity: 0; }
-.bh-modal-enter-from .bh-modal-box { transform: translateY(20px) scale(0.97); opacity: 0; }
-.bh-modal-leave-to { opacity: 0; }
-.bh-modal-leave-to .bh-modal-box { transform: translateY(10px) scale(0.98); opacity: 0; }
-
-/* ── Responsive ── */
-@media (max-width: 900px) {
-  .bh-product-modal-head-copy p {
-    display: none;
-  }
-  .bh-layout {
-    grid-template-columns: 1fr;
-  }
-  .bh-sidebar {
-    position: static;
-  }
-  .bh-cart-item {
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-  .bh-cart-price {
-    min-width: auto;
-  }
+  /* PPP Product Modal Items PPP */
   .bh-product-modal {
-    width: min(96vw, 960px);
-    max-width: 96vw;
+    width: min(720px, calc(100vw - 32px));
+    max-width: 720px;
   }
-  .bh-product-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    padding: 10px;
-  }
-  .bh-modal-item-img {
-    height: 220px;
-  }
-  .bh-modal-item-price {
-    font-size: 19px;
-  }
-}
-
-@media (max-width: 768px) {
-  .bh-modal-overlay {
-    padding: 8px;
-  }
-  .bh-product-modal {
-    width: 100%;
-    max-width: 100%;
-  }
-  .bh-product-modal .bh-modal-head {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    padding: 16px 58px 10px 16px;
-  }
-  .bh-modal-counter {
-    justify-self: start;
-  }
-  .bh-product-modal .bh-modal-search {
-    margin: 0 12px;
-    padding: 10px 14px;
-  }
-  .bh-product-grid {
-    grid-template-columns: 1fr;
-    padding: 8px;
-  }
-  .bh-modal-item-img {
-    height: 210px;
-  }
-  .bh-modal-item-top {
+  .bh-modal-head {
+    display: flex;
     align-items: flex-start;
-    flex-direction: column;
+    justify-content: space-between;
+    padding: 18px 20px;
+    border-bottom: 1px solid #f0f0f0;
+    background: linear-gradient(to right, #fff 0%, #fef9f9 100%);
   }
-  .bh-modal-item-code {
-    max-width: 100%;
+  .bh-modal-head h2 { margin: 0; font-size: 18px; font-weight: 900; color: #111; }
+  .bh-modal-head p { margin: 4px 0 0; font-size: 12px; color: #9ca3af; }
+  .bh-modal-list { overflow-y: auto; flex: 1; }
+  .bh-product-grid { display: grid; }
+  .bh-modal-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 18px;
+    border-bottom: 1px solid #f4f4f4;
+    cursor: pointer;
+    transition: background .15s, box-shadow .15s;
   }
-}
-
-
-/* ── Toggle switch ── */
-.bh-toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  user-select: none;
-}
-.bh-toggle-label {
-  font-size: 13px;
-  font-weight: 700;
-  color: #374151;
-}
-.bh-toggle input {
-  display: none;
-}
-.bh-toggle-track {
-  position: relative;
-  width: 42px;
-  height: 24px;
-  background: #d1d5db;
-  border-radius: 999px;
-  transition: background 0.2s;
-}
-.bh-toggle-track::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  background: #fff;
-  border-radius: 50%;
-  transition: transform 0.2s;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-}
-.bh-toggle input:checked + .bh-toggle-track {
-  background: #dc2626;
-}
-.bh-toggle input:checked + .bh-toggle-track::after {
-  transform: translateX(18px);
-}
-
-/* ── Address section ── */
-.bh-address-section {
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  background: #f9fafb;
-}
-.bh-address-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 700;
-  color: #374151;
-}
-.bh-address-form {
-  display: grid;
-  gap: 6px;
-}
-
-/* ── Shipping fee ── */
-.bh-shipping-fee {
-  padding: 10px 12px;
-  border: 1px solid #fecaca;
-  border-radius: 10px;
-  background: #fef2f2;
-}
-.bh-shipping-fee-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 13px;
-  color: #374151;
-}
-.bh-shipping-fee-row span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.bh-shipping-fee-row strong {
-  color: #b91c1c;
-}
-.bh-select-sm {
-  padding: 4px 8px;
-  font-size: 12px;
-  border-radius: 6px;
-  border: 1px solid #fecaca;
-  background-color: #fff;
-  color: #374151;
-}
-
-/* ── Payment modal ── */
-.bh-pay-modal {
-  max-width: 760px;
-  width: min(96vw, 760px);
-}
-.bh-pay-modal-body {
-  padding: 32px 36px 36px;
-  display: grid;
-  gap: 26px;
-}
-.bh-pay-modal-total {
-  display: grid;
-  gap: 10px;
-  font-size: 20px;
-  color: #111827;
-  padding-bottom: 18px;
-  border-bottom: 1px solid #e5e7eb;
-}
-.bh-pay-modal-total-main {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 700;
-}
-.bh-pay-modal-total strong {
-  font-size: 32px;
-  color: #dc2626;
-  font-weight: 800;
-}
-/* Mode tabs */
-.bh-pay-mode-tabs {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-}
-.bh-pay-mode-tab {
-  padding: 11px 10px;
-  border: 2px solid #e5e7eb;
-  border-radius: 10px;
-  background: #f9fafb;
-  color: #374151;
-  font-size: 15px;
+  .bh-modal-item:last-child { border-bottom: none; }
+  .bh-modal-item:hover { background: #fef9f9; box-shadow: inset 3px 0 0 #fca5a5; }
+  .bh-modal-item-disabled { opacity: .4; cursor: not-allowed; }
+  .bh-modal-item-disabled:hover { background: transparent; box-shadow: none; }
+  .bh-modal-item-img {
+    width: 62px;
+    height: 62px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #f3f4f6;
+    border: 1px solid #ebebeb;
+    flex-shrink: 0;
+    padding: 4px;
+    box-sizing: border-box;
+  }
+  .bh-modal-item-img img { width: 100%; height: 100%; object-fit: contain; border-radius: 6px; }
+  .bh-modal-item-info { flex: 1; min-width: 0; }
+  .bh-modal-item-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .bh-modal-item-code { font-size: 11.5px; font-weight: 800; color: #94a3b8; letter-spacing: .02em; }
+  .bh-modal-item-stock {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 800;
+    padding: 2px 9px;
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #86efac;
+  }
+  .bh-modal-item-stock.is-low { background: #ffedd5; color: #c2410c; border-color: #fdba74; }
+  .bh-modal-item-name { font-size: 13.5px; font-weight: 700; color: #111; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bh-modal-item-variant-line { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
+  .bh-modal-item-variant-pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 2px 9px;
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+  }
+  .bh-modal-item-variant-pill strong { margin-left: 2px; color: #111; font-weight: 800; }
+  .bh-modal-item-price { font-size: 15px; font-weight: 900; color: #dc2626; margin-top: 5px; letter-spacing: -0.01em; }
+  color: #9ca3af;
   font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.bh-pay-mode-tab:hover {
-  border-color: #dc2626;
-  color: #dc2626;
-}
-.bh-pay-mode-tab.is-active {
-  border-color: #dc2626;
-  background: #fef2f2;
-  color: #dc2626;
 }
 
-/* Inputs grid */
-.bh-pay-modal-inputs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-.bh-pay-modal-inputs--single {
-  grid-template-columns: minmax(360px, 460px);
-  justify-content: center;
-}
-.bh-pay-modal-col {
-  display: grid;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  background: #f8fafc;
-}
-.bh-pay-modal-col-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-.bh-pay-modal-col label {
-  font-size: 17px;
-  font-weight: 700;
-  color: #111827;
-}
-.bh-pay-modal-col .bh-input {
-  font-size: 20px;
-  padding: 12px 16px;
-  background: #fff;
-  border: 1px solid #d1d5db;
-}
-.bh-pay-modal-col--single .bh-pay-modal-col-head {
-  justify-content: center;
-  text-align: center;
-}
-.bh-pay-modal-col--single .bh-input {
-  text-align: center;
-}
-.bh-pay-modal-remaining {
-  font-size: 13px;
-  font-weight: 600;
-  color: #94a3b8;
-}
-.bh-pay-modal-remaining b {
-  color: #dc2626;
-}
-.bh-pay-modal-summary {
-  display: grid;
-  gap: 10px;
-  padding-top: 16px;
-  border-top: 1px solid #e5e7eb;
-}
-.bh-pay-modal-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 18px;
-  color: #374151;
-}
-.bh-pay-modal-row strong {
-  font-weight: 700;
-}
-.bh-text-danger {
-  color: #dc2626;
-}
-.bh-text-success {
-  color: #16a34a;
-}
-.bh-pay-modal-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  padding-top: 8px;
-}
-.bh-pay-modal-actions .bh-btn {
-  min-width: 96px;
-  min-height: 44px;
-  font-size: 15px;
-  justify-content: center;
-}
+/* PPP Modal transition PPP */
+.bh-modal-enter-active { transition: opacity .2s ease; }
+.bh-modal-leave-active { transition: opacity .15s ease; }
+.bh-modal-enter-from, .bh-modal-leave-to { opacity: 0; }
 
-
+/* PPP Responsive PPP */
+@media (max-width: 1400px) {
+  .pos-product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 1200px) {
+  .pos-product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .pos-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+    padding: 8px;
+    gap: 12px;
+  }
+  .pos-resize-gutter { display: none; }
+  .pos-right { height: auto; }
+  .pos-left { max-height: 50vh; }
+  .pos-invoice-header {
+    flex-wrap: wrap;
+  }
+  .bh-customer-modal { width: 100%; max-width: 100%; }
+}
+@media (max-width: 600px) {
+  .pos-layout { grid-template-columns: 1fr; }
+  .pos-product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pos-cart-item { flex-wrap: wrap; }
+}
 </style>

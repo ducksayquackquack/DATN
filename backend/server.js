@@ -3,6 +3,7 @@ const crypto = require("crypto")
 const qs = require("qs")
 const cors = require("cors")
 const sql = require("mssql")
+const nodemailer = require("nodemailer")
 
 const app = express()
 
@@ -23,6 +24,30 @@ const AUTO_SEED_CAMPAIGN_PRODUCTS = String(process.env.AUTO_SEED_CAMPAIGN_PRODUC
 const AUTO_SEED_CAMPAIGN_ID = Number(process.env.AUTO_SEED_CAMPAIGN_ID || 0)
 const AUTO_SEED_CAMPAIGN_CODE = String(process.env.AUTO_SEED_CAMPAIGN_CODE || "KM006").trim()
 const AUTO_SEED_PRODUCT_COUNT = Math.max(1, Number(process.env.AUTO_SEED_PRODUCT_COUNT || 5) || 5)
+
+const SMTP_HOST = String(process.env.SMTP_HOST || "").trim()
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587)
+const SMTP_USER = String(process.env.SMTP_USER || "").trim()
+const SMTP_PASS = String(process.env.SMTP_PASS || "").trim()
+const SMTP_FROM = String(process.env.SMTP_FROM || SMTP_USER || "").trim()
+let mailTransporter = null
+
+function getMailTransporter() {
+  if (mailTransporter) return mailTransporter
+  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null
+
+  mailTransporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_PORT === 465,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+  })
+
+  return mailTransporter
+}
 
 let poolPromise = null
 function getPool() {
@@ -280,6 +305,49 @@ app.get("/health", (_, res) => {
   res.json({ status: "ok" })
 })
 
+app.post("/api/mail/send-order-lookup", async (req, res) => {
+  const email = String(req.body?.email || "").trim()
+  const maHoaDon = String(req.body?.maHoaDon || "").trim()
+  const soDienThoai = String(req.body?.soDienThoai || "").trim()
+  const trackingUrl = String(req.body?.trackingUrl || "").trim()
+
+  if (!email || !maHoaDon) {
+    return res.status(400).json({ message: "email và maHoaDon là bắt buộc" })
+  }
+
+  const transporter = getMailTransporter()
+  if (!transporter) {
+    return res.status(501).json({
+      message: "MailSender chưa được cấu hình SMTP. Hãy thiết lập SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM"
+    })
+  }
+
+  try {
+    const html = `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
+        <h2 style="margin:0 0 8px">Tra cứu đơn hàng DirtyWave</h2>
+        <p>Xin chào,</p>
+        <p>Đơn hàng của bạn đã được ghi nhận với mã: <strong>${maHoaDon}</strong>.</p>
+        ${soDienThoai ? `<p>Số điện thoại nhận hàng: <strong>${soDienThoai}</strong></p>` : ""}
+        ${trackingUrl ? `<p>Bạn có thể theo dõi đơn tại: <a href="${trackingUrl}" target="_blank">${trackingUrl}</a></p>` : ""}
+        <p>Cảm ơn bạn đã mua sắm tại DirtyWave.</p>
+      </div>
+    `
+
+    const info = await transporter.sendMail({
+      from: SMTP_FROM || SMTP_USER,
+      to: email,
+      subject: `Tra cứu đơn hàng ${maHoaDon} - DirtyWave`,
+      html,
+    })
+
+    return res.json({ success: true, messageId: info?.messageId || null })
+  } catch (error) {
+    console.error("POST /api/mail/send-order-lookup error:", error)
+    return res.status(500).json({ message: "Gửi email thất bại" })
+  }
+})
+
 // ══════════════════════════════════════════════════════════════════════════════
 // PHIEU THU CHI (Receipts / Payments during a shift)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -500,6 +568,77 @@ app.post("/api/khuyen-mai-products/sync", async (req, res) => {
   } catch (err) {
     console.error("POST /api/khuyen-mai-products/sync error:", err)
     res.status(500).json({ message: "Internal Server Error" })
+  }
+})
+
+/**
+ * GET /api/stock/sold-by-variant
+ * Returns sold quantities per SanPhamChiTiet ID.
+ * Queries SQL Server directly – no Spring Security auth required.
+ * Used by customer-facing pages that cannot call the Spring /api/hoa-don endpoint.
+ *
+ * Response: [{ spctId: number, sold: number }, ...]
+ */
+app.get('/api/stock/sold-by-variant', async (req, res) => {
+  try {
+    const pool = await getPool()
+
+    // Discover the column name used for SPCT ID in HoaDonChiTiet
+    const spctColRes = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'HoaDonChiTiet'
+        AND COLUMN_NAME IN ('spctId', 'idSanPhamChiTiet', 'sanPhamChiTietId', 'spct_id', 'id_san_pham_chi_tiet')
+    `)
+    const spctPriority = ['spctId', 'idSanPhamChiTiet', 'sanPhamChiTietId', 'spct_id', 'id_san_pham_chi_tiet']
+    const foundSpct = (spctColRes.recordset || []).map((r) => r.COLUMN_NAME)
+    const spctCol = spctPriority.find((n) => foundSpct.includes(n))
+
+    if (!spctCol) {
+      console.warn('[/api/stock/sold-by-variant] Could not find SPCT ID column in HoaDonChiTiet. Found:', foundSpct)
+      return res.json([])
+    }
+
+    // Discover the FK column to HoaDon in HoaDonChiTiet
+    const fkColRes = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'HoaDonChiTiet'
+        AND COLUMN_NAME IN ('idHoaDon', 'hoaDonId', 'hoa_don_id', 'id_hoa_don')
+    `)
+    const fkPriority = ['idHoaDon', 'hoaDonId', 'hoa_don_id', 'id_hoa_don']
+    const foundFk = (fkColRes.recordset || []).map((r) => r.COLUMN_NAME)
+    const fkCol = fkPriority.find((n) => foundFk.includes(n))
+
+    if (!fkCol) {
+      console.warn('[/api/stock/sold-by-variant] Could not find HoaDon FK column in HoaDonChiTiet. Found:', foundFk)
+      return res.json([])
+    }
+
+    // Query total sold per variant, excluding cancelled / returned orders
+    const result = await pool.request().query(`
+      SELECT
+        hdct.[${spctCol}] AS spctId,
+        SUM(hdct.soLuong) AS sold
+      FROM HoaDonChiTiet hdct
+      INNER JOIN HoaDon hd ON hd.id = hdct.[${fkCol}]
+      WHERE hdct.[${spctCol}] IS NOT NULL
+        AND hdct.soLuong > 0
+        AND hd.trangThai NOT LIKE N'%Hủy%'
+        AND hd.trangThai NOT LIKE N'%Huỷ%'
+        AND hd.trangThai NOT LIKE N'%hủy%'
+        AND hd.trangThai NOT LIKE N'%huỷ%'
+        AND hd.trangThai NOT LIKE N'%HUY%'
+        AND hd.trangThai NOT LIKE N'%hoàn về%'
+        AND hd.trangThai NOT LIKE N'%trả hàng%'
+        AND hd.trangThai NOT LIKE N'%giao thất bại%'
+      GROUP BY hdct.[${spctCol}]
+    `)
+
+    res.json(result.recordset || [])
+  } catch (err) {
+    console.error('GET /api/stock/sold-by-variant error:', err)
+    res.json([])
   }
 })
 

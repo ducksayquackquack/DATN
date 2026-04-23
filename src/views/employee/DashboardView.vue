@@ -269,3 +269,10 @@ function toast(msg) {
   window.toast.info(msg)
 }
 </script>
+
+<style scoped>
+@media (max-width: 768px) {
+  .body { overflow-x: auto; }
+  table { min-width: 500px; }
+}
+</style>

@@ -109,6 +109,11 @@ onMounted(async () => {
 })
 
 async function save() {
+  if (!form.name.trim()) {
+    window.toast?.error?.("Vui lòng nhập tên phương thức")
+    return
+  }
+
   const confirmed = await window.confirmDialog?.(id ? "Bạn có chắc muốn cập nhật phương thức thanh toán này?" : "Bạn có chắc muốn tạo phương thức thanh toán mới?") ?? confirm(id ? "Cập nhật phương thức thanh toán?" : "Tạo phương thức mới?")
   if (!confirmed) return
 

@@ -45,9 +45,9 @@
               <th style="width:90px">Mã</th>
               <th>Tên màu</th>
               <th>Mô tả</th>
-              <th style="width:170px">Ngày tạo</th>
-              <th style="width:170px">Ngày sửa</th>
-              <th style="width:140px">Trạng thái</th>
+              <th style="width:170px;text-align:center">Ngày tạo</th>
+              <th style="width:170px;text-align:center">Ngày sửa</th>
+              <th style="width:140px;text-align:center">Trạng thái</th>
               <th class="center" style="width:140px">Thao tác</th>            </tr>
           </thead>
 
@@ -66,11 +66,11 @@
                 <span class="muted" style="font-size:13px">{{ item.description || '-' }}</span>
               </td>
 
-              <td>{{ formatDateTime(item.createdAt) }}</td>
+              <td style="text-align:center">{{ formatDateTime(item.createdAt) }}</td>
 
-              <td>{{ formatDateTime(item.updatedAt) }}</td>
+              <td style="text-align:center">{{ formatDateTime(item.updatedAt) }}</td>
 
-              <td>
+              <td style="text-align:center">
                 <span
                   class="pill"
                   :class="`status-${getAdminStatusTone(item.status)}`"
@@ -190,5 +190,13 @@ async function remove(id) {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+@media (max-width: 1024px) {
+  .head { flex-direction: column; align-items: flex-start; gap: 12px; }
+}
+@media (max-width: 768px) {
+  .body { overflow-x: auto; }
+  table { min-width: 600px; }
 }
 </style>

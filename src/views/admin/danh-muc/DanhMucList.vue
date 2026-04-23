@@ -148,9 +148,9 @@ const remove = async (id) => {
             <tr>
               <th style="width:90px">Mã</th>
               <th>Tên danh mục</th>
-              <th style="width:140px">Trạng thái</th>
-              <th style="width:160px" class="right">Ngày tạo</th>
-              <th style="width:160px" class="right">Ngày sửa</th>
+              <th style="width:140px;text-align:center">Trạng thái</th>
+              <th style="width:160px;text-align:center">Ngày tạo</th>
+              <th style="width:160px;text-align:center">Ngày sửa</th>
               <th style="width:120px; text-align:center">Thao tác</th>
             </tr>
           </thead>
@@ -163,7 +163,7 @@ const remove = async (id) => {
                 <b>{{ dm.tenDanhMuc }}</b>
               </td>
 
-              <td>
+              <td style="text-align:center">
                 <span
                   class="pill"
                   :class="`status-${getAdminStatusTone(dm.trangThai)}`"
@@ -172,16 +172,16 @@ const remove = async (id) => {
                 </span>
               </td>
 
-              <td class="right">
+              <td style="text-align:center">
                 {{ formatDateTime(dm.ngayTao) }}
               </td>
 
-              <td class="right">
+              <td style="text-align:center">
                 {{ formatDateTime(dm.ngaySua) }}
               </td>
 
-            <td class="action-cell">
-              <div class="actions">
+            <td style="text-align:center">
+              <div class="actions" style="justify-content:center">
                 <button class="iconbtn" @click="goToEdit(dm.id)">
                   <span class="material-icons-outlined">visibility</span>
                 </button>

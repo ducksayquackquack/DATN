@@ -6,6 +6,7 @@ import {
   deleteKhachHang,
   getHoaDonByKhachHang
 } from "../../../services/khachHangService"
+import { getDiaChiByKhachHang } from "../../../services/diaChiService"
 import { Trash2 } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel } from "../../../utils/adminStatus"
 
@@ -24,6 +25,33 @@ const totalPages = ref(1)
 const showConfirm = ref(false)
 const selectedId = ref(null)
 
+const toList = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.content)) return payload.content
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.content)) return payload.data.content
+  return []
+}
+
+const formatAddress = (addr) => {
+  if (!addr) return ""
+  return [addr.diaChiCuThe, addr.phuongXa, addr.quanHuyen, addr.tinhThanh]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(", ")
+}
+
+const normalizeAddressText = (k) => {
+  const direct = [k?.diaChiNhanHang, k?.diaChi]
+    .map((v) => String(v || "").trim())
+    .find(Boolean)
+  if (direct) return direct
+
+  const addresses = toList(k?.diaChiList || k?.danhSachDiaChi || k?.diaChis)
+  const preferred = addresses.find((item) => item?.macDinh === true || item?.laMacDinh === true) || addresses[0]
+  return formatAddress(preferred)
+}
+
 async function loadData() {
   loading.value = true
   try {
@@ -38,6 +66,18 @@ async function loadData() {
         k.orderCount = resOrder.data.length
       } catch {
         k.orderCount = 0
+      }
+
+      try {
+        const resAddress = await getDiaChiByKhachHang(k.id)
+        const addressRows = toList(resAddress?.data)
+        const preferred = addressRows.find((item) => item?.macDinh === true || item?.laMacDinh === true) || addressRows[0]
+        const fullAddress = formatAddress(preferred)
+        if (fullAddress) {
+          k.diaChiNhanHang = fullAddress
+        }
+      } catch {
+        // Keep fallback on customer payload fields.
       }
     }
 
@@ -100,11 +140,11 @@ const remove = async () => {
         </small>
       </div>
 
-      <button
+      <button 
         class="btn primary"
-        @click="router.push('/admin/khach-hang/form')"
+        @click="router.push('/admin/khach-hang/form/new')"
       >
-        + Thêm khách
+        + Thêm khách hàng
       </button>
     </div>
 
@@ -134,11 +174,12 @@ const remove = async () => {
       <table class="table">
         <thead>
           <tr>
-            <th>Mã</th>
-            <th>Khách hàng</th>
-            <th>SĐT</th>
-            <th>Trạng thái</th>
-            <th class="action-col">Thao tác</th>
+            <th style="width:90px">Mã</th>
+            <th style="width:220px">Khách hàng</th>
+            <th style="width:140px">SĐT</th>
+            <th>Địa chỉ</th>
+            <th style="width:150px;text-align:center">Trạng thái</th>
+            <th style="width:120px;text-align:center">Thao tác</th>
           </tr>
         </thead>
 
@@ -147,8 +188,9 @@ const remove = async () => {
             <td>{{ kh.maKhachHang }}</td>
             <td><b>{{ kh.tenKhachHang }}</b></td>
             <td>{{ kh.soDienThoai }}</td>
+            <td>{{ normalizeAddressText(kh) || 'Chưa cập nhật' }}</td>
 
-            <td>
+            <td style="text-align:center">
               <span
                 class="pill"
                 :class="`status-${getAdminStatusTone(kh.trangThai)}`"
@@ -157,8 +199,8 @@ const remove = async () => {
               </span>
             </td>
 
-            <td class="action-col">
-              <div class="actions">
+            <td style="text-align:center">
+              <div class="actions" style="justify-content:center">
                 <button
                   class="iconbtn"
                   @click="goToEdit(kh.id)"
@@ -177,7 +219,7 @@ const remove = async () => {
           </tr>
 
           <tr v-if="filteredData.length === 0">
-            <td colspan="5" style="text-align:center">
+            <td colspan="6" style="text-align:center">
               Không có dữ liệu
             </td>
           </tr>
@@ -287,5 +329,14 @@ const remove = async () => {
   border-radius: 12px;
   min-width: 320px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+@media (max-width: 1024px) {
+  .head { flex-direction: column; align-items: flex-start; gap: 12px; }
+}
+@media (max-width: 768px) {
+  .body { overflow-x: auto; }
+  table { min-width: 700px; }
+  .modal { min-width: auto; width: 90vw; }
 }
 </style>

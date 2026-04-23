@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { FileText, Shirt, Tag, Calendar, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 
-import { getAllHoaDon, getHoaDonById } from '../../services/hoaDonService'
+import { getAllHoaDon } from '../../services/hoaDonService'
 import { getAllSanPham } from '../../services/sanPhamService'
 import { getAllKhuyenMai } from '../../services/khuyenMaiService'
 
@@ -219,57 +219,14 @@ const syncData = async () => {
   if (sanPhamRes.status === 'fulfilled') products.value = normalizeArray(sanPhamRes.value)
   if (khuyenMaiRes.status === 'fulfilled') campaigns.value = normalizeArray(khuyenMaiRes.value)
 
-  await computeSoldBySpct()
+  soldBySpct.value = await computeSoldBySpctFromInvoices(invoices.value)
 
   loading.value = false
 }
 
-const shouldCountForStock = (order) => {
-  const raw = String(order?.orderStatusName || order?.trangThai || order?.orderStatusCode || '').toUpperCase()
-  if (raw.includes('HUY') || raw.includes('H\u1ee6Y')) return false
-  return raw.includes('HOAN_THANH') || raw.includes('HO\u00c0N TH\u00c0NH') || raw.includes('DA_GIAO') || raw.includes('\u0110\u00c3 GIAO')
-}
+import { shouldCountOrderForStock, computeSoldBySpctFromInvoices } from "@/utils/stockCalculation"
 
-const computeSoldBySpct = async () => {
-  const map = new Map()
-  const completedInvoices = invoices.value.filter(shouldCountForStock)
-  const idsToFetch = completedInvoices
-    .filter((inv) => {
-      const details = inv?.chiTietHoaDons || inv?.hoaDonChiTiets || inv?.chiTiets
-      return !Array.isArray(details) || details.length === 0
-    })
-    .map((inv) => Number(inv?.id))
-    .filter((id) => Number.isFinite(id) && id > 0)
-
-  const detailResults = []
-  for (let i = 0; i < idsToFetch.length; i += 10) {
-    const batch = idsToFetch.slice(i, i + 10)
-    const results = await Promise.all(batch.map((id) => getHoaDonById(id).catch(() => null)))
-    detailResults.push(...results)
-  }
-  const detailById = new Map()
-  detailResults.forEach((res) => {
-    const data = res?.data
-    if (data?.id) detailById.set(Number(data.id), data)
-  })
-
-  for (const inv of completedInvoices) {
-    let items = inv?.chiTietHoaDons || inv?.hoaDonChiTiets || inv?.chiTiets
-    if (!Array.isArray(items) || items.length === 0) {
-      const enriched = detailById.get(Number(inv?.id))
-      items = enriched?.chiTietHoaDons || enriched?.hoaDonChiTiets || enriched?.items || enriched?.chiTiets || []
-    }
-    if (!Array.isArray(items)) continue
-    for (const item of items) {
-      const spctId = Number(item?.spctId || item?.sanPhamChiTietId || item?.idSanPhamChiTiet || item?.chiTietSanPhamId || item?.sanPhamChiTiet?.id || 0)
-      const qty = Number(item?.soLuong || item?.quantity || 0)
-      if (spctId > 0 && qty > 0) {
-        map.set(spctId, (map.get(spctId) || 0) + qty)
-      }
-    }
-  }
-  soldBySpct.value = map
-}
+const shouldCountForStock = (order) => shouldCountOrderForStock(order)
 
 onMounted(async () => {
   await syncData()

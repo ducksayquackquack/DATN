@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import taiKhoanService from '../../services/taiKhoanService'
 import {
@@ -211,6 +211,19 @@ const formatDateTime = (value) => {
   return date.toLocaleString('vi-VN')
 }
 
+// Parse a backend date (possibly ISO with timezone) safely to local YYYY-MM-DD
+const parseBackendDate = (val) => {
+  if (!val) return ''
+  const raw = String(val)
+  if (!raw.includes('T')) return raw.slice(0, 10)
+  const d = new Date(raw)
+  if (isNaN(d.getTime())) return raw.slice(0, 10)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 const getOrderTotal = (order) => {
   const directTotal = Number(
     order?.displayTotal
@@ -247,7 +260,19 @@ const loadProductCatalog = async () => {
       if (raw.startsWith('http')) return raw
       return `${apiBase}${raw.startsWith('/') ? '' : '/'}${raw}`
     }
+    const isCuratedCatalogCode = (value = '') => /^SP0*(?:[1-9]|1\d|20)$/i.test(String(value || '').trim())
     const pickImage = (product, variant) => {
+      const productCode = String(product?.maSanPham || '').trim().toUpperCase()
+      if (isCuratedCatalogCode(productCode)) {
+        const curatedVariant = fallbackImageForVariant({
+          id: product?.id,
+          maSanPham: productCode,
+          tenSanPham: product?.tenSanPham || product?.name,
+          tenMauSac: variant?.mauSac?.tenMauSac || variant?.mauSac?.tenMau || variant?.tenMauSac || variant?.tenMau,
+          maChiTietSanPham: variant?.ma,
+        })
+        if (curatedVariant) return curatedVariant
+      }
       const variantImg = variant?.anh || variant?.hinhAnh || variant?.image
       if (variantImg) return toUrl(variantImg)
       const byVariantFallback = fallbackImageForVariant({
@@ -684,7 +709,7 @@ const fillProfileForm = () => {
   profileForm.tenKhachHang = customer.value?.tenKhachHang || localProfile?.fullName || localStorage.getItem('userName') || ''
   profileForm.gioiTinh = customer.value?.gioiTinh || localProfile?.gender || localStorage.getItem('userGender') || 'Nam'
   profileForm.ngaySinh = customer.value?.ngaySinh
-    ? String(customer.value.ngaySinh).slice(0, 10)
+    ? parseBackendDate(customer.value.ngaySinh)
     : (localProfile?.birthDate || localStorage.getItem('userBirthDate') || '')
   profileForm.soDienThoai = customer.value?.soDienThoai || localProfile?.phone || localStorage.getItem('userPhone') || ''
   profileForm.email = account.value?.email || ''
@@ -773,6 +798,32 @@ const saveProfileInfo = async () => {
     localStorage.removeItem(getAvatarStorageKey(account.value.id))
   }
 
+  // Validate required fields
+  const hoTen = String(profileForm.tenKhachHang || '').trim()
+  if (!hoTen) {
+    toast.error('Vui lòng nhập họ tên.')
+    return
+  }
+
+  const emailVal = String(profileForm.email || '').trim()
+  if (!emailVal) {
+    toast.error('Vui lòng nhập email.')
+    return
+  }
+
+  const ngaySinhVal = String(profileForm.ngaySinh || '').trim()
+  if (!ngaySinhVal) {
+    toast.error('Vui lòng nhập ngày sinh.')
+    return
+  }
+
+  // Validate phone number (must be exactly 10 digits, starting with 0)
+  const phone = String(profileForm.soDienThoai || '').trim()
+  if (phone && !/^0\d{9}$/.test(phone)) {
+    toast.error('Số điện thoại không hợp lệ. Vui lòng nhập đúng 10 chữ số bắt đầu bằng 0.')
+    return
+  }
+
   saving.value = true
   try {
     await taiKhoanService.update(account.value.id, {
@@ -827,7 +878,15 @@ const triggerAvatarPicker = () => {
 }
 
 const changePassword = async () => {
-  if (!account.value?.id) return
+  if (!account.value?.id) {
+    toast.error('Không tìm thấy thông tin tài khoản. Vui lòng đăng nhập lại.')
+    return
+  }
+
+  if (!passwordForm.currentPassword) {
+    toast.error('Vui lòng nhập mật khẩu hiện tại')
+    return
+  }
 
   if (!passwordForm.newPassword || passwordForm.newPassword.length < 6) {
     toast.error('Mật khẩu mới phải có ít nhất 6 ký tự')
@@ -956,6 +1015,21 @@ onMounted(loadAccountCenter)
 
 watch(() => route.query.tab, (tab) => {
   activeTab.value = resolveInitialTab(tab)
+})
+
+// Auto-open order detail when navigated from a notification link
+const notificationOrderOpened = ref(false)
+watch(orders, async (list) => {
+  if (notificationOrderOpened.value) return
+  const orderId = route.query.orderId
+  if (!orderId || !list.length) return
+  const order = list.find(o => String(o.id) === String(orderId))
+  if (order) {
+    notificationOrderOpened.value = true
+    activeTab.value = 'orders'
+    await nextTick()
+    await openOrderDetail(order)
+  }
 })
 </script>
 

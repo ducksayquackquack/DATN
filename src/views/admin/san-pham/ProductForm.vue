@@ -5,10 +5,8 @@ import {
   createSanPham,
   updateSanPham,
   getSanPhamById,
-  getAllSanPham,
-  cleanupDeletedVariants
+  getAllSanPham
 } from "../../../services/sanPhamService"
-import { getAllHoaDon, getHoaDonById } from "../../../services/hoaDonService"
 import { getAllLoai } from "../../../services/loaiService"
 import { getAllKichThuoc } from "../../../services/kichThuocService"
 import { getAllMauSac } from "../../../services/mauSacService"
@@ -58,6 +56,8 @@ const routeBase = computed(() => {
   return "/admin"
 })
 
+const imageConfigSyncReady = ref(!id)
+
 const forceColorlessFromRoute = computed(() => {
   return String(route.query?.hasColors || "").trim() === "0"
 })
@@ -69,6 +69,11 @@ const forceColorlessMode = computed(() => {
 })
 
 const backTarget = computed(() => {
+  const returnTo = String(route.query?.returnTo || "").trim()
+  if (returnTo && (returnTo.startsWith("/admin/") || returnTo.startsWith("/employee/"))) {
+    return returnTo
+  }
+
   const from = String(route.query?.from || "").toLowerCase()
   if (from === "thong-ke") {
     return `${routeBase.value}/thong-ke/doanh-thu`
@@ -111,6 +116,8 @@ const colorOptions = ref([])
 const variantRows = ref([])
 const imageCards = ref([])
 const originalVariantIds = ref([])
+const removedVariantRows = ref([])
+const knownVariantCodes = ref([])
 const soldBySpct = ref(new Map())
 
 const toList = (value) => {
@@ -254,7 +261,7 @@ const fallbackIndexByName = (name = "") => {
 
 const fallbackImageFor = (id, code = "", name = "") => {
   const normalizedCode = String(code || "").trim().toUpperCase()
-  const allowCuratedCodeMap = /^ATID070-\d+$/i.test(normalizedCode) || /^SP\d+$/i.test(normalizedCode)
+  const allowCuratedCodeMap = isCuratedCatalogCode(normalizedCode)
 
   if (mappedFallbackByCode[normalizedCode]) {
     return mappedFallbackByCode[normalizedCode]
@@ -263,29 +270,31 @@ const fallbackImageFor = (id, code = "", name = "") => {
   const mappedByName = getMappedFallbackByName(name)
   if (mappedByName) return mappedByName
 
-  if (allowCuratedCodeMap) {
-    const codeDigits = String(normalizedCode).replace(/\D+/g, "")
-    const codeNum = Number(codeDigits)
-    if (Number.isFinite(codeNum) && codeNum > 0 && mappedFallbackByCodeNum[codeNum]) {
-      return mappedFallbackByCodeNum[codeNum]
-    }
+  if (!allowCuratedCodeMap) {
+    return ""
+  }
+
+  const codeDigits = String(normalizedCode).replace(/\D+/g, "")
+  const codeNum = Number(codeDigits)
+  if (Number.isFinite(codeNum) && codeNum > 0 && mappedFallbackByCodeNum[codeNum]) {
+    return mappedFallbackByCodeNum[codeNum]
   }
 
   const normalizedId = Number(id)
   if (Number.isFinite(normalizedId) && normalizedId > 0) {
-    if (allowCuratedCodeMap && mappedFallbackByCodeNum[normalizedId]) return mappedFallbackByCodeNum[normalizedId]
+    if (mappedFallbackByCodeNum[normalizedId]) return mappedFallbackByCodeNum[normalizedId]
     const nameIndex = fallbackIndexByName(name)
     if (nameIndex >= 0) return fallbackImages[nameIndex] || logo
     return fallbackImages[(normalizedId - 1) % fallbackImages.length]
   }
 
   const digits = String(code || "").replace(/\D+/g, "")
-  const codeNum = Number(digits)
-  if (Number.isFinite(codeNum) && codeNum > 0) {
-    if (allowCuratedCodeMap && mappedFallbackByCodeNum[codeNum]) return mappedFallbackByCodeNum[codeNum]
+  const trailingCodeNum = Number(digits)
+  if (Number.isFinite(trailingCodeNum) && trailingCodeNum > 0) {
+    if (allowCuratedCodeMap && mappedFallbackByCodeNum[trailingCodeNum]) return mappedFallbackByCodeNum[trailingCodeNum]
     const nameIndex = fallbackIndexByName(name)
     if (nameIndex >= 0) return fallbackImages[nameIndex] || logo
-    return fallbackImages[(codeNum - 1) % fallbackImages.length]
+    return fallbackImages[(trailingCodeNum - 1) % fallbackImages.length]
   }
 
   const nameIndex = fallbackIndexByName(name)
@@ -351,6 +360,23 @@ const extractProductCodeNumber = (value = "") => {
 
   return 0
 }
+
+  const isCuratedCatalogCode = (value = "") => {
+    const codeNum = extractProductCodeNumber(value)
+    return Number.isFinite(codeNum) && codeNum >= 1 && codeNum <= 20
+  }
+
+  const shouldStripFallbackImagesForStorage = (productLike = {}) => {
+    const code = String(
+      productLike?.maSanPham ||
+      productLike?.ma ||
+      productLike?.sku ||
+      form.sku ||
+      ""
+    ).trim()
+
+    return isCuratedCatalogCode(code)
+  }
 
 const normalizeColorKey = (value = "") => {
   const normalized = String(value || "")
@@ -495,7 +521,9 @@ const resolveConfiguredColorImage = (configuredImage = "", color = {}, index = 0
   const hasTokenMatch = Boolean(pickImageFromListByColor([current], color?.name || ""))
   if (hasTokenMatch) return current
 
-  if (fallback && (selectedColors.value.length > 1 || fallbackImageSet.has(current))) {
+  // Only switch to fallback when current is one of our built-in fallback assets.
+  // Never override user-chosen or backend-provided image just because color changed.
+  if (fallback && fallbackImageSet.has(current)) {
     return fallback
   }
 
@@ -586,6 +614,10 @@ const resolvePreferredGalleryImages = (images = [], productLike = {}) => {
 
   const uploadedImages = normalizedImages.filter((image) => isUploadedImagePath(image))
   if (uploadedImages.length) return uploadedImages
+
+  // Keep real images coming from backend payload (URL/base64) before any static fallback.
+  // Static fallbacks should only be used when the backend provides no image at all.
+  if (normalizedImages.length) return normalizedImages
 
   const staticCandidates = getStaticColorCandidates(Number(productLike?.id || 0), productLike)
   if (staticCandidates.length) return staticCandidates
@@ -901,6 +933,38 @@ const normalizeName = (value = "") => {
   return normalized
 }
 
+const normalizeStatusText = (value = "") =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+
+const isVariantActive = (variant = {}) => {
+  const rawStatus = variant?.trangThai ?? variant?.status
+
+  if (typeof rawStatus === "boolean") return rawStatus
+  if (typeof rawStatus === "number") return rawStatus !== 0
+
+  const normalized = normalizeStatusText(rawStatus)
+  if (normalized) {
+    if (normalized.includes("ngung") || normalized.includes("inactive") || normalized.includes("disable")) {
+      return false
+    }
+    if (normalized.includes("hoat dong") || normalized.includes("active") || normalized.includes("enable")) {
+      return true
+    }
+  }
+
+  if (typeof variant?.active === "boolean") return variant.active
+  if (typeof variant?.isActive === "boolean") return variant.isActive
+  if (typeof variant?.active === "number") return variant.active !== 0
+  if (typeof variant?.isActive === "number") return variant.isActive !== 0
+
+  return true
+}
+
 const normalizeDisplayColorName = (value = "") => {
   const raw = String(value || "").trim()
   const normalized = normalizeName(raw)
@@ -997,16 +1061,41 @@ function sortVariantRows() {
 }
 
 function removeVariantRow(index) {
+  const row = variantRows.value[index]
+  if (row && Number(row?.id) > 0) {
+    const existing = removedVariantRows.value.some((item) => Number(item?.id) === Number(row.id))
+    if (!existing) {
+      removedVariantRows.value = [...removedVariantRows.value, { ...row }]
+    }
+  }
   variantRows.value.splice(index, 1)
 }
 
 function removeColorGroup(colorId) {
   const targetColorName = normalizeName(getColorMeta(colorId)?.name || "")
 
+  // Delete the rows entirely so no orphan "Chưa phân màu" group appears
+  const removedRows = variantRows.value.filter((row) => {
+    const isMatch = targetColorName
+      ? normalizeName(getColorMeta(row?.colorId)?.name || "") === targetColorName
+      : Number(row?.colorId) === Number(colorId)
+    return isMatch
+  })
+
+  for (const row of removedRows) {
+    if (Number(row?.id) > 0) {
+      const existing = removedVariantRows.value.some((item) => Number(item?.id) === Number(row.id))
+      if (!existing) {
+        removedVariantRows.value = [...removedVariantRows.value, { ...row }]
+      }
+    }
+  }
+
   variantRows.value = variantRows.value.filter((row) => {
-    if (!targetColorName) return Number(row?.colorId) !== Number(colorId)
-    const rowColorName = normalizeName(getColorMeta(row?.colorId)?.name || "")
-    return rowColorName !== targetColorName
+    const isMatch = targetColorName
+      ? normalizeName(getColorMeta(row?.colorId)?.name || "") === targetColorName
+      : Number(row?.colorId) === Number(colorId)
+    return !isMatch
   })
 
   if (!targetColorName) {
@@ -1303,6 +1392,100 @@ function removeSizeFromCombobox(size) {
   toggleSizeSelect(size)
 }
 
+const pairKeyForVariant = (sizeId, colorId) => `${Number(sizeId) || 0}-${Number(colorId) || 0}`
+
+const hasDuplicateVariantPair = (targetRow, nextSizeId, nextColorId) => {
+  const nextKey = pairKeyForVariant(nextSizeId, nextColorId)
+  return variantRows.value.some((row) => {
+    if (row === targetRow) return false
+    return pairKeyForVariant(row?.sizeId, row?.colorId) === nextKey
+  })
+}
+
+function preserveColorImageOnColorChange(previousColorId, nextColorId) {
+  const fromId = Number(previousColorId)
+  const toId = Number(nextColorId)
+  if (!Number.isFinite(fromId) || fromId <= 0) return
+  if (!Number.isFinite(toId) || toId <= 0) return
+  if (fromId === toId) return
+
+  const fromKey = toColorStorageKey(fromId, 0)
+  const toKey = toColorStorageKey(toId, 0)
+  if (!fromKey || !toKey || fromKey === toKey) return
+
+  const fromPreview = String(colorImages.value[fromKey]?.previewUrl || "").trim()
+  const fromCardKey = String(colorImageToCardKey.value[fromKey] || "").trim()
+  const hasToPreview = String(colorImages.value[toKey]?.previewUrl || "").trim().length > 0
+  const hasToCardKey = String(colorImageToCardKey.value[toKey] || "").trim().length > 0
+
+  if (!hasToPreview && fromPreview) {
+    colorImages.value = {
+      ...colorImages.value,
+      [toKey]: { previewUrl: fromPreview }
+    }
+  }
+
+  if (!hasToCardKey && fromCardKey) {
+    colorImageToCardKey.value = {
+      ...colorImageToCardKey.value,
+      [toKey]: fromCardKey
+    }
+  }
+
+  // Move mapping from old color key to new key to avoid transient duplicate mappings
+  // that can cause visual jump in the image card area.
+  if (!hasToPreview && fromPreview) {
+    const nextImages = { ...colorImages.value }
+    delete nextImages[fromKey]
+    nextImages[toKey] = { previewUrl: fromPreview }
+    colorImages.value = nextImages
+  }
+
+  if (!hasToCardKey && fromCardKey) {
+    const nextMap = { ...colorImageToCardKey.value }
+    delete nextMap[fromKey]
+    nextMap[toKey] = fromCardKey
+    colorImageToCardKey.value = nextMap
+  }
+}
+
+function handleVariantSizeChange(variant, event) {
+  const raw = String(event?.target?.value ?? "").trim()
+  const nextSizeId = raw ? Number(raw) : null
+  const currentSizeId = Number(variant?.sizeId) || null
+  const currentColorId = Number(variant?.colorId) || 0
+
+  if (hasDuplicateVariantPair(variant, nextSizeId, currentColorId)) {
+    window.toast?.warning?.("Tổ hợp màu + kích cỡ đã tồn tại")
+    if (event?.target) {
+      event.target.value = currentSizeId == null ? "" : String(currentSizeId)
+    }
+    return
+  }
+
+  variant.sizeId = nextSizeId
+}
+
+function handleVariantColorChange(variant, event) {
+  const raw = String(event?.target?.value ?? "").trim()
+  const nextColorId = raw ? Number(raw) : null
+  const currentSizeId = Number(variant?.sizeId) || 0
+  const previousColorId = Number(variant?.colorId) || null
+
+  if (hasDuplicateVariantPair(variant, currentSizeId, nextColorId)) {
+    window.toast?.warning?.("Tổ hợp màu + kích cỡ đã tồn tại")
+    if (event?.target) {
+      event.target.value = previousColorId == null ? "" : String(previousColorId)
+    }
+    return
+  }
+
+  preserveColorImageOnColorChange(previousColorId, nextColorId)
+
+  variant.colorId = nextColorId
+  syncSelectedColorsFromVariants()
+}
+
 const groupedVariants = computed(() => {
   const map = {}
   for (const row of variantRows.value) {
@@ -1346,6 +1529,14 @@ async function toggleColorSelect(color) {
       )
       : window.confirm(`Bỏ chọn màu "${color.name}" sẽ xoá ${matchingRows.length} biến thể liên quan. Tiếp tục?`)
     if (!confirmed) return
+    for (const row of matchingRows) {
+      if (Number(row?.id) > 0) {
+        const existing = removedVariantRows.value.some((item) => Number(item?.id) === Number(row.id))
+        if (!existing) {
+          removedVariantRows.value = [...removedVariantRows.value, { ...row }]
+        }
+      }
+    }
     const removeIds = new Set(matchingRows.map(r => r.key))
     variantRows.value = variantRows.value.filter(r => !removeIds.has(r.key))
     selectedColors.value.splice(idx, 1)
@@ -1624,16 +1815,37 @@ const hydrateColorImagesFromConfig = (entries = [], fallbackImages = [], product
     folderColorPaletteByName(productLike?.tenSanPham || form.name).length > 1 ||
     getStaticColorCandidates(Number(productLike?.id || id || route.params?.id || 0), productLike).length > 1
 
+  // Build set of images that are explicitly saved for specific colors
+  const configuredImageValues = new Set(
+    normalizedEntries.map((e) => e.image).filter(Boolean)
+  )
+
   const nextCards = []
   const nextMapping = {}
   const nextColorImages = {}
   const seenSrcs = new Set()
 
-  colorImageDisplayColors.value.forEach((color, index) => {
+  // Process colors WITH configured images first, then colors without,
+  // so fallback logic never steals a configured image from another color.
+  const displayColors = colorImageDisplayColors.value.map((color, index) => ({ color, index }))
+  const configuredFirst = [
+    ...displayColors.filter(({ color }) => {
+      const cid = Number(color?.id)
+      return Number.isFinite(cid) && cid > 0 && normalizedByColorId.has(cid)
+    }),
+    ...displayColors.filter(({ color }) => {
+      const cid = Number(color?.id)
+      return !(Number.isFinite(cid) && cid > 0 && normalizedByColorId.has(cid))
+    })
+  ]
+
+  configuredFirst.forEach(({ color, index }) => {
     const colorId = Number(color?.id)
     const configuredImage = Number.isFinite(colorId) && colorId > 0
       ? String(normalizedByColorId.get(colorId) || "").trim()
       : ""
+
+    const isConfigured = !!configuredImage
 
     const shouldUseFallbackInstead =
       hasFolderPalette && configuredImage && duplicateConfiguredImages.has(configuredImage)
@@ -1649,8 +1861,12 @@ const hydrateColorImagesFromConfig = (entries = [], fallbackImages = [], product
     ).trim()
     if (!src) return
 
+    // Skip fallback images that are the configured image of another color
+    if (!isConfigured && configuredImageValues.has(src)) return
+
     // Avoid showing identical fallback images for different colors
-    const isDuplicate = seenSrcs.has(src)
+    // but never dedup a color's own configured image
+    const isDuplicate = !isConfigured && seenSrcs.has(src)
     seenSrcs.add(src)
     const finalSrc = isDuplicate ? '' : src
     const card = createImageCard(finalSrc)
@@ -1687,7 +1903,22 @@ const syncSelectedColorsFromVariants = () => {
 
   const selected = colorOptions.value.filter((color) => colorIds.includes(Number(color.id)))
 
-  selectedColors.value = dedupeColorOptionsByName(selected)
+  // Preserve saved color order from image config if available
+  const imageConfig = id
+    ? getProductImageConfig({ id, maSanPham: form.sku })
+    : { colorImages: [] }
+  const savedOrder = new Map(
+    (Array.isArray(imageConfig?.colorImages) ? imageConfig.colorImages : [])
+      .map((entry) => [Number(entry?.colorId), Number(entry?.order ?? 999)])
+  )
+
+  const sorted = [...selected].sort((a, b) => {
+    const orderA = savedOrder.get(Number(a.id)) ?? 999
+    const orderB = savedOrder.get(Number(b.id)) ?? 999
+    return orderA - orderB
+  })
+
+  selectedColors.value = dedupeColorOptionsByName(sorted)
 }
 
 const ensureVariantRowsCoverDisplayColors = () => {
@@ -1779,6 +2010,14 @@ const syncSelectedSizesFromVariants = () => {
 }
 
 const clearAllVariants = () => {
+  for (const row of variantRows.value) {
+    if (Number(row?.id) > 0) {
+      const existing = removedVariantRows.value.some((item) => Number(item?.id) === Number(row.id))
+      if (!existing) {
+        removedVariantRows.value = [...removedVariantRows.value, { ...row }]
+      }
+    }
+  }
   variantRows.value = []
   selectedColors.value = []
   selectedSizes.value = []
@@ -1817,38 +2056,99 @@ function formatSku(num) {
   return `SP${String(num).padStart(3, "0")}`
 }
 
-function buildStableVariantCode(row, variantIndex = 0) {
-  if (String(row?.ma || "").trim()) return String(row.ma).trim()
-  const skuNum = String(form.sku || "").replace(/\D/g, "")
-  if (!skuNum) return ""
-  const paddedNum = skuNum.padStart(3, "0")
-  const suffix = variantIndex === 0 ? "" : String.fromCharCode(64 + variantIndex)
-  return `SPCT${paddedNum}${suffix}`
+function alphaSuffixFromIndex(index = 0) {
+  if (!Number.isFinite(index) || index <= 0) return ""
+  let n = Math.floor(index)
+  let out = ""
+  while (n > 0) {
+    n -= 1
+    out = String.fromCharCode(65 + (n % 26)) + out
+    n = Math.floor(n / 26)
+  }
+  return out
+}
+
+function nextAvailableVariantCode(baseCode, usedCodes = new Set()) {
+  for (let i = 0; i < 9999; i += 1) {
+    const candidate = `${baseCode}${alphaSuffixFromIndex(i)}`
+    if (!usedCodes.has(candidate)) {
+      usedCodes.add(candidate)
+      return candidate
+    }
+  }
+  return `${baseCode}${Date.now()}`
 }
 
 const colorImagePayloads = computed(() => {
   return colorImageDisplayColors.value
     .map((color, index) => {
       const colorId = Number(color?.id)
-      const key = toColorStorageKey(color, index)
-      const mappedCardKey = colorImageToCardKey.value[key]
-      const mappedCard = imageCards.value.find((item) => item.key === mappedCardKey)
+      const image = resolveColorDisplayImage(color, index)
       return {
         colorId,
-        image: String(colorImages.value[key]?.previewUrl || mappedCard?.src || "").trim(),
+        image: String(image || "").trim(),
         order: index
       }
     })
     .filter((entry) => Number.isFinite(entry.colorId) && entry.colorId > 0 && entry.image)
 })
 
+function resolveColorDisplayImage(colorLike, index = 0) {
+  const key = toColorStorageKey(colorLike, index)
+  const mappedCardKey = colorImageToCardKey.value[key]
+  const mappedCard = imageCards.value.find((item) => item.key === mappedCardKey)
+  return String(colorImages.value[key]?.previewUrl || mappedCard?.src || "").trim()
+}
+
+function syncDraftImageConfigToStorage() {
+  if (!imageConfigSyncReady.value) return
+
+  const sku = String(form.sku || '').trim()
+  const imageOwner = { id: id || null, maSanPham: sku }
+  if (!sku && !id) return
+
+  const orderedImages = prioritizeImagesForSave(allImageValues.value)
+  const overrideImages = shouldStripFallbackImagesForStorage(imageOwner)
+    ? orderedImages.filter((item) => !fallbackImageSet.has(item))
+    : orderedImages
+  const hasImageConfig = overrideImages.length > 0 || colorImagePayloads.value.length > 0
+
+  if (hasImageConfig) {
+    setProductImageConfig(imageOwner, { images: overrideImages, colorImages: colorImagePayloads.value })
+  } else {
+    clearProductImageOverride(imageOwner)
+  }
+}
+
+watch(
+  [() => form.sku, allImageValues, colorImagePayloads],
+  () => {
+    syncDraftImageConfigToStorage()
+  },
+  { deep: true }
+)
+
 function createVariantPayloads() {
   const parsedLoaiId = Number(form.loaiId)
-  return variantRows.value
-    .filter((row) => !getColorMeta(row?.colorId)?.isVirtual)
-    .map((row, index) => ({
+  const rows = variantRows.value.filter((row) => !getColorMeta(row?.colorId)?.isVirtual)
+
+  const skuNum = String(form.sku || "").replace(/\D/g, "")
+  const baseCode = skuNum ? `SPCT${skuNum.padStart(3, "0")}` : "SPCT"
+
+  const usedCodes = new Set(
+    [
+      ...(Array.isArray(knownVariantCodes.value) ? knownVariantCodes.value : []),
+      ...rows.map((row) => String(row?.ma || "").trim().toUpperCase()),
+      ...removedVariantRows.value.map((row) => String(row?.ma || "").trim().toUpperCase())
+    ].filter(Boolean)
+  )
+
+  const activePayloads = rows.map((row) => {
+    const currentCode = String(row?.ma || "").trim().toUpperCase()
+    const resolvedCode = currentCode || nextAvailableVariantCode(baseCode, usedCodes)
+    return {
       id: row.id,
-      ma: buildStableVariantCode(row, index),
+      ma: resolvedCode,
       giaNhap: 0,
       giaBan: Number(row.giaBan || 0),
       soLuong: Number(row.soLuong || 0),
@@ -1860,7 +2160,45 @@ function createVariantPayloads() {
       danhMuc: { id: 1 },
       loai: { id: parsedLoaiId },
       trangThai: row.trangThai || "Hoạt động"
-    }))
+    }
+  })
+
+  const activeIds = new Set(
+    rows
+      .map((row) => Number(row?.id))
+      .filter((id) => Number.isFinite(id) && id > 0)
+  )
+
+  const inactivePayloads = removedVariantRows.value
+    .filter((row) => {
+      const rowId = Number(row?.id)
+      if (!Number.isFinite(rowId) || rowId <= 0) return false
+      if (activeIds.has(rowId)) return false
+      const colorId = Number(row?.colorId)
+      const sizeId = Number(row?.sizeId)
+      return Number.isFinite(colorId) && colorId > 0 && Number.isFinite(sizeId) && sizeId > 0
+    })
+    .map((row) => {
+      const currentCode = String(row?.ma || "").trim().toUpperCase()
+      const resolvedCode = currentCode || nextAvailableVariantCode(baseCode, usedCodes)
+      return {
+        id: row.id,
+        ma: resolvedCode,
+        giaNhap: 0,
+        giaBan: Number(row.giaBan || 0),
+        soLuong: Number(row.soLuong || 0),
+        chatLieu: { id: 1 },
+        mauSac: { id: Number(row.colorId) },
+        kichThuoc: { id: Number(row.sizeId) },
+        hang: { id: 1 },
+        xuatSu: { id: 1 },
+        danhMuc: { id: 1 },
+        loai: { id: parsedLoaiId },
+        trangThai: "Ngừng hoạt động"
+      }
+    })
+
+  return [...activePayloads, ...inactivePayloads]
 }
 
 function validateVariants() {
@@ -1894,6 +2232,22 @@ function validateProduct() {
   if (!String(form.sku || "").trim()) return "Mã sản phẩm không được để trống"
   if (!/^SP\d+/i.test(String(form.sku || "").trim())) return "Mã sản phẩm phải bắt đầu bằng SP + số (ví dụ: SP001)"
   if (!Number.isFinite(Number(form.loaiId)) || Number(form.loaiId) <= 0) return "Vui lòng chọn loại sản phẩm hợp lệ"
+
+  // Require at least one uploaded image for new products
+  if (!id) {
+    const uploadedImages = allImageValues.value.filter((img) => !fallbackImageSet.has(img))
+    if (!uploadedImages.length) return "Vui lòng tải lên ít nhất 1 ảnh sản phẩm"
+  }
+
+  // Require image for every selected color (both create and update)
+  if (colorImageDisplayColors.value.length) {
+    const missingColorImage = colorImageDisplayColors.value.find((color, index) => {
+      return !resolveColorDisplayImage(color, index)
+    })
+    if (missingColorImage) {
+      return `Vui lòng tải ảnh cho màu ${missingColorImage?.name || "đã chọn"}`
+    }
+  }
 
   const variantError = validateVariants()
   if (variantError) return variantError
@@ -1970,6 +2324,8 @@ function mapExistingVariants(variants, options = {}) {
     .map((row) => Number(row?.id))
     .filter((id) => Number.isFinite(id) && id > 0)
 
+  removedVariantRows.value = []
+
   variantRows.value = variants.map((row) => ({
     key: `${row.id || Date.now()}-${Math.random()}`,
     id: row.id || null,
@@ -1982,44 +2338,10 @@ function mapExistingVariants(variants, options = {}) {
   }))
 }
 
-const shouldCountOrderForStock = (detail = {}) => {
-  const order = detail?.hoaDon || detail || {}
-  const statusCode = String(order?.orderStatusCode || detail?.orderStatusCode || '').trim().toUpperCase()
-  if (statusCode.includes('HUY')) return false
-  const isFinalOrder = detail?.finalOrder === true || String(order?.businessClosureStatus || '').toUpperCase() === 'CLOSED'
-  return isFinalOrder || statusCode === 'HOAN_THANH' || statusCode === 'DA_GIAO'
-}
+import { computeSoldBySpct as _computeSoldBySpct, variantAvailableStock } from "@/utils/stockCalculation"
 
-const computeSoldBySpct = async () => {
-  try {
-    const allRes = await getAllHoaDon()
-    const invoices = Array.isArray(allRes?.data) ? allRes.data : []
-    const orderIds = invoices
-      .map((inv) => Number(inv?.id))
-      .filter((id) => Number.isFinite(id) && id > 0)
-    if (!orderIds.length) return
-    const map = new Map()
-    const detailResponses = []
-    for (let i = 0; i < orderIds.length; i += 10) {
-      const batch = orderIds.slice(i, i + 10)
-      const results = await Promise.all(batch.map((bId) => getHoaDonById(bId).catch(() => null)))
-      detailResponses.push(...results)
-    }
-    for (const detailRes of detailResponses) {
-      const detail = detailRes?.data
-      if (!detail || !shouldCountOrderForStock(detail)) continue
-      const items = detail?.items || detail?.hoaDonChiTiets || detail?.chiTietHoaDons || detail?.chiTiets || []
-      if (!Array.isArray(items)) continue
-      for (const item of items) {
-        const spctId = Number(item?.spctId || item?.sanPhamChiTietId || item?.idSanPhamChiTiet || item?.chiTietSanPhamId || 0)
-        const qty = Number(item?.soLuong || item?.quantity || 0)
-        if (spctId > 0 && qty > 0) {
-          map.set(spctId, (map.get(spctId) || 0) + qty)
-        }
-      }
-    }
-    soldBySpct.value = map
-  } catch { /* ignore – stock hint is non-critical */ }
+const _loadSoldBySpct = async () => {
+  soldBySpct.value = await _computeSoldBySpct()
 }
 
 function getSoldQty(variant) {
@@ -2029,7 +2351,7 @@ function getSoldQty(variant) {
 
 function getAvailableStock(variant) {
   if (!variant?.id) return null
-  return variant.soLuong - getSoldQty(variant)
+  return variantAvailableStock(variant, soldBySpct.value)
 }
 
 onMounted(async () => {
@@ -2062,7 +2384,9 @@ onMounted(async () => {
   const primaryData = res.data || {}
 
   let productsInScope = [primaryData]
-  const shouldLoadFamilyScope = String(route.query?.from || "").toLowerCase() === "bien-the"
+  const shouldLoadFamilyScope =
+    String(route.query?.scope || "").toLowerCase() === "family" &&
+    editScopeProductIds.value.length > 1
   if (shouldLoadFamilyScope) {
     try {
       const allRes = await getAllSanPham()
@@ -2088,8 +2412,19 @@ onMounted(async () => {
   }
 
   const data = productsInScope.find((product) => Number(product?.id) === Number(primaryData?.id)) || primaryData
+  const allVariantsFromScope = dedupeVariantList(
+    productsInScope
+      .flatMap((product) => (Array.isArray(product?.sanPhamChiTiets) ? product.sanPhamChiTiets : []))
+  )
+
+  knownVariantCodes.value = [...new Set(
+    allVariantsFromScope
+      .map((variant) => String(variant?.ma || variant?.maSanPhamChiTiet || "").trim().toUpperCase())
+      .filter(Boolean)
+  )]
+
   const variants = dedupeVariantList(
-    productsInScope.flatMap((product) => (Array.isArray(product?.sanPhamChiTiets) ? product.sanPhamChiTiets : []))
+    allVariantsFromScope.filter((variant) => isVariantActive(variant))
   )
   const colorNameSet = new Set(
     variants
@@ -2150,7 +2485,9 @@ onMounted(async () => {
     )]
   }
 
-  if (id) computeSoldBySpct()
+  if (id) _loadSoldBySpct()
+  imageConfigSyncReady.value = true
+  syncDraftImageConfigToStorage()
 })
 
 async function saveProduct() {
@@ -2172,18 +2509,16 @@ async function saveProduct() {
 
   try {
     const orderedImages = prioritizeImagesForSave(allImageValues.value)
-    const overrideImages = orderedImages.filter((item) => !fallbackImageSet.has(item))
+    const imageOwner = { id: id || null, maSanPham: form.sku, sku: form.sku }
+    const overrideImages = shouldStripFallbackImagesForStorage(imageOwner)
+      ? orderedImages.filter((item) => !fallbackImageSet.has(item))
+      : orderedImages
     const hasImageConfig = overrideImages.length > 0 || colorImagePayloads.value.length > 0
     const skippedVirtualVariantCount = variantRows.value.filter((row) => getColorMeta(row?.colorId)?.isVirtual).length
     const currentVariantIds = variantRows.value
       .map((row) => Number(row?.id))
       .filter((rowId) => Number.isFinite(rowId) && rowId > 0)
     const deletedVariantIds = originalVariantIds.value.filter((rowId) => !currentVariantIds.includes(rowId))
-
-    let unresolvedDeletedVariantIds = []
-    if (id && deletedVariantIds.length) {
-      unresolvedDeletedVariantIds = await cleanupDeletedVariants(deletedVariantIds, id)
-    }
 
     if (skippedVirtualVariantCount > 0) {
       window.toast?.info(`Có ${skippedVirtualVariantCount} màu ảnh chưa có trong bảng màu, hệ thống tạm không lưu các biến thể màu này`)
@@ -2204,8 +2539,8 @@ async function saveProduct() {
       colorImages: colorImagePayloads.value,
       sanPhamChiTiets: createVariantPayloads(),
       deletedVariantIds,
-      sanPhamChiTietIdsXoa: unresolvedDeletedVariantIds,
-      xoaSanPhamChiTietIds: unresolvedDeletedVariantIds
+      sanPhamChiTietIdsXoa: deletedVariantIds,
+      xoaSanPhamChiTietIds: deletedVariantIds
     }
 
     if (id) {
@@ -2216,6 +2551,8 @@ async function saveProduct() {
         clearProductImageOverride({ id, maSanPham: form.sku })
       }
       window.toast.success("Cập nhật sản phẩm thành công")
+      originalVariantIds.value = currentVariantIds
+      removedVariantRows.value = []
     } else {
       const response = await createSanPham(payload)
       const savedId = response?.data?.id || response?.data?.data?.id || null
@@ -2226,10 +2563,6 @@ async function saveProduct() {
       }
       window.toast.success("Tạo sản phẩm thành công")
     }
-
-    setTimeout(() => {
-      router.push(backTarget.value)
-    }, 900)
   } catch (err) {
     console.error("SAVE ERROR:", err)
     window.toast.error("Lưu thất bại: " + (err.response?.data?.message || err.message))
@@ -2497,6 +2830,7 @@ async function saveProduct() {
                 <thead>
                   <tr>
                     <th>Kích cỡ</th>
+                    <th>Màu sắc</th>
                     <th>Số lượng</th>
                     <th>Đã bán</th>
                     <th>Còn</th>
@@ -2507,10 +2841,18 @@ async function saveProduct() {
                 <tbody>
                   <tr v-for="variant in group.items" :key="variant.key">
                     <td>
-                      <select v-model.number="variant.sizeId">
-                        <option :value="null">Chọn size</option>
+                      <select :value="variant.sizeId == null ? '' : String(variant.sizeId)" @change="handleVariantSizeChange(variant, $event)">
+                        <option value="">Chọn size</option>
                         <option v-for="size in sizeOptions" :key="size.id" :value="size.id">
                           {{ size.name }}
+                        </option>
+                      </select>
+                    </td>
+                    <td>
+                      <select :value="variant.colorId == null ? '' : String(variant.colorId)" @change="handleVariantColorChange(variant, $event)">
+                        <option value="">Chọn màu</option>
+                        <option v-for="color in colorOptions" :key="color.id" :value="color.id">
+                          {{ color.name }}
                         </option>
                       </select>
                     </td>
@@ -2562,7 +2904,7 @@ async function saveProduct() {
               @change="handleExtraImageUpload"
             />
           </div>
-          <transition-group v-if="colorImageDisplayColors.length" name="color-image" tag="div" class="color-images-grid">
+          <div v-if="colorImageDisplayColors.length" class="color-images-grid">
             <div
               v-for="(color, index) in visibleColorImageDisplayColors"
               :key="toColorStorageKey(color, index)"
@@ -2608,7 +2950,7 @@ async function saveProduct() {
                 <label class="btn image-select-btn" :for="toColorInputId(color, index)">Chọn ảnh</label>
               </div>
             </div>
-          </transition-group>
+          </div>
 
           <div v-if="extraImageCards.length" class="color-images-grid extra-images-grid" style="margin-top: 16px;">
             <div
@@ -3037,16 +3379,20 @@ textarea {
 }
 
 .variant-table tbody td:nth-child(1),
-.variant-table tbody td:nth-child(3),
-.variant-table tbody td:nth-child(4) {
+.variant-table tbody td:nth-child(2),
+.variant-table tbody td:nth-child(4),
+.variant-table tbody td:nth-child(5) {
   vertical-align: middle;
 }
 
-.variant-table thead th:nth-child(3),
 .variant-table thead th:nth-child(4),
-.variant-table tbody td:nth-child(3),
-.variant-table tbody td:nth-child(4) {
+.variant-table thead th:nth-child(5),
+.variant-table tbody td:nth-child(4),
+.variant-table tbody td:nth-child(5) {
   text-align: center;
+  padding-left: 6px;
+  padding-right: 6px;
+  white-space: nowrap;
 }
 
 .variant-table tbody td.col-act {

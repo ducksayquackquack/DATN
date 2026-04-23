@@ -4,8 +4,18 @@
       <div
         v-for="toast in toasts"
         :key="toast.id"
+        class="toast-wrapper"
+      >
+      <div
         class="toast-card"
-        :class="[toast.type, { 'toast-card--cart': toast.variant === 'cart-add' }]"
+        :class="[
+          toast.type,
+          {
+            'toast-card--cart': toast.variant === 'cart-add',
+            'toast-card--aside': asideToastId === toast.id
+          }
+        ]"
+        @mouseenter="onToastEnter(toast.id, $event)"
       >
         <template v-if="toast.variant === 'cart-add'">
           <div class="toast-cart-head">
@@ -52,17 +62,64 @@
           <div class="toast-progress" :style="toastProgressStyle(toast)" />
         </template>
       </div>
+      </div>
     </transition-group>
   </div>
 </template>
 
 <script setup>
+import { onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '../composables/useToast'
 
 const router = useRouter()
-const { toasts, dismissToast } = useToast()
+const { toasts, dismissToast, pauseToast, resumeToast } = useToast()
 const fallbackImage = 'https://via.placeholder.com/72x72?text=SP'
+const asideToastId = ref(null)
+
+// Map of toastId -> cleanup fn for the document.mousemove watcher.
+// Using mousemove + getBoundingClientRect instead of mouseleave so the
+// bounds check is always against the wrapper's stable LAYOUT rect (unaffected
+// by the card's CSS transform), eliminating oscillation and click-blocking.
+const asideCleanups = new Map()
+
+const onToastEnter = (id, event) => {
+  // Wrapper is the card's parent element
+  const wrapperEl = event.currentTarget?.parentElement
+
+  // Cancel any existing watcher (handles fast mouse moves between toasts)
+  asideCleanups.forEach((fn) => fn())
+  asideCleanups.clear()
+
+  asideToastId.value = id
+  pauseToast(id)
+
+  if (!wrapperEl) return
+
+  const onMove = (e) => {
+    const rect = wrapperEl.getBoundingClientRect()
+    const inside = e.clientX >= rect.left && e.clientX <= rect.right
+                && e.clientY >= rect.top  && e.clientY <= rect.bottom
+    if (!inside) {
+      if (asideToastId.value === id) asideToastId.value = null
+      resumeToast(id)
+      cleanup()
+    }
+  }
+
+  const cleanup = () => {
+    document.removeEventListener('mousemove', onMove)
+    asideCleanups.delete(id)
+  }
+
+  document.addEventListener('mousemove', onMove, { passive: true })
+  asideCleanups.set(id, cleanup)
+}
+
+onBeforeUnmount(() => {
+  asideCleanups.forEach((fn) => fn())
+  asideCleanups.clear()
+})
 
 const toastTitle = (type) => {
   if (type === 'success') return 'Thành công'
@@ -111,6 +168,14 @@ const openCart = (toastId) => {
   pointer-events: none;
 }
 
+.toast-wrapper {
+  /* Purely a layout container – never blocks pointer events */
+  pointer-events: none;
+  overflow: visible;
+  min-width: 300px;
+  max-width: 420px;
+}
+
 :global(body.ops-theme .toast-container) {
   top: var(--ops-toast-top, 92px);
   right: 24px;
@@ -131,6 +196,20 @@ const openCart = (toastId) => {
   max-width: 420px;
   pointer-events: auto;
   overflow: hidden;
+  /* card transforms freely; wrapper keeps the stable hover area */
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.25s ease,
+              opacity 0.25s ease;
+  will-change: transform;
+}
+
+/* Slide the card to the right edge – only a tab is visible.
+   pointer-events:none so clicks reach elements underneath. */
+.toast-card--aside {
+  transform: translateX(calc(100% - 44px));
+  opacity: 0.88;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.10);
+  pointer-events: none;
 }
 
 .toast-card--cart {
@@ -257,6 +336,17 @@ const openCart = (toastId) => {
   line-height: 1.35;
   color: #4b5563;
   word-break: break-word;
+}
+
+@media (max-width: 640px) {
+  .toast-card--aside {
+    transform: translateX(calc(100% - 52px));
+  }
+
+  .toast-wrapper {
+    min-width: 0;
+    max-width: none;
+  }
 }
 
 .toast-progress {
