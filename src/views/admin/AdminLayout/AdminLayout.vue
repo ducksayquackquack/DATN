@@ -36,6 +36,8 @@ const router = useRouter()
 const route = useRoute()
 const OPS_TOAST_SHIFT_CLASS = 'ops-toast-shift'
 
+const isWideLayoutRoute = computed(() => String(route.path || '').includes('/admin/hoa-don'))
+
 const openSections = ref({
   vanhanh: true,
   lichlamviec: true,
@@ -539,7 +541,7 @@ const isSanPhamActive = computed(() => {
         </div>
       </div>
 
-      <main class="wrap">
+      <main class="wrap" :class="{ 'wrap--wide': isWideLayoutRoute }">
         <router-view v-slot="{ Component }">
           <component :is="Component" :key="$route.fullPath" />
         </router-view>
@@ -762,6 +764,11 @@ const isSanPhamActive = computed(() => {
   flex-direction: column;
   align-items: flex-end;
   margin-right: 12px;
+}
+
+.wrap.wrap--wide {
+  max-width: none;
+  margin: 0;
 }
 
 .time {

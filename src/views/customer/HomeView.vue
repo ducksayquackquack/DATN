@@ -455,6 +455,14 @@ const fallbackImageFor = (id, code = "", name = "") => {
   return fallbackImages[0] || img1
 }
 
+const genericFallbackImage = () => fallbackImages[0] || img1
+
+const fallbackImageForCatalog = (id, code = "", name = "") => {
+  return isCuratedQuickProductCode(code)
+    ? fallbackImageFor(id, code, name)
+    : genericFallbackImage()
+}
+
 const isAbsoluteUrl = (value = '') => /^https?:\/\//i.test(value) || /^data:image\//i.test(value)
 
 const toImageUrl = (value) => {
@@ -737,7 +745,7 @@ const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
     overrideImage
   ].map((entry) => String(entry || '').trim()).filter(Boolean))]
 
-  const heroImage = curatedPrimaryImage || galleryImages[0] || overrideImage || pickImageValue([item, variants]) || fallbackImageFor(id, code, productName)
+  const heroImage = curatedPrimaryImage || galleryImages[0] || overrideImage || pickImageValue([item, variants]) || fallbackImageForCatalog(id, code, productName)
 
   return {
     id,
@@ -1260,7 +1268,7 @@ const quickColorImages = computed(() => {
 
     if (Array.isArray(product.images) && product.images[colorIndex]) return String(product.images[colorIndex] || '').trim()
 
-    return String(product?.img || '').trim() || fallbackImageFor(product?.id, getQuickProductCode(product), product?.name)
+    return String(product?.img || '').trim() || fallbackImageForCatalog(product?.id, getQuickProductCode(product), product?.name)
   })
 })
 
@@ -1519,7 +1527,7 @@ const resolveQuickVariantImage = (product, variant, selectedColorName = '') => {
     }
   }
 
-  return String(product?.images?.[0] || product?.img || '').trim() || fallbackImageFor(product?.id, getQuickProductCode(product), product?.name)
+  return String(product?.images?.[0] || product?.img || '').trim() || fallbackImageForCatalog(product?.id, getQuickProductCode(product), product?.name)
 }
 
 const quickAddToCart = () => {
