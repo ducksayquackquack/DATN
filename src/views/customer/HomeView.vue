@@ -626,11 +626,13 @@ const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
   const rawCode = String(item?.maSanPham || item?.ma || "").trim().toUpperCase()
   const normalizedCatalogCode = normalizeCatalogProductCode(rawCode)
   const code = normalizedCatalogCode || rawCode
+  const isCuratedCatalogProduct = isCuratedQuickProductCode(code)
   const productName = String(item?.tenSanPham || item?.name || `Sản phẩm ${id || fallbackIndex + 1}`)
   const imageConfig = getProductImageConfig({ id, maSanPham: item?.maSanPham })
-  const configImages = Array.isArray(imageConfig?.images)
+  const rawConfigImages = Array.isArray(imageConfig?.images)
     ? imageConfig.images.map((entry) => String(entry || '').trim()).filter(Boolean)
     : []
+  const configImages = isCuratedCatalogProduct ? [] : rawConfigImages
   const overrideImage = configImages[0] || ''
 
   const variantStock = variants.reduce((sum, v) => sum + Number(v?.soLuong || 0), 0)
@@ -704,7 +706,7 @@ const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
     ? lowestPricedVariant.originalPrice
     : null
 
-  const staticImages = isCuratedQuickProductCode(code) && staticQuickImagesByCode[normalizeCatalogProductCode(code)]
+  const staticImages = isCuratedCatalogProduct && staticQuickImagesByCode[normalizeCatalogProductCode(code)]
     ? staticQuickImagesByCode[normalizeCatalogProductCode(code)]
     : []
 
@@ -717,7 +719,7 @@ const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
     || firstVariant?.tenMauSac
     || ''
   ).trim()
-  const curatedPrimaryImage = isCuratedQuickProductCode(code)
+  const curatedPrimaryImage = isCuratedCatalogProduct
     ? (fallbackImageForVariant({
         id: Number(firstVariant?.id || id || 0),
         maSanPham: normalizeCatalogProductCode(code) || code,
@@ -727,8 +729,12 @@ const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
       }) || '')
     : ''
 
+  const lockedCuratedImage = isCuratedCatalogProduct
+    ? (curatedPrimaryImage || mappedFallbackByCode[normalizeCatalogProductCode(code)] || '')
+    : ''
+
   const galleryImages = [...new Set([
-    curatedPrimaryImage,
+    lockedCuratedImage,
     ...colorImageEntries.map((entry) => String(entry?.image || '').trim()).filter(Boolean),
     ...variants.map((variant) => pickImageValue([
       variant,
@@ -745,7 +751,7 @@ const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
     overrideImage
   ].map((entry) => String(entry || '').trim()).filter(Boolean))]
 
-  const heroImage = curatedPrimaryImage || galleryImages[0] || overrideImage || pickImageValue([item, variants]) || fallbackImageForCatalog(id, code, productName)
+  const heroImage = lockedCuratedImage || galleryImages[0] || overrideImage || pickImageValue([item, variants]) || fallbackImageForCatalog(id, code, productName)
 
   return {
     id,

@@ -35,8 +35,13 @@ import logo from '../../../assets/img/logo/new logo.png?url'
 const router = useRouter()
 const route = useRoute()
 const OPS_TOAST_SHIFT_CLASS = 'ops-toast-shift'
+const OPS_INVOICE_ROUTE_CLASS = 'ops-route-invoice'
 
 const isWideLayoutRoute = computed(() => String(route.path || '').includes('/admin/hoa-don'))
+
+const syncInvoiceRouteClass = () => {
+  document.body.classList.toggle(OPS_INVOICE_ROUTE_CLASS, isWideLayoutRoute.value)
+}
 
 const openSections = ref({
   vanhanh: true,
@@ -272,12 +277,14 @@ onMounted(() => {
   refreshNotifications()
   startNotificationPolling()
   syncOpsToastOffset(false)
+  syncInvoiceRouteClass()
 })
 
 onUnmounted(() => {
   document.removeEventListener("click", closeUserMenu)
   window.removeEventListener(AUTH_CONTEXT_CHANGED_EVENT, handleAuthContextChanged)
   document.body.classList.remove(OPS_TOAST_SHIFT_CLASS)
+  document.body.classList.remove(OPS_INVOICE_ROUTE_CLASS)
   document.body.style.removeProperty('--ops-toast-top')
   if (notificationPollTimer) {
     clearInterval(notificationPollTimer)
@@ -287,6 +294,7 @@ onUnmounted(() => {
 
 watch(() => route.fullPath, () => {
   loadTopbarUser()
+  syncInvoiceRouteClass()
 })
 
 function handleGlobalSearch() {

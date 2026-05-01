@@ -1176,6 +1176,14 @@ body.ops-theme .wrap {
   border-radius: 0;
 }
 
+body.ops-theme.ops-route-invoice .wrap {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
 body.ops-theme .card,
 body.ops-theme .panel,
 body.ops-theme .table-section,
