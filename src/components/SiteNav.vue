@@ -148,7 +148,7 @@ const normalizeSearchProduct = (item) => {
     code,
     category: String(item?.danhMuc?.tenDanhMuc || item?.loai?.tenLoai || "Thời trang nam"),
     price: variantPrices.length ? Math.min(...variantPrices) : toNumber(item?.giaBan || item?.gia || 0),
-    image: overrideImage || extractedImage || fallbackImageFor(id, code),
+    image: extractedImage || overrideImage || fallbackImageFor(id, code),
   }
 }
 

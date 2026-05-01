@@ -1375,7 +1375,7 @@ const sendLookupMailFromList = async (hd) => {
 </script>
 
 <template>
-  <main class="wrap">
+  <main class="invoice-page">
     <div class="card">
       <div v-if="apiWarning" class="list-warning">
         <strong>API cảnh báo:</strong> {{ apiWarning }}
@@ -1860,6 +1860,10 @@ const sendLookupMailFromList = async (hd) => {
 </template>
 
 <style scoped>
+.invoice-page {
+  width: 100%;
+}
+
 /* FILTERS CONTAINER */
 .invoice-filters-container {
   display: flex;

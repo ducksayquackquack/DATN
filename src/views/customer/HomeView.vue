@@ -737,7 +737,7 @@ const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
     overrideImage
   ].map((entry) => String(entry || '').trim()).filter(Boolean))]
 
-  const heroImage = overrideImage || curatedPrimaryImage || galleryImages[0] || pickImageValue([item, variants]) || fallbackImageFor(id, code, productName)
+  const heroImage = curatedPrimaryImage || galleryImages[0] || overrideImage || pickImageValue([item, variants]) || fallbackImageFor(id, code, productName)
 
   return {
     id,
