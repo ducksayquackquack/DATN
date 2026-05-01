@@ -5,7 +5,7 @@ import {
   getAllKhachHang,
   deleteKhachHang,
   getHoaDonByKhachHang
-} from "../../../services/khachHangService"
+} from "../../../services/KhachHangService"
 import { getDiaChiByKhachHang } from "../../../services/diaChiService"
 import { Trash2 } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel } from "../../../utils/adminStatus"

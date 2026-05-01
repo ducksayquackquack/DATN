@@ -5,10 +5,10 @@ import {
   createKhachHang,
   updateKhachHang,
   getKhachHangById
-} from "../../../services/khachHangService"
+} from "../../../services/KhachHangService"
 import {
   getHoaDonByKhachHang
-} from "../../../services/khachHangService"
+} from "../../../services/KhachHangService"
 import { getDiaChiByKhachHang } from "../../../services/diaChiService"
 import taiKhoanService from "../../../services/taiKhoanService"
 
