@@ -1,0 +1,17 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="DATN-API (SMTP)" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <envs>
+      <env name="MAIL_HOST" value="smtp.gmail.com" />
+      <env name="MAIL_PORT" value="587" />
+      <env name="MAIL_USERNAME" value="dinhtung2517@gmail.com" />
+      <env name="MAIL_PASSWORD" value="cfekzokpfymwkibu" />
+      <env name="LOOKUP_MAIL_FROM" value="dinhtung2517@gmail.com" />
+    </envs>
+    <module name="DATN-Nhom03" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="org.example.datnnhom03.DatnNhom03Application" />
+    <option name="WORKING_DIRECTORY" value="file://$PROJECT_DIR$" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

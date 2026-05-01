@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Danh sách Màu sắc</title>
+
+  <style>
+    .dw-btn {
+      display: inline-block;
+      padding: 8px 12px;
+      border: 1px solid #cfd8df;
+      background: #eef3f6;
+      color: #111827;
+      text-decoration: none;
+      box-sizing: border-box;
+    }
+    .dw-btn:hover {
+      background: #f6f2ea;
+      color: #111827;
+    }
+
+    .dw-btn-sm {
+      padding: 4px 8px;
+      background: #f4f7f9;
+    }
+
+    .dw-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #ffffff;
+    }
+    .dw-table thead {
+      background: #eef3f6;
+    }
+    .dw-table th,
+    .dw-table td {
+      padding: 8px;
+      border: 1px solid #cfd8df;
+      text-align: left;
+    }
+  </style>
+</head>
+
+<body style="margin:0;background:#f3f6f8;font-family:Arial, Helvetica, sans-serif;">
+
+<div style="min-height:100vh;display:flex;flex-direction:column;">
+
+  <!-- HEADER -->
+  <div th:replace="layout/header :: header"></div>
+
+  <!-- BODY -->
+  <div style="display:flex;flex:1;">
+
+    <!-- SIDEBAR -->
+    <div th:replace="layout/sidebar :: sidebar"></div>
+
+    <!-- CONTENT -->
+    <main style="flex:1;padding:18px;box-sizing:border-box;">
+
+      <!-- BOX -->
+      <div style="background:#ffffff;border:1px solid #cfd8df;padding:18px 20px;">
+
+        <!-- TITLE + ADD -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h2 style="margin:0;font-size:20px;">Danh sách Màu sắc</h2>
+
+          <a th:href="@{/admin/mau-sac/create}" class="dw-btn">
+            + Thêm mới
+          </a>
+        </div>
+
+        <!-- TABLE -->
+        <table class="dw-table">
+          <thead>
+          <tr>
+            <th>ID</th>
+            <th>Mã màu</th>
+            <th>Tên màu</th>
+            <th>Ngày tạo</th>
+            <th>Ngày sửa</th>
+            <th>Trạng thái</th>
+            <th style="width:120px;">Hành động</th>
+          </tr>
+          </thead>
+
+          <tbody>
+          <tr th:each="ms : ${list}">
+            <td th:text="${ms.id}"></td>
+            <td th:text="${ms.maMau}"></td>
+            <td th:text="${ms.tenMau}"></td>
+            <td th:text="${ms.ngayTao != null ? #temporals.format(ms.ngayTao,'dd-MM-yyyy HH:mm') : ''}"></td>
+            <td th:text="${ms.ngaySua != null ? #temporals.format(ms.ngaySua,'dd-MM-yyyy HH:mm') : ''}"></td>
+            <td th:text="${ms.trangThai}"></td>
+            <td>
+              <a th:href="@{/admin/mau-sac/edit/{id}(id=${ms.id})}"
+                 class="dw-btn dw-btn-sm">Sửa</a>
+
+              <a th:href="@{/admin/mau-sac/delete/{id}(id=${ms.id})}"
+                 class="dw-btn dw-btn-sm"
+                 style="margin-left:6px;"
+                 onclick="return confirm('Bạn có chắc chắn xóa màu sắc này?');">
+                Xóa
+              </a>
+            </td>
+          </tr>
+          </tbody>
+        </table>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- FOOTER -->
+  <div th:replace="layout/footer :: footer"></div>
+
+</div>
+
+</body>
+</html>

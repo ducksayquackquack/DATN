@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>Form Kích Thước - DirtyWaves Admin</title>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+    <h2>DirtyWaves Admin</h2>
+    <hr />
+</header>
+
+<!-- Layout: Sidebar + Content -->
+<table style="width: 100%; border-collapse: collapse;">
+    <tr>
+        <!-- Sidebar -->
+        <td style="width: 220px; vertical-align: top; border-right: 1px solid #ccc; padding: 10px;">
+            <h3>Menu</h3>
+            <ul>
+                <li>
+                    <a th:href="@{/admin/kich-thuoc}">Kích thước</a>
+                </li>
+                <li>
+                    <a th:href="@{/admin/khuyen-mai}">Khuyến mãi</a>
+                </li>
+            </ul>
+        </td>
+
+        <!-- Content -->
+        <td style="vertical-align: top; padding: 10px;">
+            <h1 th:text="${kichThuoc != null && kichThuoc.id != null ? 'Cập nhật Kích Thước' : 'Thêm Kích Thước'}">
+                Form Kích Thước
+            </h1>
+
+            <!-- Errors -->
+            <div th:if="${errors != null && !#lists.isEmpty(errors)}" style="border: 1px solid #cc0000; padding: 10px; margin-bottom: 15px;">
+                <strong>Vui lòng kiểm tra lỗi:</strong>
+                <ul>
+                    <li th:each="e : ${errors}" th:text="${e}">Lỗi</li>
+                </ul>
+            </div>
+
+            <!-- FORM CREATE -->
+            <form th:if="${kichThuoc.id == null}"
+                  th:object="${kichThuoc}"
+                  th:action="@{/admin/kich-thuoc/create}"
+                  method="post">
+
+                <table cellpadding="6">
+                    <tr>
+                        <td>Mã kích thước</td>
+                        <td><input type="text" th:field="*{maKichThuoc}"/></td>
+                    </tr>
+                    <tr>
+                        <td>Tên kích thước</td>
+                        <td><input type="text" th:field="*{tenKichThuoc}"/></td>
+                    </tr>
+                    <tr>
+                        <td>Trạng thái</td>
+                        <td>
+                            <select th:field="*{trangThai}">
+                                <option value="Hoạt động">Hoạt động</option>
+                                <option value="Ngừng">Ngừng</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td></td>
+                        <td><button type="submit">Lưu</button></td>
+                    </tr>
+                </table>
+            </form>
+
+
+
+            <!-- FORM UPDATE -->
+            <form th:if="${kichThuoc.id != null}"
+                  th:object="${kichThuoc}"
+                  th:action="@{/admin/kich-thuoc/update/{id}(id=${kichThuoc.id})}"
+                  method="post">
+
+                <input type="hidden" th:field="*{id}"/>
+
+                <table cellpadding="6">
+                    <tr>
+                        <td>Mã kích thước</td>
+                        <td>
+                            <input type="text" th:field="*{maKichThuoc}" readonly/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Tên kích thước</td>
+                        <td><input type="text" th:field="*{tenKichThuoc}"/></td>
+                    </tr>
+                    <tr>
+                        <td>Trạng thái</td>
+                        <td>
+                            <select th:field="*{trangThai}">
+                                <option value="Hoạt động">Hoạt động</option>
+                                <option value="Ngừng">Ngừng</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td></td>
+                        <td><button type="submit">Cập nhật</button></td>
+                    </tr>
+                </table>
+            </form>
+
+
+
+        </td>
+    </tr>
+</table>
+
+</body>
+</html>

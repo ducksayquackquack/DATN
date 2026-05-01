@@ -1,0 +1,36 @@
+package org.example.datnnhom03.assistant.model;
+
+public enum AssistantIntent {
+    GENERAL_QA,
+    CUSTOMER_PROFILE,
+    CUSTOMER_INSIGHT,
+    CUSTOMER_REPLY_DRAFT,
+    CHAT_QUEUE_SUMMARY,
+    OVERDUE_ORDERS,
+    REVENUE_SUMMARY,
+    TOP_PRODUCTS,
+    WORK_SCHEDULE,
+    PROMOTION_QUERY,
+    PAYMENT_QUERY,
+    PAYMENT_ANOMALY,
+    SIZE_ADVICE,
+    LOW_STOCK,
+    ORDER_FILTER,
+    ORDER_STATUS_COUNT,
+    POLICY_FAQ,
+    ORDER_LOOKUP,
+    CREATE_ORDER,
+    UPDATE_ORDER_STATUS,
+    PRODUCT_STOCK,
+    PRODUCT_SEARCH,
+    PRODUCT_UPSERT,
+    CREATE_VOUCHER,
+    CONFIRM_ACTION,
+    CANCEL_ACTION,
+    BLOCKED_ACTION,
+    ROLE_RESTRICTED;
+
+    public String wireValue() {
+        return name();
+    }
+}

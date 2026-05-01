@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Danh sách Sản phẩm</title>
+
+    <style>
+        body {
+            margin: 0;
+            background: #f3f6f8;
+            font-family: Arial, sans-serif;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 8px 12px;
+            border: 1px solid #cfd8df;
+            background: #eef3f6;
+            color: #111;
+            text-decoration: none;
+        }
+
+        .btn:hover {
+            background: #f6f2ea;
+        }
+
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 13px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+        }
+
+        thead {
+            background: #eef3f6;
+        }
+
+        th, td {
+            padding: 8px;
+            border: 1px solid #cfd8df;
+            text-align: left;
+        }
+    </style>
+</head>
+
+<body>
+
+<div style="min-height:100vh;display:flex;flex-direction:column;">
+
+    <!-- HEADER -->
+    <div th:replace="layout/header :: header"></div>
+
+    <!-- BODY -->
+    <div style="display:flex;flex:1;">
+
+        <!-- SIDEBAR -->
+        <div th:replace="layout/sidebar :: sidebar"></div>
+
+        <!-- CONTENT -->
+        <main style="flex:1;padding:18px;box-sizing:border-box;">
+
+            <div style="background:#fff;border:1px solid #cfd8df;padding:18px 20px;">
+
+                <!-- TITLE + ADD -->
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                    <h2 style="margin:0;">Danh sách Sản phẩm</h2>
+
+                    <a th:href="@{/admin/san-pham/create}" class="btn">
+                        + Thêm mới
+                    </a>
+                </div>
+
+                <!-- TABLE -->
+                <table>
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Mã SP</th>
+                        <th>Tên SP</th>
+                        <th>Mô tả</th>
+                        <th>Ngày tạo</th>
+                        <th>Ngày sửa</th>
+                        <th>Trạng thái</th>
+                        <th style="width:120px;">Hành động</th>
+                    </tr>
+                    </thead>
+
+                    <tbody>
+                    <tr th:each="sp : ${list}">
+                        <td th:text="${sp.id}"></td>
+                        <td th:text="${sp.maSanPham}"></td>
+                        <td th:text="${sp.tenSanPham}"></td>
+                        <td th:text="${sp.moTa}"></td>
+                        <td th:text="${sp.ngayTao}"></td>
+                        <td th:text="${sp.ngaySua}"></td>
+                        <td th:text="${sp.trangThai}"></td>
+                        <td>
+                            <a th:href="@{/admin/san-pham/edit/{id}(id=${sp.id})}"
+                               class="btn btn-sm">Sửa</a>
+
+                            <a th:href="@{/admin/san-pham/delete/{id}(id=${sp.id})}"
+                               class="btn btn-sm"
+                               onclick="return confirm('Bạn có chắc chắn xóa sản phẩm này?');">
+                                Xóa
+                            </a>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+
+            </div>
+
+        </main>
+    </div>
+
+    <!-- FOOTER -->
+    <div th:replace="layout/footer :: footer"></div>
+
+</div>
+
+</body>
+</html>

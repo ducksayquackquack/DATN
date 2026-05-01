@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>Quản lý Kích Thước - DirtyWaves Admin</title>
+
+    <style>
+        .dw-btn {
+            display: inline-block;
+            padding: 8px 12px;
+            border: 1px solid #cfd8df;
+            background: #eef3f6;
+            color: #111827;
+            text-decoration: none;
+            box-sizing: border-box;
+        }
+        .dw-btn:hover {
+            background: #f6f2ea;
+        }
+        .dw-btn-sm {
+            padding: 4px 8px;
+            background: #f4f7f9;
+        }
+
+        .dw-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #ffffff;
+        }
+        .dw-table thead {
+            background: #eef3f6;
+        }
+        .dw-table th, .dw-table td {
+            text-align: left;
+            padding: 8px;
+            border: 1px solid #cfd8df;
+        }
+    </style>
+</head>
+
+<body style="margin:0;background:#f3f6f8;font-family:Arial, Helvetica, sans-serif;">
+<div style="min-height:100vh;display:flex;flex-direction:column;">
+
+    <!-- HEADER -->
+    <div th:replace="layout/header :: header"></div>
+
+    <!-- BODY -->
+    <div style="display:flex;flex:1;">
+
+        <!-- SIDEBAR -->
+        <div th:replace="layout/sidebar :: sidebar"></div>
+
+        <!-- CONTENT -->
+        <div style="flex:1;padding:18px;box-sizing:border-box;">
+
+            <div style="background:#fff;border:1px solid #cfd8df;padding:18px 20px;box-sizing:border-box;">
+
+                <!-- TITLE + ADD -->
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                    <h1 style="margin:0;font-size:20px;">Quản lý Kích Thước</h1>
+                    <a th:href="@{/admin/kich-thuoc/create}" class="dw-btn">+ Thêm</a>
+                </div>
+
+                <!-- TABLE -->
+                <table class="dw-table">
+                    <thead>
+                    <tr>
+                        <th>Mã kích thước</th>
+                        <th>Tên kích thước</th>
+                        <th>Trạng thái</th>
+                        <th style="width:140px;">Hành động</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:if="${kichThuocs == null || #lists.isEmpty(kichThuocs)}">
+                        <td colspan="4">Chưa có dữ liệu.</td>
+                    </tr>
+                    <tr th:each="kt : ${kichThuocs}">
+                        <td th:text="${kt.maKichThuoc}">KT001</td>
+                        <td th:text="${kt.tenKichThuoc}">M</td>
+                        <td th:text="${kt.trangThai}">Hoạt động</td>
+                        <td>
+                            <a th:href="@{/admin/kich-thuoc/update/{id}(id=${kt.id})}"
+                               class="dw-btn dw-btn-sm">Sửa</a>
+                            <a th:href="@{/admin/kich-thuoc/delete/{id}(id=${kt.id})}"
+                               class="dw-btn dw-btn-sm"
+                               style="margin-left:6px;">Xóa</a>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+
+            </div>
+
+            <!-- MODAL -->
+            <div th:if="${kichThuoc != null}"
+                 style="position:fixed;inset:0;background:rgba(17,24,39,0.35);
+                        display:flex;align-items:center;justify-content:center;z-index:9999;">
+
+                <div style="width:420px;background:#fff;border:1px solid #cfd8df;
+                            padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,0.18);">
+
+                    <h2 th:if="${kichThuoc.id == null}">Thêm Kích Thước</h2>
+                    <h2 th:if="${kichThuoc.id != null}">Cập Nhật Kích Thước</h2>
+
+                    <!-- ERRORS -->
+                    <div th:if="${errors != null && !#lists.isEmpty(errors)}"
+                         style="background:#f4f7f9;border:1px solid #cfd8df;
+                                padding:10px;margin-bottom:12px;">
+                        <ul style="margin:0;padding-left:18px;">
+                            <li th:each="e : ${errors}" th:text="${e}"></li>
+                        </ul>
+                    </div>
+
+                    <!-- FORM -->
+                    <form th:object="${kichThuoc}"
+                          th:action="${kichThuoc.id == null}
+                                     ? @{/admin/kich-thuoc/create}
+                                     : @{/admin/kich-thuoc/update/{id}(id=${kichThuoc.id})}"
+                          method="post">
+
+                        <input type="hidden" th:field="*{id}" />
+
+                        <table style="width:100%;" cellpadding="6">
+                            <tr>
+                                <td>Mã kích thước</td>
+                                <td>
+                                    <input type="text" th:field="*{maKichThuoc}"
+                                           th:readonly="${kichThuoc.id != null}"
+                                           style="width:100%;padding:8px;border:1px solid #cfd8df;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Tên kích thước</td>
+                                <td>
+                                    <input type="text" th:field="*{tenKichThuoc}"
+                                           style="width:100%;padding:8px;border:1px solid #cfd8df;" />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Trạng thái</td>
+                                <td>
+                                    <select th:field="*{trangThai}"
+                                            style="width:100%;padding:8px;border:1px solid #cfd8df;">
+                                        <option value="Hoạt động">Hoạt động</option>
+                                        <option value="Ngừng">Ngừng</option>
+                                    </select>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div style="margin-top:12px;text-align:right;">
+                            <a th:href="@{/admin/kich-thuoc}"
+                               class="dw-btn"
+                               style="background:#f4f7f9;">Hủy</a>
+                            <button type="submit" class="dw-btn">
+                                <span th:text="${kichThuoc.id == null ? 'Lưu' : 'Cập nhật'}"></span>
+                            </button>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div th:replace="layout/footer :: footer"></div>
+
+</div>
+</body>
+</html>
