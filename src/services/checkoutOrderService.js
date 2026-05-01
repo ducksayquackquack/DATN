@@ -130,9 +130,21 @@ const scoreVariantMatch = (item, variant) => {
   return score
 }
 
+const isActiveVariantStatus = (value = "") => {
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+  return !normalized.includes("ngung") && !normalized.includes("inactive")
+}
+
 const flattenVariants = (products = []) => {
   return products.flatMap((product) => {
-    const variants = Array.isArray(product?.sanPhamChiTiets) ? product.sanPhamChiTiets : []
+    const variants = Array.isArray(product?.sanPhamChiTiets)
+      ? product.sanPhamChiTiets.filter((variant) => isActiveVariantStatus(variant?.trangThai || variant?.status))
+      : []
     return variants.map((variant) => ({
       spctId: variant.id,
       productId: product.id,
@@ -174,6 +186,32 @@ const isCustomerRole = (role) => {
 const isEmployeeRole = (role) => {
   const normalized = normalizeRole(role)
   return normalized === "EMPLOYEE" || normalized === "NHAN_VIEN" || normalized === "NHANVIEN"
+}
+
+const normalizeStatusText = (value = "") => {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .trim()
+}
+
+export const isAccountActiveForCheckout = (account = {}) => {
+  const normalized = normalizeStatusText(
+    account?.trangThaiTaiKhoan
+    || account?.trangThai
+    || account?.status
+    || ""
+  )
+
+  if (!normalized) return true
+  if (normalized.includes("ngung") || normalized.includes("inactive") || normalized.includes("disabled") || normalized.includes("block") || normalized.includes("khoa")) {
+    return false
+  }
+
+  return true
 }
 
 async function resolveDefaultEmployeeId() {
@@ -283,6 +321,7 @@ async function ensureCustomerProfile(account, existingCustomer, delivery = {}) {
 export async function loadCheckoutContext() {
   const account = await getCurrentAccount()
   const customer = await getCurrentCustomer(account)
+  const accountActive = isAccountActiveForCheckout(account)
   let addresses = []
 
   if (customer?.id) {
@@ -306,6 +345,7 @@ export async function loadCheckoutContext() {
 
   return {
     account,
+    accountActive,
     customer,
     addresses,
     delivery: {
@@ -356,6 +396,9 @@ export async function createBackendCheckoutOrder({ cartItems, delivery, shipping
   }
 
   const context = await loadCheckoutContext()
+  if (context.account && context.accountActive === false) {
+    throw new Error("Tài khoản đang ngừng hoạt động, không thể thanh toán")
+  }
   const finalDelivery = normalizeDelivery(delivery, context.delivery)
   const ensuredCustomer = await ensureCustomerProfile(context.account, context.customer, finalDelivery)
   const nhanVienId = await resolveDefaultEmployeeId()

@@ -1,6 +1,7 @@
 import axios from 'axios'
+import { resolveApiOrigin } from '../utils/apiOrigin'
 
-const API = 'http://localhost:3000/api/phieu-thu-chi'
+const API = `${resolveApiOrigin()}/api/phieu-thu-chi`
 
 /**
  * Get all phieu thu/chi for a shift

@@ -39,13 +39,23 @@
             </div>
           </div>
 
-          <button
-            type="button"
-            class="toast-cart-action"
-            @click="openCart(toast.id)"
-          >
-            {{ toast.payload?.actionLabel || 'Xem giỏ hàng' }}
-          </button>
+          <div class="toast-cart-actions">
+            <button
+              v-if="toast.payload?.productId"
+              type="button"
+              class="toast-cart-action toast-cart-action--secondary"
+              @click="openProductDetails(toast.id)"
+            >
+              Xem chi tiết
+            </button>
+            <button
+              type="button"
+              class="toast-cart-action"
+              @click="openCart(toast.id)"
+            >
+              {{ toast.payload?.actionLabel || 'Xem giỏ hàng' }}
+            </button>
+          </div>
         </template>
 
         <template v-else>
@@ -86,6 +96,13 @@ const asideCleanups = new Map()
 const onToastEnter = (id, event) => {
   // Wrapper is the card's parent element
   const wrapperEl = event.currentTarget?.parentElement
+  const toast = toasts.value.find(t => t.id === id)
+
+  // Skip aside behavior if preventAside flag is set (e.g., for cart-add toasts)
+  if (toast?.preventAside) {
+    pauseToast(id)
+    return
+  }
 
   // Cancel any existing watcher (handles fast mouse moves between toasts)
   asideCleanups.forEach((fn) => fn())
@@ -153,6 +170,15 @@ const formatVnd = (value) => {
 const openCart = (toastId) => {
   dismissToast(toastId)
   router.push('/gio-hang')
+}
+
+const openProductDetails = (toastId) => {
+  const toast = toasts.value.find(t => t.id === toastId)
+  const productId = toast?.payload?.productId
+  if (productId) {
+    dismissToast(toastId)
+    router.push(`/san-pham/${productId}`)
+  }
 }
 </script>
 
@@ -293,16 +319,31 @@ const openCart = (toastId) => {
   color: #0f172a;
 }
 
-.toast-cart-action {
+.toast-cart-actions {
+  display: flex;
+  gap: 8px;
   width: 100%;
+}
+
+.toast-cart-action {
+  flex: 1;
   border: 0;
   border-radius: 12px;
   height: 40px;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   color: #fff;
   background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
   cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.toast-cart-action:hover {
+  opacity: 0.85;
+}
+
+.toast-cart-action--secondary {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
 }
 
 .toast-icon {

@@ -494,6 +494,7 @@ import { useRoute, useRouter } from "vue-router";
 import { getProductImageOverride } from "@/utils/productImageOverrides";
 import { getProductImageConfig } from "@/utils/productImageOverrides";
 import { fallbackImageForVariant } from "@/utils/productImageFallback";
+import { resolveApiOrigin } from "@/utils/apiOrigin";
 
 const router = useRouter();
 const route = useRoute();
@@ -522,10 +523,7 @@ const notifyWarning = (message) => {
 /* =========================
    FIX ẢNH: normalize + fallback
    ========================= */
-const API_BASE = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || "http://localhost:8080").replace(
-  /\/$/,
-  ""
-);
+const API_BASE = resolveApiOrigin().replace(/\/$/, "");
 
 const IMG_PLACEHOLDER =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='6' fill='%23F3F4F6'/%3E%3Cpath d='M12 26l6-6 4 4 6-6 4 4' stroke='%239CA3AF' stroke-width='2' fill='none'/%3E%3Ccircle cx='16' cy='16' r='2' fill='%239CA3AF'/%3E%3C/svg%3E";

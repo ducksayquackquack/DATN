@@ -1,7 +1,7 @@
 ﻿<script setup>
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue"
+import { ref, computed, onMounted, watch, nextTick } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { Eye, ShoppingCart, Truck, ShieldCheck, CreditCard, RefreshCw } from "lucide-vue-next"
+import { Eye, ShoppingCart, Truck, ShieldCheck, CreditCard } from "lucide-vue-next"
 import { getAllSanPham } from '../../services/sanPhamService'
 import { applyCampaignPriceToVariants } from '../../services/campaignPricingService'
 import { getAllHoaDon, getHoaDonById } from '../../services/hoaDonService'
@@ -61,9 +61,6 @@ const CART_UPDATED_EVENT = "dirtywave:cart-updated"
 
 const activeFilter = ref(null)
 const sectionPulse = ref("")
-const toastMessage = ref("")
-const toastVisible = ref(false)
-let toastTimer = null
 const email = ref("")
 const year = new Date().getFullYear()
 
@@ -71,7 +68,6 @@ const heroBenefits = [
   { icon: Truck, title: 'Giao hàng toàn quốc', text: 'Nhận hàng nhanh 2-5 ngày' },
   { icon: ShieldCheck, title: 'Đảm bảo chính hãng', text: 'Chất liệu và form được kiểm tra kỹ' },
   { icon: CreditCard, title: 'Thanh toán linh hoạt', text: 'Hỗ trợ nhiều phương thức thanh toán' },
-  { icon: RefreshCw, title: 'Đổi trả dễ dàng', text: 'Hỗ trợ đổi size theo chính sách' },
 ]
 
 const heroSlides = [
@@ -113,20 +109,77 @@ const heroSlides = [
 ]
 
 const heroActiveIndex = ref(0)
-const heroDirection = ref(1)
+const heroViewportRef = ref(null)
+const heroHoverSide = ref('')
+const heroSwipeStartX = ref(0)
+const heroSwipeStartY = ref(0)
+const heroSwipeActive = ref(false)
+const heroDragOffset = ref(0)
+const heroTrackRef = ref(null)
+const heroViewportWidth = ref(0)
 
-const activeHeroSlide = computed(() => heroSlides[heroActiveIndex.value] || heroSlides[0])
-const heroTransitionName = computed(() =>
-  heroDirection.value >= 0 ? 'dw-hero-swipe-next' : 'dw-hero-swipe-prev'
-)
+const heroTrackStyle = computed(() => {
+  const baseTranslate = heroActiveIndex.value * 100
+  const dragPercent = heroViewportWidth.value > 0 ? (heroDragOffset.value / heroViewportWidth.value) * 100 : 0
+  const totalTranslate = baseTranslate + dragPercent
+  const hasTransition = heroSwipeActive.value ? 'none' : '760ms cubic-bezier(0.22, 1, 0.36, 1)'
+  
+  return {
+    transform: `translate3d(-${totalTranslate}%, 0, 0)`,
+    transition: `transform ${hasTransition}`
+  }
+})
+
+const updateHeroHoverSide = (event) => {
+  const rect = heroViewportRef.value?.getBoundingClientRect?.()
+  if (!rect?.width) return
+  const x = Number(event?.clientX || 0) - rect.left
+  heroHoverSide.value = x >= rect.width * 0.5 ? 'right' : 'left'
+}
+
+const clearHeroHoverSide = () => {
+  heroHoverSide.value = ''
+}
+
+const onHeroPointerDown = (event) => {
+  heroSwipeActive.value = true
+  heroSwipeStartX.value = Number(event?.clientX || 0)
+  heroSwipeStartY.value = Number(event?.clientY || 0)
+  heroDragOffset.value = 0
+  const rect = heroViewportRef.value?.getBoundingClientRect?.()
+  heroViewportWidth.value = rect?.width || 0
+}
+
+const onHeroPointerMove = (event) => {
+  if (!heroSwipeActive.value) return
+  const currentX = Number(event?.clientX || 0)
+  heroDragOffset.value = -(currentX - heroSwipeStartX.value)
+}
+
+const onHeroPointerUp = (event) => {
+  if (!heroSwipeActive.value) return
+  heroSwipeActive.value = false
+
+  const dx = Number(event?.clientX || 0) - heroSwipeStartX.value
+  const dy = Number(event?.clientY || 0) - heroSwipeStartY.value
+  heroDragOffset.value = 0
+
+  if (Math.abs(dx) < 42 || Math.abs(dx) <= Math.abs(dy)) return
+
+  if (dx < 0) nextHeroSlide()
+  else prevHeroSlide()
+}
+
+const onHeroPointerCancel = () => {
+  heroSwipeActive.value = false
+  heroDragOffset.value = 0
+}
 
 const nextHeroSlide = () => {
-  heroDirection.value = 1
   heroActiveIndex.value = (heroActiveIndex.value + 1) % heroSlides.length
 }
 
 const prevHeroSlide = () => {
-  heroDirection.value = -1
   heroActiveIndex.value = (heroActiveIndex.value - 1 + heroSlides.length) % heroSlides.length
 }
 
@@ -170,6 +223,7 @@ const getImage = (id) => {
 }
 
 const products = ref([])
+const productLoadError = ref("")
 
 const fallbackImages = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10, img11, img12, img13, img14, img15, img16, img17, img18, img19, img20]
 
@@ -268,6 +322,30 @@ const normalizeColorKeyword = (value = "") =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
 
+const tokenizeStaticImageName = (value = "") => {
+  const baseName = String(value || "")
+    .split("#")[0]
+    .split("?")[0]
+    .replace(/\\/g, "/")
+    .split("/")
+    .pop() || ""
+  const stem = baseName.replace(/\.[^.]+$/, "")
+  return normalizeColorKeyword(stem)
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+}
+
+const findStaticImageByColorKeyword = (images = [], keyword = "") => {
+  const normalizedKeyword = normalizeColorKeyword(keyword)
+  if (!normalizedKeyword) return ""
+  for (const image of images) {
+    if (tokenizeStaticImageName(image).includes(normalizedKeyword)) {
+      return image
+    }
+  }
+  return ""
+}
+
 const mappedFallbackByName = [
   { keywords: ["bomber", "da", "lon"], image: img1 },
   { keywords: ["bomber", "dang", "lung"], image: img2 },
@@ -331,6 +409,7 @@ const fallbackIndexByName = (name = "") => {
 const fallbackImageFor = (id, code = "", name = "") => {
   const normalizedCode = String(code || "").trim().toUpperCase()
   const allowCuratedCodeMap = /^ATID070-\d+$/i.test(normalizedCode) || /^SP\d+$/i.test(normalizedCode)
+  const normalizedName = normalizeSearchTextForImage(name)
 
   if (mappedFallbackByCode[normalizedCode]) {
     return mappedFallbackByCode[normalizedCode]
@@ -344,12 +423,15 @@ const fallbackImageFor = (id, code = "", name = "") => {
     }
   }
 
-  if (!/^ATID070-\d+$/i.test(normalizedCode) && !/^SP0*(?:[1-9]|1\d|20)$/i.test(normalizedCode)) {
-    return ""
-  }
-
   const mappedByName = getMappedFallbackByName(name)
   if (mappedByName) return mappedByName
+
+  if (!/^ATID070-\d+$/i.test(normalizedCode) && !/^SP0*(?:[1-9]|1\d|20)$/i.test(normalizedCode)) {
+    if (normalizedName.includes("hoodie")) return img5
+    if (normalizedName.includes("bomber")) return img1
+    if (normalizedName.includes("coach")) return img8
+    if (normalizedName.includes("jacket")) return img1
+  }
 
   const numericId = Number(id)
   if (Number.isFinite(numericId) && numericId > 0) {
@@ -497,6 +579,15 @@ const normalizeColorImageEntries = (entries = []) => {
 
 const colorHexByName = (name = "") => {
   const n = String(name || "").normalize("NFD").replace(/\p{M}/gu, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase().trim()
+  
+  // Multi-color combinations
+  if ((n.includes("hong") || n.includes("pink")) && (n.includes("tim") || n.includes("purple") || n.includes("magenta"))) {
+    return "#b85c9e"
+  }
+  
+  // Single colors
+  if (n.includes("magenta")) return "#c41e85"
+  if (n.includes("tim") || n.includes("purple")) return "#7c3aed"
   if (n === "den" || n === "black") return "#111827"
   if (n === "trang" || n === "white") return "#e5dfd0"
   if (n === "do" || n === "red") return "#dc2626"
@@ -733,7 +824,6 @@ const filterBy = cat => {
 
 const focusCategory = (cat) => {
   filterBy(cat)
-  toast(`Đang lọc danh mục ${cat}`)
 }
 
 const clearFilter = () =>
@@ -742,6 +832,12 @@ const clearFilter = () =>
 const openShop = () => {
   router.push("/san-pham")
 }
+
+// Best-seller period label
+const bestSellerMonth = computed(() => {
+  const now = new Date()
+  return `Tháng ${now.getMonth() + 1}/${now.getFullYear()}`
+})
 
 const filteredBest = computed(() => {
   let productList = products.value
@@ -757,15 +853,6 @@ const filteredBest = computed(() => {
     return canonical === activeFilter.value
   })
 })
-
-const toast = msg => {
-  toastMessage.value = msg
-  toastVisible.value = true
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => {
-    toastVisible.value = false
-  }, 5000)
-}
 
 // CART STATE
 const cart = ref({})
@@ -816,7 +903,11 @@ const quickQty = ref(1)
 const quickSize = ref("S")
 const quickColorIndex = ref(0)
 const quickImageIndex = ref(0)
-const quickImageAnimating = ref(false)
+const quickSwipeStartX = ref(0)
+const quickSwipeStartY = ref(0)
+const quickSwipeActive = ref(false)
+const quickDragOffset = ref(0)
+const quickViewportWidth = ref(0)
 const quickVouchers = ref([])
 const soldByProduct = ref({
   byId: {},
@@ -996,6 +1087,7 @@ const resolveSoldCount = (item, variants = []) => {
 
 const loadHomeBackendProducts = async () => {
   try {
+    productLoadError.value = ""
     const [soldByOrderLoaded, soldBySpctMap] = await Promise.all([
       loadSoldFromOrders(),
       computeSoldBySpct()
@@ -1024,10 +1116,21 @@ const loadHomeBackendProducts = async () => {
 
       products.value = backendProductsMapped.filter((item) => item.price > 0)
     }
-  } catch {
+  } catch (error) {
     soldBySpct.value = new Map()
     homeBackendProducts.value = []
     products.value = []
+
+    const status = Number(error?.response?.status || 0)
+    const detail = String(
+      error?.response?.data?.message
+      || error?.message
+      || "Không thể tải dữ liệu sản phẩm từ backend"
+    ).trim()
+    const base = BACKEND_ORIGIN || resolveApiOrigin()
+    productLoadError.value = status > 0
+      ? `Lỗi ${status} khi gọi API tại ${base}. ${detail}`
+      : `Không kết nối được API tại ${base}. ${detail}`
   }
 }
 
@@ -1131,80 +1234,142 @@ const quickPreviewImages = computed(() => {
   return [...new Set(candidates.map((img) => String(img || '').trim()).filter(Boolean))]
 })
 
+const quickColorImages = computed(() => {
+  const product = selectedProduct.value
+  if (!product || !Array.isArray(product.colors) || !product.colors.length) return []
+
+  const staticImages = getStaticQuickImagesForProduct(product)
+    .map((img) => String(img || '').trim())
+    .filter(Boolean)
+
+  return product.colors.map((color, colorIndex) => {
+    const selectedColorName = String(color?.name || '').trim()
+    const variant = findVariantFromQuickSelection(product, selectedColorName, quickSize.value)
+
+    const normalizedColor = normalizeColorKeyword(selectedColorName)
+    const keyword = colorKeywordMap[normalizedColor]
+      || Object.entries(colorKeywordMap).find(([k]) => normalizedColor.includes(k))?.[1]
+      || ''
+    const staticByKeyword = keyword ? findStaticImageByColorKeyword(staticImages, keyword) : ''
+    if (staticByKeyword) return staticByKeyword
+
+    if (staticImages[colorIndex]) return staticImages[colorIndex]
+
+    const variantImage = resolveQuickVariantImage(product, variant, selectedColorName)
+    if (variantImage) return String(variantImage).trim()
+
+    if (Array.isArray(product.images) && product.images[colorIndex]) return String(product.images[colorIndex] || '').trim()
+
+    return String(product?.img || '').trim() || fallbackImageFor(product?.id, getQuickProductCode(product), product?.name)
+  })
+})
+
+const quickImageTrackStyle = computed(() => {
+  const total = quickColorImages.value.length
+  if (!total) return { transform: 'translate3d(0, 0, 0)' }
+  const safeColorIndex = ((quickColorIndex.value % total) + total) % total
+  const dragPercent = quickViewportWidth.value > 0 ? (quickDragOffset.value / quickViewportWidth.value) * 100 : 0
+  const totalTranslate = safeColorIndex * 100 + dragPercent
+  const hasTransition = quickSwipeActive.value ? 'none' : '360ms cubic-bezier(0.22, 1, 0.36, 1)'
+  
+  return {
+    transform: `translate3d(-${totalTranslate}%, 0, 0)`,
+    transition: `transform ${hasTransition}`
+  }
+})
+
 const quickActiveImage = computed(() => {
+  const colorImages = quickColorImages.value
+  if (colorImages.length) {
+    const safeColorIndex = ((quickColorIndex.value % colorImages.length) + colorImages.length) % colorImages.length
+    return colorImages[safeColorIndex] || selectedProduct.value?.img || ''
+  }
+
   const images = quickPreviewImages.value
   if (!images.length) return selectedProduct.value?.img || ''
   const safeIndex = ((quickImageIndex.value % images.length) + images.length) % images.length
   return images[safeIndex]
 })
 
-const triggerQuickImageAnimation = () => {
-  quickImageAnimating.value = false
-  window.requestAnimationFrame(() => {
-    quickImageAnimating.value = true
-  })
-}
-
-const syncQuickColorWithImage = () => {
-  const product = selectedProduct.value
-  if (!product || !Array.isArray(product.colors) || !product.colors.length) return
-  const currentImage = quickActiveImage.value
-  if (!currentImage) return
-
-  const matchedIndex = product.colors.findIndex((color) => {
-    const selectedColorName = String(color?.name || '').trim()
-    if (!selectedColorName) return false
-    const variant = findVariantFromQuickSelection(product, selectedColorName, quickSize.value)
-    const image = resolveQuickVariantImage(product, variant, selectedColorName)
-    return isSameImage(image, currentImage)
-  })
-
-  if (matchedIndex >= 0) {
-    quickColorIndex.value = matchedIndex
-    return
-  }
-
-  const imageIndex = quickPreviewImages.value.findIndex((img) => isSameImage(img, currentImage))
-  if (imageIndex >= 0 && imageIndex < product.colors.length) {
-    quickColorIndex.value = imageIndex
-  }
-}
-
 const quickPrevImage = () => {
-  const total = quickPreviewImages.value.length
-  if (total <= 1) return
-  quickImageIndex.value = (quickImageIndex.value - 1 + total) % total
-  syncQuickColorWithImage()
-  triggerQuickImageAnimation()
+  const product = selectedProduct.value
+  if (!product || !Array.isArray(product.colors) || product.colors.length <= 1) return
+  const total = product.colors.length
+  selectQuickColor((quickColorIndex.value - 1 + total) % total)
 }
 
 const quickNextImage = () => {
-  const total = quickPreviewImages.value.length
-  if (total <= 1) return
-  quickImageIndex.value = (quickImageIndex.value + 1) % total
-  syncQuickColorWithImage()
-  triggerQuickImageAnimation()
+  const product = selectedProduct.value
+  if (!product || !Array.isArray(product.colors) || product.colors.length <= 1) return
+  selectQuickColor((quickColorIndex.value + 1) % product.colors.length)
+}
+
+const onQuickPointerDown = (event) => {
+  quickSwipeActive.value = true
+  quickSwipeStartX.value = Number(event?.clientX || 0)
+  quickSwipeStartY.value = Number(event?.clientY || 0)
+  quickDragOffset.value = 0
+  const rect = event.currentTarget?.getBoundingClientRect?.()
+  quickViewportWidth.value = rect?.width || 0
+}
+
+const onQuickPointerMove = (event) => {
+  if (!quickSwipeActive.value) return
+  const currentX = Number(event?.clientX || 0)
+  quickDragOffset.value = -(currentX - quickSwipeStartX.value)
+}
+
+const onQuickPointerUp = (event) => {
+  if (!quickSwipeActive.value) return
+  quickSwipeActive.value = false
+
+  const dx = Number(event?.clientX || 0) - quickSwipeStartX.value
+  const dy = Number(event?.clientY || 0) - quickSwipeStartY.value
+  quickDragOffset.value = 0
+
+  if (Math.abs(dx) < 40 || Math.abs(dx) <= Math.abs(dy)) return
+
+  if (dx < 0) quickNextImage()
+  else quickPrevImage()
+}
+
+const onQuickPointerCancel = () => {
+  quickSwipeActive.value = false
 }
 
 const selectQuickColor = (index) => {
-  quickColorIndex.value = index
   const product = selectedProduct.value
   if (!product) return
 
-  const selectedColorName = String(product?.colors?.[index]?.name || '').trim()
+  const totalColors = Array.isArray(product?.colors) ? product.colors.length : 0
+  if (!totalColors) {
+    quickColorIndex.value = 0
+    return
+  }
+
+  const safeColorIndex = ((index % totalColors) + totalColors) % totalColors
+  quickColorIndex.value = safeColorIndex
+
+  const selectedColorName = String(product?.colors?.[safeColorIndex]?.name || '').trim()
   if (!selectedColorName) {
-    if (index >= 0 && index < quickPreviewImages.value.length) {
-      quickImageIndex.value = index
-      triggerQuickImageAnimation()
+    if (safeColorIndex >= 0 && safeColorIndex < quickPreviewImages.value.length) {
+      quickImageIndex.value = safeColorIndex
     }
     return
   }
+
+  const mappedColorImage = quickColorImages.value[safeColorIndex]
+  if (mappedColorImage) {
+    const mappedIndex = quickPreviewImages.value.findIndex((img) => isSameImage(img, mappedColorImage))
+    quickImageIndex.value = mappedIndex >= 0 ? mappedIndex : safeColorIndex
+    return
+  }
+
   const variant = findVariantFromQuickSelection(product, selectedColorName, quickSize.value)
   const colorImage = resolveQuickVariantImage(product, variant, selectedColorName)
   if (!colorImage) {
-    if (index >= 0 && index < quickPreviewImages.value.length) {
-      quickImageIndex.value = index
-      triggerQuickImageAnimation()
+    if (safeColorIndex >= 0 && safeColorIndex < quickPreviewImages.value.length) {
+      quickImageIndex.value = safeColorIndex
     }
     return
   }
@@ -1212,7 +1377,6 @@ const selectQuickColor = (index) => {
   const imageIndex = quickPreviewImages.value.findIndex((img) => isSameImage(img, colorImage))
   if (imageIndex >= 0) {
     quickImageIndex.value = imageIndex
-    triggerQuickImageAnimation()
     return
   }
 
@@ -1224,14 +1388,12 @@ const selectQuickColor = (index) => {
     })
     if (looseIndex >= 0) {
       quickImageIndex.value = looseIndex
-      triggerQuickImageAnimation()
       return
     }
   }
 
-  if (index >= 0 && index < quickPreviewImages.value.length) {
-    quickImageIndex.value = index
-    triggerQuickImageAnimation()
+  if (safeColorIndex >= 0 && safeColorIndex < quickPreviewImages.value.length) {
+    quickImageIndex.value = safeColorIndex
   }
 }
 
@@ -1241,10 +1403,6 @@ watch(quickPreviewImages, (images) => {
     return
   }
   if (quickImageIndex.value >= images.length) quickImageIndex.value = 0
-})
-
-watch(quickImageIndex, () => {
-  syncQuickColorWithImage()
 })
 
 const quickDecrease = () => {
@@ -1345,7 +1503,7 @@ const resolveQuickVariantImage = (product, variant, selectedColorName = '') => {
         || Object.entries(colorKeywordMap).find(([k]) => normalizedColor.includes(k))?.[1]
         || ''
       if (keyword) {
-        const matched = staticImages.find((img) => String(img || '').toLowerCase().includes(keyword))
+        const matched = findStaticImageByColorKeyword(staticImages, keyword)
         if (matched) return matched
       }
     }
@@ -1409,6 +1567,7 @@ const quickAddToCart = () => {
     color: selectedColorName,
     size: selectedSizeName,
     price: Number(selectedVariant?.giaBan || selectedVariant?.price || selectedProduct.value.price || 0),
+    productId: selectedProduct.value.id,
     actionLabel: 'Xem giỏ hàng'
   })
 
@@ -1468,14 +1627,6 @@ const quickPromoLines = computed(() => {
   })
 })
 
-onUnmounted(() => {
-  if (toastTimer) {
-    clearTimeout(toastTimer)
-    toastTimer = null
-  }
-})
-
-
 </script>
 
 <template>
@@ -1486,44 +1637,68 @@ onUnmounted(() => {
 <!-- Hero Banner -->
 <section class="dw-hero">
   <div class="container">
-    <div class="dw-hero__viewport">
-      <div class="dw-hero__track">
-        <Transition :name="heroTransitionName" mode="out-in">
-          <article v-if="activeHeroSlide" :key="activeHeroSlide.id" class="dw-hero__slide is-active">
+    <div
+      ref="heroViewportRef"
+      class="dw-hero__viewport"
+      @mousemove="updateHeroHoverSide"
+      @mouseleave="clearHeroHoverSide"
+      @pointerdown="onHeroPointerDown"
+      @pointermove="onHeroPointerMove"
+      @pointerup="onHeroPointerUp"
+      @pointercancel="onHeroPointerCancel"
+    >
+      <div class="dw-hero__track" :style="heroTrackStyle">
+          <article
+            v-for="(slide, index) in heroSlides"
+            :key="slide.id"
+            class="dw-hero__slide"
+            :class="{ 'is-active': index === heroActiveIndex }"
+          >
             <div class="dw-hero__content">
               <div class="dw-hero__copy">
-                <span class="dw-hero__tag">{{ activeHeroSlide.tag }}</span>
+                <span class="dw-hero__tag">{{ slide.tag }}</span>
                 <h1>
-                  <template v-if="activeHeroSlide.titleMain && activeHeroSlide.titleDrop">
-                    <span class="dw-hero__title-main">{{ activeHeroSlide.titleMain }}</span>
-                    <span class="dw-hero__title-drop">{{ activeHeroSlide.titleDrop }}</span>
+                  <template v-if="slide.titleMain && slide.titleDrop">
+                    <span class="dw-hero__title-main">{{ slide.titleMain }}</span>
+                    <span class="dw-hero__title-drop">{{ slide.titleDrop }}</span>
                   </template>
                   <template v-else>
-                    {{ activeHeroSlide.title }}
+                    {{ slide.title }}
                   </template>
                 </h1>
-                <p>{{ activeHeroSlide.subtitle }}</p>
-                <button class="dw-hero__cta" type="button" @click="handleHeroAction(activeHeroSlide)">Khám phá ngay →</button>
+                <p>{{ slide.subtitle }}</p>
+                <button class="dw-hero__cta" type="button" @click="handleHeroAction(slide)">Khám phá ngay →</button>
               </div>
               <div class="dw-hero__media" aria-hidden="true">
                 <div class="dw-hero__main-tile">
-                  <img :src="activeHeroSlide.heroMain" :alt="activeHeroSlide.title" class="dw-hero__img" />
+                  <img :src="slide.heroMain" :alt="slide.title" class="dw-hero__img" />
                 </div>
                 <div class="dw-hero__side-tiles">
-                  <img :src="activeHeroSlide.heroSideTop" :alt="`${activeHeroSlide.title} top`" class="dw-hero__img dw-hero__img--side" />
-                  <img :src="activeHeroSlide.heroSideBottom" :alt="`${activeHeroSlide.title} bottom`" class="dw-hero__img dw-hero__img--side" />
+                  <img :src="slide.heroSideTop" :alt="`${slide.title} top`" class="dw-hero__img dw-hero__img--side" />
+                  <img :src="slide.heroSideBottom" :alt="`${slide.title} bottom`" class="dw-hero__img dw-hero__img--side" />
                 </div>
               </div>
             </div>
           </article>
-        </Transition>
-        <button class="dw-hero__arrow dw-hero__arrow--prev" type="button" @click="prevHeroSlide" aria-label="Banner trước">
-          ←
-        </button>
-        <button class="dw-hero__arrow dw-hero__arrow--next" type="button" @click="nextHeroSlide" aria-label="Banner tiếp theo">
-          →
-        </button>
       </div>
+      <button
+        class="dw-hero__arrow dw-hero__arrow--prev"
+        :class="{ 'is-visible': heroHoverSide === 'left' }"
+        type="button"
+        @click="prevHeroSlide"
+        aria-label="Banner trước"
+      >
+        ←
+      </button>
+      <button
+        class="dw-hero__arrow dw-hero__arrow--next"
+        :class="{ 'is-visible': heroHoverSide === 'right' }"
+        type="button"
+        @click="nextHeroSlide"
+        aria-label="Banner tiếp theo"
+      >
+        →
+      </button>
     </div>
   </div>
   <div class="container dw-hero-benefits" aria-label="Lợi ích mua sắm">
@@ -1546,17 +1721,17 @@ onUnmounted(() => {
 <h2 class="dw-heading">Danh mục nổi bật</h2>
 
 <div class="dw-category-grid">
-  <button class="dw-category-card" type="button" @click="focusCategory('Hoodie')">
+  <button class="dw-category-card dw-category-card--hoodie" type="button" @click="focusCategory('Hoodie')">
     <img :src="img20" alt="Hoodie" />
     <span class="dw-category-label">Hoodie</span>
   </button>
 
-  <button class="dw-category-card" type="button" @click="focusCategory('Bomber')">
+  <button class="dw-category-card dw-category-card--bomber" type="button" @click="focusCategory('Bomber')">
     <img :src="img13" alt="Bomber" />
     <span class="dw-category-label">Bomber</span>
   </button>
 
-  <button class="dw-category-card" type="button" @click="focusCategory('Coach')">
+  <button class="dw-category-card dw-category-card--coach" type="button" @click="focusCategory('Coach')">
     <img :src="img17" alt="Coach" />
     <span class="dw-category-label">Coach</span>
   </button>
@@ -1593,7 +1768,7 @@ onUnmounted(() => {
 <div class="container">
 
 <div class="dw-section-header">
-<h2 class="dw-heading">Sản phẩm bán chạy</h2>
+<h2 class="dw-heading">Sản phẩm bán chạy <span class="best-month-badge">{{ bestSellerMonth }}</span></h2>
 <div id="sanpham-nav" class="dw-filters">
 <button :class="['dw-filter', { active: !activeFilter }]" @click="clearFilter()">Tất cả</button>
 <button :class="['dw-filter', { active: activeFilter === 'Hoodie' }]" @click="focusCategory('Hoodie')">Hoodie</button>
@@ -1634,6 +1809,15 @@ style="cursor:pointer">
 <span v-if="p.old" class="discount-badge">-{{ Math.round(100 - (p.price / p.old) * 100) }}%</span>
 </span>
 </div>
+
+<div v-if="Array.isArray(p.colors) && p.colors.length" class="card-color-dots">
+  <span
+    v-for="color in p.colors.slice(0, 4)"
+    :key="`${p.id}-${color.name}`"
+    :title="color.name"
+    :style="{ background: color.hex }"
+  ></span>
+</div>
 </div>
 
 <div class="footer">
@@ -1644,6 +1828,11 @@ style="cursor:pointer">
 </article>
 </div>
 
+<div v-if="!filteredBest.length" class="dw-empty-products">
+  <p v-if="productLoadError">{{ productLoadError }}</p>
+  <p v-else>Hiện chưa có sản phẩm để hiển thị.</p>
+</div>
+
 </div>
 </section>
 
@@ -1652,28 +1841,45 @@ style="cursor:pointer">
 
 </div>
 
-<!-- Toast -->
-
-<div class="toast" :class="{ show: toastVisible }">
-  {{ toastMessage }}
-</div>
-
 <transition name="quick-modal-fade">
 <div v-if="selectedProduct" class="quick-modal" @click.self="closeModal">
   <div class="quick-modal-content">
     <button class="quick-close" @click="closeModal">✕</button>
 
-    <div class="quick-image-side">
-      <img :key="quickActiveImage" :src="quickActiveImage" class="quick-image" :class="{ 'is-switching': quickImageAnimating }" />
-      <button v-if="quickPreviewImages.length > 1" class="quick-nav quick-prev" type="button" aria-label="Ảnh trước" @click="quickPrevImage">‹</button>
-      <button v-if="quickPreviewImages.length > 1" class="quick-nav quick-next" type="button" aria-label="Ảnh sau" @click="quickNextImage">›</button>
+    <div
+      class="quick-image-side"
+      @pointerdown="onQuickPointerDown"
+      @pointermove="onQuickPointerMove"
+      @pointerup="onQuickPointerUp"
+      @pointercancel="onQuickPointerCancel"
+    >
+      <template v-if="quickColorImages.length">
+        <div class="quick-image-viewport">
+          <div class="quick-image-track" :style="quickImageTrackStyle">
+            <img
+              v-for="(image, index) in quickColorImages"
+              :key="`${selectedProduct.id}-quick-${index}`"
+              :src="image"
+              class="quick-image quick-image-slide"
+              alt=""
+            />
+          </div>
+        </div>
+      </template>
+      <img v-else :src="quickActiveImage" class="quick-image" alt="" />
+      <button v-if="selectedProduct?.colors?.length > 1" class="quick-nav quick-prev" type="button" aria-label="Ảnh trước" @click="quickPrevImage">‹</button>
+      <button v-if="selectedProduct?.colors?.length > 1" class="quick-nav quick-next" type="button" aria-label="Ảnh sau" @click="quickNextImage">›</button>
     </div>
 
     <div class="quick-info-side">
       <h2>{{ selectedProduct.name }}</h2>
       <p class="quick-sku">Mã sản phẩm: {{ getQuickProductCode(selectedProduct) }}</p>
 
-      <div class="quick-price">{{ VND(selectedProduct.price) }}</div>
+      <div class="quick-price">
+        {{ VND(selectedProduct.price) }}
+        <span v-if="selectedProduct.old && selectedProduct.old > selectedProduct.price" class="quick-strike-price">{{ VND(selectedProduct.old) }}</span>
+        <span v-if="selectedProduct.old && selectedProduct.old > selectedProduct.price" class="quick-sale-badge">-{{ Math.round(100 - (selectedProduct.price / selectedProduct.old) * 100) }}%</span>
+      </div>
 
       <div v-if="Array.isArray(selectedProduct.colors) && selectedProduct.colors.length >= 1" class="quick-row">
         <span>Màu sắc:</span>

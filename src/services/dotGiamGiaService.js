@@ -4,13 +4,20 @@ import { resolveApiOrigin } from "../utils/apiOrigin"
 const NODE_BACKEND = String(import.meta.env.VITE_NODE_BACKEND_URL || "").trim().replace(/\/$/, "")
 const API_ORIGIN = resolveApiOrigin().replace(/\/$/, "")
 const LOCAL_API_ORIGIN = "http://localhost:8080"
+const LOCAL_HOST_PATTERN = /^(localhost|127(?:\.\d+){3}|0\.0\.0\.0|::1)$/i
+const IS_LOCAL_BROWSER = (() => {
+  if (typeof window === "undefined") return false
+  return LOCAL_HOST_PATTERN.test(String(window.location?.hostname || "").trim())
+})()
 
 const CANDIDATE_BASES = [
   `${API_ORIGIN}/api/admin`,
-  `${API_ORIGIN}/api`,
-  `${LOCAL_API_ORIGIN}/api/admin`,
-  `${LOCAL_API_ORIGIN}/api`
+  `${API_ORIGIN}/api`
 ]
+
+if (IS_LOCAL_BROWSER) {
+  CANDIDATE_BASES.push(`${LOCAL_API_ORIGIN}/api/admin`, `${LOCAL_API_ORIGIN}/api`)
+}
 
 const ENDPOINTS = {
   dotGiamGia: ["/dot-giam-gia", "/khuyen-mai"],
@@ -191,9 +198,9 @@ const normalizeImageUrl = (raw) => {
   const value = String(raw).trim()
   if (!value) return ""
   if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:image/")) return value
-  if (value.startsWith("/")) return `http://localhost:8080${value}`
-  if (value.startsWith("uploads/")) return `http://localhost:8080/${value}`
-  return `http://localhost:8080/uploads/${value}`
+  if (value.startsWith("/")) return `${API_ORIGIN}${value}`
+  if (value.startsWith("uploads/")) return `${API_ORIGIN}/${value}`
+  return `${API_ORIGIN}/uploads/${value}`
 }
 
 const toVariantList = (product = {}) => {

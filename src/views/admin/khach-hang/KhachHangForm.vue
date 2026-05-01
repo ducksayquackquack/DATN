@@ -28,6 +28,13 @@ const form = ref({
   trangThai: "Hoạt động"
 })
 
+const errors = ref({
+  tenKhachHang: "",
+  ngaySinh: "",
+  soDienThoai: "",
+  email: ""
+})
+
 const generatedPassword = ref("")
 
 const hoaDonList = ref([])
@@ -136,7 +143,54 @@ const taoTaiKhoanKhachHang = async (email, matKhau) => {
   throw lastError || new Error("Không tạo được tài khoản khách hàng")
 }
 
+// Validation helpers
+const isValidName = (name) => {
+  const trimmed = String(name || "").trim()
+  if (!trimmed) return false
+  // Only Vietnamese letters and spaces
+  return /^[a-zA-ZÀ-ỳ\s]+$/.test(trimmed) && trimmed.length <= 100
+}
+
+const isValidPhone = (phone) => {
+  const trimmed = String(phone || "").trim()
+  if (!trimmed) return false
+  // 10 digits, starts with 0
+  return /^0\d{9}$/.test(trimmed)
+}
+
+const formatPhoneDisplay = (phone) => {
+  const str = String(phone || "").trim()
+  if (str.length > 50) return str.substring(0, 47) + "..."
+  return str
+}
+
 const save = async () => {
+  // Clear errors
+  errors.value = { tenKhachHang: "", ngaySinh: "", soDienThoai: "", email: "" }
+
+  // Validate name
+  if (!isValidName(form.value.tenKhachHang)) {
+    errors.value.tenKhachHang = "Họ tên chỉ được chứa chữ cái và không quá 100 ký tự"
+    window.toast.error(errors.value.tenKhachHang)
+    return
+  }
+
+  // Validate phone if provided
+  if (form.value.soDienThoai && form.value.soDienThoai.trim()) {
+    if (!isValidPhone(form.value.soDienThoai)) {
+      errors.value.soDienThoai = "Số điện thoại phải có 10 chữ số và bắt đầu bằng 0"
+      window.toast.error(errors.value.soDienThoai)
+      return
+    }
+  }
+
+  // Validate birth date if provided - must not be empty on create
+  if (isCreateMode && !form.value.ngaySinh) {
+    errors.value.ngaySinh = "Vui lòng nhập ngày sinh"
+    window.toast.error(errors.value.ngaySinh)
+    return
+  }
+
   // Confirmation before saving
   const action = isCreateMode ? 'tạo mới' : 'cập nhật'
   const confirmed = await window.confirmDialog(`Bạn có chắc chắn muốn ${action} thông tin khách hàng "${form.value.tenKhachHang}"?`)
@@ -145,11 +199,6 @@ const save = async () => {
   }
 
   try {
-    if (!String(form.value.tenKhachHang || "").trim()) {
-      window.toast.error("Vui lòng nhập họ tên khách hàng")
-      return
-    }
-
     if (isCreateMode) {
       const normalizedEmail = String(form.value.email || "").trim().toLowerCase()
       if (!normalizedEmail) {
@@ -228,12 +277,15 @@ const save = async () => {
           </div>
 
           <div class="field">
-            <label>Họ tên</label>
+            <label>Họ tên <span class="req">*</span></label>
             <input
               class="input"
+              :class="errors.tenKhachHang ? 'error' : ''"
               v-model="form.tenKhachHang"
-              placeholder="VD: Nguyễn Văn A"
+              placeholder="VD: Nguyễn Văn A (tối đa 100 ký tự)"
+              maxlength="100"
             />
+            <small v-if="errors.tenKhachHang" class="error-text">{{ errors.tenKhachHang }}</small>
           </div>
 
           <div class="field">
@@ -248,21 +300,27 @@ const save = async () => {
           </div>
 
           <div class="field">
-            <label>Ngày sinh</label>
+            <label>Ngày sinh <span class="req" v-if="isCreateMode">*</span></label>
             <input
               class="input"
+              :class="errors.ngaySinh ? 'error' : ''"
               type="date"
               v-model="form.ngaySinh"
             />
+            <small v-if="errors.ngaySinh" class="error-text">{{ errors.ngaySinh }}</small>
           </div>
 
           <div class="field">
-            <label>SĐT</label>
+            <label>SĐT (10 chữ số)</label>
             <input
               class="input"
+              :class="errors.soDienThoai ? 'error' : ''"
               v-model="form.soDienThoai"
               placeholder="VD: 0912xxxxxx"
+              maxlength="10"
+              pattern="0\d{9}"
             />
+            <small v-if="errors.soDienThoai" class="error-text">{{ errors.soDienThoai }}</small>
           </div>
 
           <div class="field" v-if="isCreateMode">
@@ -319,6 +377,23 @@ select.input {
   outline: none;
   border-color: #4f46e5;
 }
+
+.input.error {
+  border-color: #dc2626;
+  background-color: #fef2f2;
+}
+
+.error-text {
+  color: #dc2626;
+  font-size: 12px;
+  margin-top: 4px;
+  display: block;
+}
+
+.req {
+  color: #dc2626;
+}
+
 .status-ok {
   background-color: #dcfce7;
   color: #166534;

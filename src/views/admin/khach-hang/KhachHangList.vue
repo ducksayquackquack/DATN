@@ -118,6 +118,14 @@ const goToEdit = (id) => {
   router.push(`/admin/khach-hang/form/${id}`)
 }
 
+const truncateName = (name, maxLength = 30) => {
+  const str = String(name || "").trim()
+  if (str.length > maxLength) {
+    return str.substring(0, maxLength - 3) + "..."
+  }
+  return str
+}
+
 const confirmDelete = (id) => {
   selectedId.value = id
   showConfirm.value = true
@@ -165,7 +173,6 @@ const remove = async () => {
           >
             <option>Tất cả</option>
             <option>Hoạt động</option>
-            <option>Đang xử lý</option>
             <option>Ngừng hoạt động</option>
           </select>
         </div>
@@ -186,7 +193,7 @@ const remove = async () => {
         <tbody>
           <tr v-for="kh in filteredData" :key="kh.id">
             <td>{{ kh.maKhachHang }}</td>
-            <td><b>{{ kh.tenKhachHang }}</b></td>
+            <td><b :title="kh.tenKhachHang">{{ truncateName(kh.tenKhachHang) }}</b></td>
             <td>{{ kh.soDienThoai }}</td>
             <td>{{ normalizeAddressText(kh) || 'Chưa cập nhật' }}</td>
 

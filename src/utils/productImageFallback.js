@@ -246,14 +246,17 @@ export const fallbackImageForProduct = ({ id, maSanPham, tenSanPham } = {}) => {
   const code = normalizeProductCode(rawCode);
   if (code && byCode[code]) return byCode[code];
 
-  if (!isCuratedCatalogCode(code)) {
-    return "";
-  }
-
   const nameNorm = normalize(tenSanPham);
   if (nameNorm) {
     const found = fallbackByName.find((item) => item.keywords.every((k) => nameNorm.includes(k)));
     if (found?.image) return found.image;
+
+    if (!isCuratedCatalogCode(code)) {
+      if (nameNorm.includes("hoodie")) return img5;
+      if (nameNorm.includes("bomber")) return img1;
+      if (nameNorm.includes("coach")) return img8;
+      if (nameNorm.includes("jacket")) return img1;
+    }
   }
 
   const n = Number(id);
@@ -320,10 +323,13 @@ export const fallbackImageFor = (id = 0, code = "", name = "") => {
   if (nameNorm) {
     const found = fallbackByName.find((item) => item.keywords.every((k) => nameNorm.includes(k)));
     if (found?.image) return found.image;
-  }
 
-  if (!isCuratedCatalogCode(normalizedCode)) {
-    return "";
+    if (!isCuratedCatalogCode(normalizedCode)) {
+      if (nameNorm.includes("hoodie")) return img5;
+      if (nameNorm.includes("bomber")) return img1;
+      if (nameNorm.includes("coach")) return img8;
+      if (nameNorm.includes("jacket")) return img1;
+    }
   }
 
   // Try numeric code mapping (SP001 → 1, extracts number after SP)

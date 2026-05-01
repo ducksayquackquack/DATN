@@ -15,7 +15,7 @@
 
         <h1 class="tc-hero-title">Chọn đúng sản phẩm, xử lý đơn nhanh, giữ nhịp vận hành mỗi ngày.</h1>
         <p class="tc-hero-desc">
-          Bố cục lấy cảm hứng từ SevenStrike nhưng toàn bộ số liệu và hành động dùng API + route thật của DATN.
+          Giao diện được tối ưu cho DirtyWave, toàn bộ số liệu và hành động dùng API + route thật của DATN.
           Mọi thẻ dưới đây đều phục vụ trực tiếp cho admin trong ca làm việc.
         </p>
 
@@ -138,7 +138,7 @@
         <article class="tc-about-main">
           <div class="tc-section-title">Về trung tâm vận hành</div>
           <p>
-            Trang chủ này giữ bố cục tham chiếu SevenStrike (hero, quick links, section card) nhưng được tối ưu cho đội admin DirtyWave:
+            Trang chủ này được thiết kế riêng cho đội admin DirtyWave:
             ưu tiên dữ liệu live, thao tác nhanh, và cảnh báo tồn kho theo thời gian thực.
           </p>
           <div class="tc-about-actions">

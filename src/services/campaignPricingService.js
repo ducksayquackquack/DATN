@@ -2,10 +2,10 @@ import axios from "axios";
 import { resolveApiOrigin } from "../utils/apiOrigin";
 
 const NODE_BACKEND = String(import.meta.env.VITE_NODE_BACKEND_URL || "").trim().replace(/\/$/, "");
-const SPRING_API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api").replace(/\/$/, "");
+const SAME_ORIGIN_API_BASE = `${resolveApiOrigin()}/api`.replace(/\/$/, "");
+const SPRING_API_BASE = (import.meta.env.VITE_API_BASE_URL || SAME_ORIGIN_API_BASE).replace(/\/$/, "");
 const SPRING_PRODUCTS_API = `${SPRING_API_BASE}/san-pham`;
 const SPRING_CAMPAIGNS_API = `${SPRING_API_BASE}/khuyen-mai`;
-const SAME_ORIGIN_API_BASE = `${resolveApiOrigin()}/api`.replace(/\/$/, "");
 const SAME_ORIGIN_PRODUCTS_API = `${SAME_ORIGIN_API_BASE}/san-pham`;
 const SAME_ORIGIN_CAMPAIGNS_API = `${SAME_ORIGIN_API_BASE}/khuyen-mai`;
 

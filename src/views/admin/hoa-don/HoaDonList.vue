@@ -246,6 +246,22 @@ const firstNonEmptyValue = (...values) => {
   return ""
 }
 
+const normalizeEmailValue = (value) => {
+  const normalized = String(value || "").trim()
+  if (!normalized) return ""
+  const lowered = normalized.toLowerCase()
+  if (["null", "undefined", "nan", "n/a"].includes(lowered)) return ""
+  return normalized
+}
+
+const firstValidEmailValue = (...values) => {
+  for (const value of values) {
+    const normalized = normalizeEmailValue(value)
+    if (normalized && normalized.includes("@")) return normalized
+  }
+  return ""
+}
+
 const formatDateTime = (date) => {
   if (!date) return "-"
   const d = new Date(date)
@@ -372,6 +388,9 @@ const shouldHighlightRow = (hoaDon) => {
 
 const filteredData = computed(() => {
   let data = Array.isArray(hoaDons.value) ? [...hoaDons.value] : []
+
+  // Filter out broken/empty invoices (0₫ total)
+  data = data.filter(d => Number(d?.thanhTien || 0) > 0)
 
   if (searchText.value.trim()) {
     const keyword = searchText.value.toLowerCase()
@@ -1286,13 +1305,57 @@ const goToFullDetail = (id) => {
 // ═══ Send lookup mail from list ═══
 const sendingMailForId = ref(null)
 
+const resolveEmailForLookupMail = async (hd) => {
+  await loadCustomerCatalog()
+  const customerId = Number(hd?.khachHangId || hd?.customerId || 0)
+  const customer = customerCatalog.value.get(customerId)
+
+  const emailFromRow = firstValidEmailValue(
+    hd?.emailNhanHang,
+    hd?.email,
+    hd?.customerEmail,
+    hd?.emailKhachHang,
+    hd?.emailNguoiNhan,
+    customer?.email,
+    customer?.taiKhoan?.email,
+    customer?.taiKhoanEmail,
+  )
+
+  if (emailFromRow) return emailFromRow
+
+  if (!hd?.id) return ""
+
+  try {
+    const detailRes = await getHoaDonById(hd.id)
+    const detail = detailRes?.data || {}
+    const row = detail?.hoaDon || detail || {}
+    const detailCustomer = detail?.customer || row?.khachHang || customer || {}
+
+    return firstValidEmailValue(
+      row?.emailNhanHang,
+      row?.email,
+      row?.customerEmail,
+      row?.emailKhachHang,
+      row?.emailNguoiNhan,
+      detailCustomer?.email,
+      detailCustomer?.taiKhoan?.email,
+      detailCustomer?.taiKhoanEmail,
+      detail?.khachHang?.email,
+      detail?.khachHang?.taiKhoan?.email,
+      detail?.khachHang?.taiKhoanEmail,
+    )
+  } catch {
+    return ""
+  }
+}
+
 const sendLookupMailFromList = async (hd) => {
   openMoreMenuId.value = null
   const maHoaDon = String(hd?.maHoaDon || "").trim()
   const soDienThoai = String(hd?.soDienThoaiNhanHang || "").trim()
-  const email = String(hd?.emailNhanHang || hd?.email || "").trim()
 
   if (!maHoaDon) { showToast("Thiếu mã đơn hàng", "warning"); return }
+  const email = await resolveEmailForLookupMail(hd)
   if (!email) { showToast("Không tìm thấy email khách hàng để gửi", "warning"); return }
 
   sendingMailForId.value = hd.id

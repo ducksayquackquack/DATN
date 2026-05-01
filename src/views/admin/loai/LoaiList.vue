@@ -90,13 +90,12 @@ const filteredData = computed(() => {
           <div class="filters">
             <input
               class="form-input"
-              style="width:320px"
               type="text"
               placeholder="Tìm theo mã / tên..."
               v-model="searchText"
             />
 
-            <select class="form-select" style="width:220px" v-model="filterStatus">
+            <select class="form-select" v-model="filterStatus">
               <option>Tất cả trạng thái</option>
               <option>Hoạt động</option>
               <option>Ngừng hoạt động</option>
@@ -104,7 +103,7 @@ const filteredData = computed(() => {
           </div>
 
           <div class="filters">
-            <select class="form-select" style="width:220px" v-model="sortOption">
+            <select class="form-select" v-model="sortOption">
               <option>Mới nhất</option>
               <option>Tên A-Z</option>
             </select>
@@ -114,12 +113,12 @@ const filteredData = computed(() => {
         <table class="table">
           <thead>
             <tr>
-              <th style="width:100px">Mã</th>
+              <th>Mã</th>
               <th>Tên loại</th>
-              <th style="width:170px" class="center">Ngày tạo</th>
-              <th style="width:170px" class="center">Ngày sửa</th>
-              <th style="width:180px" class="center">Trạng thái</th>
-              <th style="width:180px" class="center">Thao tác</th>
+              <th class="center">Ngày tạo</th>
+              <th class="center">Ngày sửa</th>
+              <th class="center">Trạng thái</th>
+              <th class="center">Thao tác</th>
             </tr>
           </thead>
 

@@ -1,16 +1,24 @@
 <script setup>
-import { reactive, onMounted } from "vue"
+import { reactive, onMounted, ref } from "vue"
 import { useRouter, useRoute } from "vue-router"
 import {
+  getAllNhanVien,
   createNhanVien,
   updateNhanVien,
-  getNhanVienById
+  getNhanVienById,
+  deleteNhanVien
 } from "../../../services/nhanVienService"
+import {
+  getLichLamViecByNhanVien
+} from "../../../services/lichLamViecService"
 import taiKhoanService from "../../../services/taiKhoanService"
 
 const router = useRouter()
 const route = useRoute()
 const id = route.params.id
+const originalTaiKhoanEmail = ref("")
+const sendingMail = ref(false)
+const deletingEmployee = ref(false)
 
 const form = reactive({
   code: "",
@@ -36,16 +44,83 @@ const toBackendRole = (role) => role === "ADMIN" ? "ADMIN" : "EMPLOYEE"
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim())
 
+const isDuplicateEmailError = (message = "") => {
+  const normalized = String(message || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+  return normalized.includes("email") && (
+    normalized.includes("ton tai") ||
+    normalized.includes("already") ||
+    normalized.includes("duplicate")
+  )
+}
+
+const normalizeEmail = (value = "") => String(value || "").trim().toLowerCase()
+
+const roleLabel = (role = "") => {
+  const normalized = normalizeRole(role)
+  if (normalized === "ADMIN") return "ADMIN"
+  if (isEmployeeRole(normalized)) return "EMPLOYEE"
+  return normalized || "UNKNOWN"
+}
+
+const listAllTaiKhoan = async () => {
+  const size = 500
+  let page = 0
+  const collected = []
+  const visited = new Set()
+
+  while (page < 50) {
+    const res = await taiKhoanService.getAll({ page, size })
+    const payload = res?.data
+
+    if (Array.isArray(payload)) {
+      return payload
+    }
+
+    const content = Array.isArray(payload?.content) ? payload.content : []
+    for (const item of content) {
+      const key = String(item?.id || "")
+      if (!key || visited.has(key)) continue
+      visited.add(key)
+      collected.push(item)
+    }
+
+    const totalPages = Number(payload?.totalPages || 0)
+    if (!content.length) break
+    if (Number.isFinite(totalPages) && totalPages > 0 && page >= totalPages - 1) break
+    if (content.length < size && (!Number.isFinite(totalPages) || totalPages <= 0)) break
+    page += 1
+  }
+
+  return collected
+}
+
 const checkEmailExists = async (email) => {
-  const normalized = String(email || "").trim().toLowerCase()
+  const normalized = normalizeEmail(email)
   if (!normalized) return false
   try {
-    const res = await taiKhoanService.getAll({ page: 0, size: 500 })
-    const payload = res?.data
-    const accounts = Array.isArray(payload)
-      ? payload
-      : (Array.isArray(payload?.content) ? payload.content : [])
+    const accounts = await listAllTaiKhoan()
     return accounts.some((acc) => String(acc?.email || "").trim().toLowerCase() === normalized)
+  } catch {
+    return false
+  }
+}
+
+const isEmailUsedByAnotherAccount = async (email, currentTaiKhoanId = null) => {
+  const normalized = normalizeEmail(email)
+  if (!normalized) return false
+  try {
+    const accounts = await listAllTaiKhoan()
+
+    return accounts.some((acc) => {
+      const accEmail = normalizeEmail(acc?.email)
+      const accId = Number(acc?.id || 0)
+      if (accEmail !== normalized) return false
+      if (currentTaiKhoanId && accId === Number(currentTaiKhoanId)) return false
+      return true
+    })
   } catch {
     return false
   }
@@ -56,20 +131,52 @@ const taoMatKhauTam = () => {
   return `DW@${part}`
 }
 
-const guiMailThongTinTaiKhoan = (email, password, role) => {
-  if (!email || !password) return
-  const vaiTroHienThi = role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'
-  const subject = encodeURIComponent('Thông tin tài khoản đăng nhập nội bộ')
-  const body = encodeURIComponent(
-    `Chào bạn,\n\n` +
-    `Bạn đã được cấp tài khoản nội bộ DirtyWave.\n` +
-    `Tài khoản: ${email}\n` +
-    `Mật khẩu tạm thời: ${password}\n` +
-    `Vai trò: ${vaiTroHienThi}\n` +
-    `Trang đăng nhập nội bộ: http://localhost:5173/auth/staff-login\n\n` +
-    `Vui lòng đổi mật khẩu ngay sau khi đăng nhập.`
-  )
-  window.location.href = `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`
+const guiMailThongTinTaiKhoan = async (email, password, role, tenNhanVien) => {
+  if (!email || !password) {
+    return { success: false, message: "Thiếu email hoặc mật khẩu tạm" }
+  }
+
+  const NODE = String(import.meta.env.VITE_NODE_BACKEND_URL || 'http://localhost:3000').trim().replace(/\/$/, '')
+
+  const endpoints = [
+    NODE ? `${NODE}/api/mail/send-nhanvien-account` : "",
+    "http://localhost:3000/api/mail/send-nhanvien-account",
+  ].filter(Boolean)
+
+  let lastMessage = "Không kết nối được dịch vụ gửi mail"
+  let hasUsefulHttpMessage = false
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, matKhau: password, vaiTro: role, tenNhanVien: tenNhanVien || email })
+      })
+
+      let payload = null
+      try {
+        payload = await response.json()
+      } catch {
+        payload = null
+      }
+
+      if (response.ok) {
+        return { success: true, message: "Đã gửi email tài khoản", endpoint }
+      }
+
+      const httpMessage = payload?.message || `Gửi mail thất bại (${response.status})`
+      lastMessage = httpMessage
+      hasUsefulHttpMessage = true
+    } catch (e) {
+      if (!hasUsefulHttpMessage) {
+        lastMessage = e?.message || "Lỗi mạng khi gửi mail"
+      }
+    }
+  }
+
+  console.warn('[NhanVien] Gửi email tài khoản thất bại:', lastMessage)
+  return { success: false, message: lastMessage }
 }
 
 function validate() {
@@ -93,6 +200,9 @@ function validate() {
     if (!trimmedEmail) {
       errors.email = "Email không được để trống"
       valid = false
+    } else if (trimmedEmail.length > 100) {
+      errors.email = "Email không được vượt quá 100 ký tự"
+      valid = false
     } else if (!isValidEmail(trimmedEmail)) {
       errors.email = "Email không đúng định dạng"
       valid = false
@@ -100,9 +210,16 @@ function validate() {
       errors.email = ""
     }
   } else {
-    if (trimmedEmail && !isValidEmail(trimmedEmail)) {
-      errors.email = "Email không đúng định dạng"
-      valid = false
+    if (trimmedEmail) {
+      if (trimmedEmail.length > 100) {
+        errors.email = "Email không được vượt quá 100 ký tự"
+        valid = false
+      } else if (!isValidEmail(trimmedEmail)) {
+        errors.email = "Email không đúng định dạng"
+        valid = false
+      } else {
+        errors.email = ""
+      }
     } else {
       errors.email = ""
     }
@@ -127,6 +244,316 @@ function goBack() {
   router.push("/admin/nhan-vien/list")
 }
 
+const extractErrorMessage = (err) => String(
+  err?.response?.data?.message
+  || err?.response?.data?.error
+  || err?.message
+  || ""
+)
+
+const isScheduleFkConflict = (message) => /FK_LichLamViec_NhanVien|conflicted with the REFERENCE constraint/i.test(message)
+
+const normalizeRole = (role) => String(role || "").trim().toUpperCase().replace(/^ROLE_/, "")
+const isEmployeeRole = (role) => {
+  const normalized = normalizeRole(role)
+  return normalized === "EMPLOYEE" || normalized === "NHAN_VIEN" || normalized === "NHANVIEN"
+}
+
+async function resolveTaiKhoanIdForDelete() {
+  if (form.taiKhoanId) return Number(form.taiKhoanId)
+
+  const normalizedEmail = String(form.email || "").trim().toLowerCase()
+  if (!normalizedEmail) return null
+
+  try {
+    const res = await taiKhoanService.getAll({ page: 0, size: 500 })
+    const payload = res?.data
+    const accounts = Array.isArray(payload)
+      ? payload
+      : (Array.isArray(payload?.content) ? payload.content : [])
+
+    const matched = accounts.find((acc) => {
+      const sameEmail = String(acc?.email || "").trim().toLowerCase() === normalizedEmail
+      return sameEmail && isEmployeeRole(acc?.vaiTro)
+    })
+    return matched?.id ? Number(matched.id) : null
+  } catch {
+    return null
+  }
+}
+
+async function cleanupOrphanEmployeeAccountByEmail(email) {
+  const normalizedEmail = normalizeEmail(email)
+  if (!normalizedEmail) return false
+
+  try {
+    const accounts = await listAllTaiKhoan()
+
+    const matchedAccount = accounts.find((acc) => {
+      const sameEmail = normalizeEmail(acc?.email) === normalizedEmail
+      return sameEmail && isEmployeeRole(acc?.vaiTro)
+    })
+
+    if (!matchedAccount?.id) return false
+
+    const employeeRes = await getAllNhanVien()
+    const employees = Array.isArray(employeeRes?.data) ? employeeRes.data : []
+
+    const isLinked = employees.some((emp) => {
+      const linkedTaiKhoanId = Number(emp?.idTaiKhoan || emp?.taiKhoan?.id || 0)
+      return linkedTaiKhoanId && linkedTaiKhoanId === Number(matchedAccount.id)
+    })
+
+    if (isLinked) return false
+
+    await taiKhoanService.delete(matchedAccount.id)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function reclaimOrphanEmployeeEmail(targetEmail, currentTaiKhoanId = null) {
+  const normalizedEmail = normalizeEmail(targetEmail)
+  if (!normalizedEmail) return false
+
+  try {
+    const accounts = await listAllTaiKhoan()
+    const conflicted = accounts.find((acc) => {
+      const sameEmail = normalizeEmail(acc?.email) === normalizedEmail
+      if (!sameEmail) return false
+      if (currentTaiKhoanId && Number(acc?.id || 0) === Number(currentTaiKhoanId)) return false
+      return true
+    })
+
+    if (!conflicted?.id) return false
+    if (!isEmployeeRole(conflicted?.vaiTro)) return false
+
+    const employeeRes = await getAllNhanVien()
+    const employees = Array.isArray(employeeRes?.data) ? employeeRes.data : []
+    const linkedEmployee = employees.find((emp) => {
+      const linkedTaiKhoanId = Number(emp?.idTaiKhoan || emp?.taiKhoan?.id || 0)
+      return linkedTaiKhoanId && linkedTaiKhoanId === Number(conflicted.id)
+    })
+
+    // Do not auto-reclaim email if that account is still attached to another employee record.
+    if (linkedEmployee && Number(linkedEmployee?.id || 0) !== Number(id || 0)) {
+      return false
+    }
+
+    const fallbackEmail = `migrated+reclaim-${conflicted.id}-${Date.now()}@dirtywave.local`
+
+    const detailRes = await taiKhoanService.getById(conflicted.id).catch(() => null)
+    const detail = detailRes?.data || conflicted || {}
+    const reclaimPayload = {
+      ...detail,
+      email: fallbackEmail,
+      id: undefined,
+      matKhau: undefined,
+      password: undefined,
+      currentPassword: undefined,
+      newPassword: undefined,
+    }
+
+    await taiKhoanService.update(conflicted.id, reclaimPayload)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function findConflictingAccountByEmail(targetEmail, currentTaiKhoanId = null) {
+  const normalizedEmail = normalizeEmail(targetEmail)
+  if (!normalizedEmail) return null
+
+  try {
+    const accounts = await listAllTaiKhoan()
+    return accounts.find((acc) => {
+      const sameEmail = normalizeEmail(acc?.email) === normalizedEmail
+      if (!sameEmail) return false
+      if (currentTaiKhoanId && Number(acc?.id || 0) === Number(currentTaiKhoanId)) return false
+      return true
+    }) || null
+  } catch {
+    return null
+  }
+}
+
+const normalizeDateKey = (value) => {
+  const raw = String(value || "").trim()
+  if (!raw) return ""
+  const direct = raw.slice(0, 10)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(direct)) return direct
+
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return ""
+  return parsed.toISOString().slice(0, 10)
+}
+
+const isInactiveScheduleStatus = (value) => {
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+  return normalized.includes("ngung") || normalized.includes("huy") || normalized.includes("inactive")
+}
+
+async function getBlockingSchedulesByEmployeeId(employeeId) {
+  try {
+    const res = await getLichLamViecByNhanVien(employeeId)
+    const payload = res?.data
+    const schedules = Array.isArray(payload)
+      ? payload
+      : (Array.isArray(payload?.content) ? payload.content : [])
+
+    if (!schedules.length) return []
+
+    const todayKey = new Date().toISOString().slice(0, 10)
+    return schedules.filter((item) => {
+      const status = String(item?.trangThai || item?.status || "")
+      const dateKey = normalizeDateKey(item?.ngayLam || item?.dateKey || item?.ngay)
+
+      if (isInactiveScheduleStatus(status)) return false
+      if (!dateKey) return true
+
+      // Block delete for current/future assigned shifts.
+      return dateKey >= todayKey
+    })
+  } catch {
+    return []
+  }
+}
+
+async function sendAccountMailManually() {
+  if (!id) {
+    window.toast?.warning?.("Vui lòng lưu nhân viên trước khi gửi email")
+    return
+  }
+
+  const normalizedEmail = String(form.email || "").trim().toLowerCase()
+  if (!isValidEmail(normalizedEmail)) {
+    errors.email = "Email không đúng định dạng"
+    window.toast?.error?.("Email không đúng định dạng")
+    return
+  }
+
+  const confirmed = await window.confirmDialog?.("Gửi email tài khoản cho nhân viên này?") ?? confirm("Gửi email tài khoản cho nhân viên này?")
+  if (!confirmed) return
+
+  sendingMail.value = true
+  try {
+    const generatedPassword = form.password || taoMatKhauTam()
+
+    if (form.taiKhoanId) {
+      const normalizedCurrentEmail = String(form.email || "").trim().toLowerCase()
+      const emailChanged = normalizedCurrentEmail && normalizedCurrentEmail !== originalTaiKhoanEmail.value
+
+      if (emailChanged) {
+        const usedByAnother = await isEmailUsedByAnotherAccount(normalizedCurrentEmail, form.taiKhoanId)
+        if (usedByAnother) {
+          const reclaimed = await reclaimOrphanEmployeeEmail(normalizedCurrentEmail, form.taiKhoanId)
+          if (!reclaimed) {
+            const conflict = await findConflictingAccountByEmail(normalizedCurrentEmail, form.taiKhoanId)
+            errors.email = "Email đã tồn tại trong hệ thống tài khoản"
+            window.toast?.error?.("Email đã tồn tại trong hệ thống tài khoản")
+            return
+          }
+        }
+      }
+
+      const accountUpdatePayload = {
+        vaiTro: toBackendRole(form.role),
+        trangThaiHoatDong: form.status === "Ngừng hoạt động" ? "Ngừng hoạt động" : "Hoạt động",
+        matKhau: generatedPassword
+      }
+
+      if (emailChanged) {
+        accountUpdatePayload.email = normalizedCurrentEmail
+      }
+
+      try {
+        await taiKhoanService.update(form.taiKhoanId, accountUpdatePayload)
+      } catch (error) {
+        const message = extractErrorMessage(error)
+        if (emailChanged && isDuplicateEmailError(message)) {
+          const reclaimed = await reclaimOrphanEmployeeEmail(normalizedCurrentEmail, form.taiKhoanId)
+          if (reclaimed) {
+            await taiKhoanService.update(form.taiKhoanId, accountUpdatePayload)
+          } else {
+            window.toast?.error?.("Email đã tồn tại trong hệ thống tài khoản")
+            throw error
+          }
+        } else {
+          throw error
+        }
+      }
+      if (emailChanged) {
+        originalTaiKhoanEmail.value = normalizedCurrentEmail
+      }
+    }
+
+    const mailResult = await guiMailThongTinTaiKhoan(normalizedEmail, generatedPassword, form.role, form.name.trim())
+    if (!mailResult.success) {
+      window.toast?.warning?.(`Gửi email thất bại: ${mailResult.message}`)
+      return
+    }
+
+    form.password = ""
+    window.toast?.success?.("Đã gửi email tài khoản cho nhân viên")
+  } catch (err) {
+    window.toast?.error?.("Không thể gửi email: " + (err?.response?.data?.message || err?.message || "Lỗi không xác định"))
+  } finally {
+    sendingMail.value = false
+  }
+}
+
+async function removeEmployee() {
+  if (!id) return
+  const confirmed = await window.confirmDialog?.("Xóa vĩnh viễn nhân viên này? Hành động không thể hoàn tác.") ?? confirm("Xóa vĩnh viễn nhân viên này? Hành động không thể hoàn tác.")
+  if (!confirmed) return
+
+  deletingEmployee.value = true
+  try {
+    const blockingSchedules = await getBlockingSchedulesByEmployeeId(id)
+    if (blockingSchedules.length > 0) {
+      window.toast?.error?.("Không thể xóa nhân viên vì đang có ca làm việc hiện tại/sắp tới. Vui lòng chuyển các ca này sang nhân viên khác trước khi xóa.")
+      return
+    }
+
+    await deleteNhanVien(id)
+
+    const taiKhoanIdToDelete = await resolveTaiKhoanIdForDelete()
+    let accountDeleteFailed = false
+
+    if (taiKhoanIdToDelete) {
+      try {
+        await taiKhoanService.delete(taiKhoanIdToDelete)
+      } catch {
+        accountDeleteFailed = true
+      }
+    }
+
+    if (accountDeleteFailed) {
+      window.toast?.warning?.("Đã xóa nhân viên nhưng chưa xóa được tài khoản liên kết. Vui lòng thử lại thao tác xóa tài khoản.")
+    } else {
+      window.toast?.success?.("Đã xóa vĩnh viễn nhân viên và dữ liệu liên quan")
+    }
+
+    router.push("/admin/nhan-vien/list")
+  } catch (err) {
+    const message = extractErrorMessage(err)
+
+    if (isScheduleFkConflict(message)) {
+      window.toast?.error?.("Không thể xóa nhân viên vì vẫn còn lịch/ca làm việc đang gán. Vui lòng chuyển lịch đó sang nhân viên khác rồi thử lại.")
+      return
+    }
+
+    window.toast?.error?.("Không thể xóa nhân viên. Vui lòng thử lại.")
+  } finally {
+    deletingEmployee.value = false
+  }
+}
+
 onMounted(async () => {
   if (id) {
     const res = await getNhanVienById(id)
@@ -136,6 +563,7 @@ onMounted(async () => {
     form.name = data.tenNhanVien || ""
     form.phone = data.soDienThoai || ""
     form.email = data.email || data.taiKhoan?.email || ""
+    originalTaiKhoanEmail.value = String(form.email || "").trim().toLowerCase()
     form.role = data.chucVu?.tenChucVu === "ADMIN" ? "ADMIN" : "NHAN_VIEN"
     form.taiKhoanId = data.taiKhoan?.id || null
     form.chucVuId = data.chucVu?.id || null
@@ -163,9 +591,12 @@ async function save() {
       }
       const emailExists = await checkEmailExists(normalizedEmail)
       if (emailExists) {
-        errors.email = "Email đã tồn tại"
-        window.toast?.error?.("Email đã tồn tại, vui lòng dùng email khác")
-        return
+        const cleaned = await cleanupOrphanEmployeeAccountByEmail(normalizedEmail)
+        if (!cleaned) {
+          errors.email = "Email đã tồn tại"
+          window.toast?.error?.("Email đã tồn tại, vui lòng dùng email khác")
+          return
+        }
       }
       form.email = normalizedEmail
     }
@@ -188,12 +619,52 @@ async function save() {
 
     if (id) {
       if (form.taiKhoanId) {
-        await taiKhoanService.update(form.taiKhoanId, {
-          email: form.email,
+        const normalizedCurrentEmail = String(form.email || "").trim().toLowerCase()
+        const emailChanged = normalizedCurrentEmail && normalizedCurrentEmail !== originalTaiKhoanEmail.value
+
+        if (emailChanged) {
+          const usedByAnother = await isEmailUsedByAnotherAccount(normalizedCurrentEmail, form.taiKhoanId)
+          if (usedByAnother) {
+            const reclaimed = await reclaimOrphanEmployeeEmail(normalizedCurrentEmail, form.taiKhoanId)
+            if (!reclaimed) {
+              errors.email = "Email đã tồn tại trong hệ thống tài khoản"
+              window.toast?.error?.("Email đã tồn tại trong hệ thống tài khoản")
+              return
+            }
+          }
+        }
+
+        const accountUpdatePayload = {
           vaiTro: toBackendRole(form.role),
           trangThaiHoatDong: form.status === "Ngừng hoạt động" ? "Ngừng hoạt động" : "Hoạt động",
           matKhau: form.password || undefined
-        })
+        }
+
+        // Backend currently validates duplicate email strictly on update.
+        // Only send email field when user actually changes it.
+        if (emailChanged) {
+          accountUpdatePayload.email = normalizedCurrentEmail
+        }
+
+        try {
+          await taiKhoanService.update(form.taiKhoanId, accountUpdatePayload)
+        } catch (error) {
+          const message = extractErrorMessage(error)
+          if (emailChanged && isDuplicateEmailError(message)) {
+            const reclaimed = await reclaimOrphanEmployeeEmail(normalizedCurrentEmail, form.taiKhoanId)
+            if (reclaimed) {
+              await taiKhoanService.update(form.taiKhoanId, accountUpdatePayload)
+            } else {
+              window.toast?.error?.("Email đã tồn tại trong hệ thống tài khoản")
+              throw error
+            }
+          } else {
+            throw error
+          }
+        }
+        if (emailChanged) {
+          originalTaiKhoanEmail.value = normalizedCurrentEmail
+        }
       }
       await updateNhanVien(id, nhanVienPayload)
       window.toast?.success?.("Cập nhật nhân viên thành công!")
@@ -216,8 +687,6 @@ async function save() {
           ...nhanVienPayload,
           taiKhoan: { id: createdTaiKhoanId }
         })
-
-        guiMailThongTinTaiKhoan(form.email, matKhauTam, form.role)
       } catch {
         await createNhanVien({
           ...nhanVienPayload,
@@ -226,9 +695,8 @@ async function save() {
           matKhau: matKhauTam,
           vaiTro: toBackendRole(form.role)
         })
-        guiMailThongTinTaiKhoan(form.email, matKhauTam, form.role)
       }
-      window.toast?.success?.("Thêm nhân viên thành công!")
+      window.toast?.success?.("Thêm nhân viên thành công! Vào chi tiết nhân viên để gửi email tài khoản.")
     }
 
     router.push("/admin/nhan-vien/list")
@@ -253,6 +721,12 @@ async function save() {
 
         <div style="display:flex;gap:10px">
           <button class="btn" @click="goBack">← Quay lại</button>
+          <button v-if="id" class="btn" :disabled="sendingMail" @click="sendAccountMailManually">
+            {{ sendingMail ? 'Đang gửi...' : 'Gửi email tài khoản' }}
+          </button>
+          <button v-if="id" class="btn danger" :disabled="deletingEmployee" @click="removeEmployee">
+            {{ deletingEmployee ? 'Đang xóa...' : 'Xóa nhân viên' }}
+          </button>
           <button class="btn primary" @click="save">Lưu</button>
         </div>
       </div>
@@ -290,6 +764,7 @@ async function save() {
             <label>Email {{ !id ? '' : '' }} <span v-if="!id" class="req">*</span></label>
             <input type="email" v-model="form.email"
                    :placeholder="id ? 'Để trống nếu không đổi email' : 'VD: nhanvien@dirtywave.com'"
+                   maxlength="100"
                    @blur="validate" />
             <small v-if="errors.email" class="err-msg">{{ errors.email }}</small>
             <small v-else class="hint">
@@ -322,8 +797,8 @@ async function save() {
                    :placeholder="id ? 'Để trống để giữ nguyên mật khẩu hiện tại' : 'Để trống để hệ thống tự tạo mật khẩu tạm (VD: DW@123456)'"/>
             <small class="hint">
               {{ id
-                  ? 'Chỉ điền nếu muốn đặt lại mật khẩu. Hệ thống sẽ gửi email thông báo.'
-                  : 'Nếu để trống, hệ thống tự sinh mật khẩu và gửi email cho nhân viên.' }}
+                  ? 'Điền để đặt lại mật khẩu khi cần. Dùng nút Gửi email tài khoản để gửi thủ công.'
+                  : 'Nếu để trống, hệ thống tự sinh mật khẩu tạm. Email không gửi tự động nữa.' }}
             </small>
           </div>
 
@@ -364,6 +839,16 @@ textarea { min-height: 90px; resize: vertical; }
   color: #64748b;
   border-color: #cbd5e1;
   font-weight: 600;
+}
+
+.btn.danger {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #b91c1c;
+}
+
+.btn.danger:hover {
+  background: #ffe4e6;
 }
 
 /* Required star */

@@ -91,6 +91,7 @@ const galleryMotionDirection = ref("right")
 const quantity = ref(1)
 const selectedColor = ref("")
 const selectedSize = ref("")
+const skipSelectedColorSync = ref(false)
 const activeTab = ref("description")
 const vouchers = ref([])
 const loadingVouchers = ref(false)
@@ -108,6 +109,8 @@ const quickPreviewColor = ref("")
 const quickPreviewSize = ref("")
 const quickPreviewQty = ref(1)
 const quickPreviewImageIndex = ref(0)
+const relatedPageIndex = ref(0)
+const RELATED_VISIBLE_COUNT = 5
 
 const MOTION_PRESET_MAP = {
   snappy: { swipe: 200, fade: 170, ui: 180 },
@@ -170,6 +173,31 @@ const normalizeKeyword = (value = "") => String(value)
   .replace(/Đ/g, "D")
   .toLowerCase()
   .trim()
+
+const tokenizeFileName = (value = "") => {
+  const baseName = String(value || "")
+    .split("#")[0]
+    .split("?")[0]
+    .replace(/\\/g, "/")
+    .split("/")
+    .pop() || ""
+  const stem = baseName.replace(/\.[^.]+$/, "")
+  return normalizeKeyword(stem)
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+}
+
+const findStaticImageByColorKeyword = (images = [], keyword = "") => {
+  const normalizedKeyword = normalizeKeyword(keyword)
+  if (!normalizedKeyword) return ""
+  for (const image of images) {
+    const tokens = tokenizeFileName(image)
+    if (tokens.includes(normalizedKeyword)) {
+      return image
+    }
+  }
+  return ""
+}
 
 const resolveProductId = (item) => {
   const id = Number(item?.id ?? item?.idSanPham ?? item?.sanPhamId ?? item?.productId)
@@ -268,9 +296,57 @@ const isActiveStatus = (value = "") => {
   return !normalized.includes("ngung") && !normalized.includes("inactive")
 }
 
+const stripExchangePolicyText = (value = "") => {
+  const raw = String(value || "").trim()
+  if (!raw) return ""
+  const chunks = raw
+    .split(/(?<=[.!?\n])\s+/)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .filter((chunk) => {
+      const normalized = normalizeKeyword(chunk)
+      return !(
+        normalized.includes("chinh sach doi hang")
+        || normalized.includes("doi hang")
+        || normalized.includes("doi tra")
+        || normalized.includes("exchange policy")
+      )
+    })
+  return chunks.join(" ").trim()
+}
+
+const inferProductType = (item = {}) => {
+  const source = normalizeKeyword([
+    item?.category,
+    item?.fit,
+    item?.name,
+    item?.sku,
+    item?.raw?.danhMuc?.tenDanhMuc,
+    item?.raw?.loai?.tenLoai,
+    item?.raw?.tenSanPham
+  ].filter(Boolean).join(" "))
+
+  if (source.includes("hoodie")) return "Hoodie"
+  if (source.includes("bomber")) return "Bomber"
+  if (source.includes("coach")) return "Coach"
+  return "Khác"
+}
+
 const getActiveVariants = (value) => {
   const variants = Array.isArray(value?.sanPhamChiTiets) ? value.sanPhamChiTiets : []
   return variants.filter((variant) => isActiveStatus(variant?.trangThai || variant?.status))
+}
+
+const readEntityName = (value, keys = []) => {
+  if (value == null) return ""
+  if (typeof value === "string" || typeof value === "number") return String(value).trim()
+  if (typeof value === "object") {
+    for (const key of keys) {
+      const candidate = String(value?.[key] || "").trim()
+      if (candidate) return candidate
+    }
+  }
+  return ""
 }
 
 
@@ -299,7 +375,16 @@ const normalizeBackendProduct = (item) => {
   const code = String(item?.maSanPham || item?.ma || "")
   const totalStock = variants.reduce((sum, variant) => sum + variantAvailableStockValue(variant), 0)
   const isInactive = !isActiveStatus(item?.trangThai || item?.status) || variants.length === 0
-  const category = String(item?.danhMuc?.tenDanhMuc || item?.loai?.tenLoai || "Thời trang nam")
+  const category = String(item?.danhMuc?.tenDanhMuc || item?.loai?.tenLoai || item?.tenLoaiSan || "").trim()
+  const materialName = readEntityName(item?.chatLieu, ["tenChatLieu", "name"]) || readEntityName(item?.tenChatLieu)
+  const fitName = String(item?.loai?.tenLoai || item?.tenLoaiSan || item?.fit || "").trim()
+  const productType = inferProductType({
+    category,
+    fit: item?.loai?.tenLoai,
+    name: item?.tenSanPham,
+    sku: code,
+    raw: item
+  })
   const variantPrices = variants.map((variant) => Number(variant?.giaBan || 0)).filter((n) => n > 0)
   const variantOriginalPrices = variants.map((variant) => Number(variant?.giaNhap || 0)).filter((n) => n > 0)
   const overrideImages = (Array.isArray(getProductImageOverride({ id, maSanPham: code }))
@@ -350,7 +435,7 @@ const normalizeBackendProduct = (item) => {
     ? Math.max(...variantOriginalPrices)
     : Number(item?.giaGoc || item?.giaNiemYet || 0)
 
-  const descriptionText = String(item?.moTa || "").trim()
+  const descriptionText = stripExchangePolicyText(String(item?.moTa || "").trim())
 
   const colorImages = {}
   if (staticImages.length) {
@@ -363,7 +448,7 @@ const normalizeBackendProduct = (item) => {
         || Object.entries(colorKeywordMap).find(([k]) => normalizedColor.includes(k))?.[1]
         || ""
       if (!keyword) continue
-      const matched = staticImages.find((img) => String(img || "").toLowerCase().includes(keyword))
+      const matched = findStaticImageByColorKeyword(staticImages, keyword)
       if (matched) colorImages[colorName] = matched
     }
   } else {
@@ -389,6 +474,7 @@ const normalizeBackendProduct = (item) => {
     raw: item,
     name: String(item?.tenSanPham || item?.name || "Sản phẩm"),
     category,
+    productType,
     price,
     originalPrice,
     sku: code,
@@ -398,8 +484,8 @@ const normalizeBackendProduct = (item) => {
     colorImages,
     colors,
     sizes,
-    material: "Chất liệu theo biến thể",
-    fit: String(item?.loai?.tenLoai || "Form tiêu chuẩn"),
+    material: materialName,
+    fit: fitName,
     bullets: [
       "Sản phẩm được đồng bộ trực tiếp từ dữ liệu hệ thống.",
       "Màu sắc và kích thước hiển thị theo biến thể hiện có.",
@@ -407,9 +493,9 @@ const normalizeBackendProduct = (item) => {
     ],
     description: {
       intro: descriptionText || "Sản phẩm đang được cập nhật mô tả chi tiết.",
-      material: "Thông tin chất liệu được xác định theo từng biến thể của sản phẩm.",
-      design: "Thiết kế và thông số chi tiết phụ thuộc dữ liệu quản trị đã nhập.",
-      fit: "Form hiển thị theo loại sản phẩm trong hệ thống."
+      material: stripExchangePolicyText("Thông tin chất liệu được xác định theo từng biến thể của sản phẩm."),
+      design: stripExchangePolicyText("Thiết kế và thông số chi tiết phụ thuộc dữ liệu quản trị đã nhập."),
+      fit: stripExchangePolicyText("Form hiển thị theo loại sản phẩm trong hệ thống.")
     }
   }
 }
@@ -510,9 +596,7 @@ const colorImageMap = computed(() => {
         || Object.entries(colorKeywordMap).find(([k]) => normalizedColor.includes(k))?.[1]
         || ""
       if (!keyword) continue
-      const matchedImage = staticImages.find((img) =>
-        String(img || "").toLowerCase().includes(keyword)
-      )
+      const matchedImage = findStaticImageByColorKeyword(staticImages, keyword)
       if (matchedImage) map[colorId] = matchedImage
     }
   }
@@ -620,9 +704,13 @@ const resolveColorImageByName = (colorName) => {
 }
 
 const activeImageIndex = computed(() => {
-  const idx = displayImages.value.findIndex((image) => image === activeImage.value)
+  const idx = displayImages.value.findIndex((image) => isSameImage(image, activeImage.value))
   return idx >= 0 ? idx : 0
 })
+
+const galleryTrackStyle = computed(() => ({
+  transform: `translate3d(-${activeImageIndex.value * 100}%, 0, 0)`
+}))
 
 const galleryTransitionName = computed(() => {
   return galleryMotionDirection.value === "left"
@@ -697,21 +785,36 @@ const backendVariants = computed(() => {
 
 const selectedBackendVariant = computed(() => {
   if (!backendVariants.value.length) return null
-  const activeColor = selectedColor.value || highlightedColor.value
-  const exact = backendVariants.value.find((variant) => {
-    return variant.colorName === activeColor && variant.sizeName === selectedSize.value
-  })
-  if (exact) return exact
+  const activeColor = String(selectedColor.value || highlightedColor.value || "").trim()
+  const activeSize = String(selectedSize.value || "").trim()
 
-  return backendVariants.value.find((variant) => variant.colorName === activeColor)
-    || backendVariants.value.find((variant) => variant.sizeName === selectedSize.value)
-    || backendVariants.value[0]
+  if (activeColor && activeSize) {
+    return backendVariants.value.find((variant) => variant.colorName === activeColor && variant.sizeName === activeSize) || null
+  }
+
+  if (activeColor) {
+    return backendVariants.value.find((variant) => variant.colorName === activeColor) || null
+  }
+
+  if (activeSize) {
+    return backendVariants.value.find((variant) => variant.sizeName === activeSize) || null
+  }
+
+  return backendVariants.value[0] || null
+})
+
+const exactSelectedBackendVariant = computed(() => {
+  if (!backendVariants.value.length) return null
+  const activeColor = String(selectedColor.value || highlightedColor.value || "").trim()
+  const size = String(selectedSize.value || "").trim()
+  if (!activeColor || !size) return null
+  return backendVariants.value.find((variant) => variant.colorName === activeColor && variant.sizeName === size) || null
 })
 
 const currentStock = computed(() => {
-  // Nếu đã chọn cả màu và size, luôn ưu tiên biến thể cụ thể
-  if (selectedBackendVariant.value && selectedSize.value) {
-    return Number(selectedBackendVariant.value?.soLuong || 0)
+  // Chỉ coi là chọn biến thể cụ thể khi màu và size khớp chính xác.
+  if (exactSelectedBackendVariant.value) {
+    return Number(exactSelectedBackendVariant.value?.soLuong || 0)
   }
   // Nếu chỉ chọn màu
   if (selectedColor.value) {
@@ -742,6 +845,15 @@ const stockBadge = computed(() => {
 
 const colorHexByName = (name) => {
   const normalized = normalizeKeyword(name)
+  
+  // Multi-color combinations
+  if ((normalized.includes("hong") || normalized.includes("pink")) && (normalized.includes("tim") || normalized.includes("purple") || normalized.includes("magenta"))) {
+    return "#b85c9e" // Pink-Purple blend
+  }
+  
+  // Single colors
+  if (normalized.includes("magenta")) return "#c41e85"
+  if (normalized.includes("tim") || normalized.includes("purple")) return "#7c3aed"
   if (normalized.includes("den")) return "#1a1a1a"
   if (normalized.includes("do") || normalized.includes("red")) return "#dc2626"
   if (normalized.includes("trang") || normalized.includes("kem")) return "#ded7ca"
@@ -771,20 +883,54 @@ const effectiveColors = computed(() => {
   }))
 })
 
+const SIZE_ORDER_MAP = {
+  XS: 0,
+  S: 1,
+  M: 2,
+  L: 3,
+  XL: 4,
+  XXL: 5,
+  XXXL: 6
+}
+
+const compareSizeLabel = (left = "", right = "") => {
+  const leftLabel = String(left || "").trim().toUpperCase()
+  const rightLabel = String(right || "").trim().toUpperCase()
+  const leftRank = Object.prototype.hasOwnProperty.call(SIZE_ORDER_MAP, leftLabel) ? SIZE_ORDER_MAP[leftLabel] : Number.MAX_SAFE_INTEGER
+  const rightRank = Object.prototype.hasOwnProperty.call(SIZE_ORDER_MAP, rightLabel) ? SIZE_ORDER_MAP[rightLabel] : Number.MAX_SAFE_INTEGER
+  if (leftRank !== rightRank) return leftRank - rightRank
+  return leftLabel.localeCompare(rightLabel, 'vi')
+}
+
 const effectiveSizes = computed(() => {
   if (backendVariants.value.length) {
-    const activeColor = selectedColor.value || highlightedColor.value
     const options = backendVariants.value
-      .filter((variant) => !activeColor || variant.colorName === activeColor)
       .map((variant) => variant.sizeName)
       .filter(Boolean)
 
-    const unique = [...new Set(options)]
+    const unique = [...new Set(options)].sort(compareSizeLabel)
     if (unique.length) return unique
   }
 
-  return currentProduct.value.sizes || []
+  return [...(currentProduct.value.sizes || [])].sort(compareSizeLabel)
 })
+
+const availableSizesForActiveColor = computed(() => {
+  const activeColor = String(selectedColor.value || highlightedColor.value || "").trim()
+  if (!activeColor) return new Set(effectiveSizes.value)
+
+  return new Set(
+    backendVariants.value
+      .filter((variant) => variant.colorName === activeColor)
+      .map((variant) => variant.sizeName)
+      .filter(Boolean)
+  )
+})
+
+const isSizeAvailableForActiveColor = (size) => {
+  if (!size) return false
+  return availableSizesForActiveColor.value.has(size)
+}
 
 const effectivePrice = computed(() => {
   const backendPrice = Number(selectedBackendVariant.value?.price || 0)
@@ -806,13 +952,249 @@ const effectiveOriginalPrice = computed(() => {
   return 0
 })
 
+const currentProductRaw = computed(() => currentProduct.value?.raw || null)
+
+const systemMaterialName = computed(() => {
+  const raw = currentProductRaw.value
+  return (
+    readEntityName(raw?.chatLieu, ["tenChatLieu", "name"])
+    || readEntityName(raw?.tenChatLieu)
+    || readEntityName(raw?.chatlieu, ["tenChatLieu", "name"])
+  )
+})
+
+const systemBrandName = computed(() => {
+  const raw = currentProductRaw.value
+  return (
+    readEntityName(raw?.thuongHieu, ["tenThuongHieu", "tenHang", "name"])
+    || readEntityName(raw?.hang, ["tenThuongHieu", "tenHang", "name"])
+    || readEntityName(raw?.tenThuongHieu)
+  )
+})
+
+const systemOriginName = computed(() => {
+  const raw = currentProductRaw.value
+  return (
+    readEntityName(raw?.xuatXu, ["tenXuatXu", "tenXuatSu", "name"])
+    || readEntityName(raw?.xuatSu, ["tenXuatXu", "tenXuatSu", "name"])
+    || readEntityName(raw?.tenXuatXu)
+  )
+})
+
+const normalizedProductDescription = computed(() => {
+  return stripExchangePolicyText(String(currentProductRaw.value?.moTa || "").trim())
+})
+
+const shortProductDescription = computed(() => {
+  const raw = normalizedProductDescription.value
+  if (!raw) return ""
+
+  const firstSentence = raw.match(/.+?[.!?](\s|$)/)?.[0]?.trim() || ""
+  if (firstSentence && firstSentence.length <= 180) return firstSentence
+  return raw.length > 180 ? `${raw.slice(0, 177).trim()}...` : raw
+})
+
+const variantPriceRange = computed(() => {
+  const prices = backendVariants.value
+    .map((variant) => Number(variant?.price || 0))
+    .filter((price) => price > 0)
+
+  if (!prices.length) {
+    const fallbackPrice = Number(currentProduct.value?.price || 0)
+    return fallbackPrice > 0 ? { min: fallbackPrice, max: fallbackPrice } : { min: 0, max: 0 }
+  }
+
+  return {
+    min: Math.min(...prices),
+    max: Math.max(...prices)
+  }
+})
+
+const systemFactSummary = computed(() => {
+  const typeLabel = currentProduct.value?.productType && currentProduct.value.productType !== "Khác"
+    ? currentProduct.value.productType
+    : currentProduct.value?.category || ""
+  const variantCount = backendVariants.value.length
+  const colorCount = effectiveColors.value.length
+  const sizeCount = effectiveSizes.value.length
+  const sentences = []
+
+  if (typeLabel) {
+    sentences.push(`Sản phẩm thuộc dòng ${typeLabel}.`)
+  }
+  if (variantCount > 0) {
+    sentences.push(`Hệ thống hiện ghi nhận ${variantCount} biến thể đang hoạt động.`)
+  }
+  if (colorCount > 0 || sizeCount > 0) {
+    const chunks = []
+    if (colorCount > 0) chunks.push(`${colorCount} màu`)
+    if (sizeCount > 0) chunks.push(`${sizeCount} kích thước`)
+    sentences.push(`Các lựa chọn hiện có gồm ${chunks.join(" và ")}.`)
+  }
+
+  return sentences.join(" ")
+})
+
+const descriptionHighlights = computed(() => {
+  const items = []
+  if (currentProduct.value?.category) items.push({ label: "Danh mục", value: currentProduct.value.category })
+  if (systemMaterialName.value) items.push({ label: "Chất liệu", value: systemMaterialName.value })
+  if (currentProduct.value?.fit) items.push({ label: "Form / loại", value: currentProduct.value.fit })
+  if (currentProduct.value?.productType && currentProduct.value.productType !== "Khác") items.push({ label: "Dòng sản phẩm", value: currentProduct.value.productType })
+  if (effectiveColors.value.length || effectiveSizes.value.length) {
+    items.push({ label: "Màu và size", value: `${effectiveColors.value.length} màu / ${effectiveSizes.value.length} size` })
+  }
+  return items
+})
+
+const productDescriptionSections = computed(() => {
+  const sections = []
+  if (normalizedProductDescription.value) {
+    sections.push({
+      title: "Chi tiết sản phẩm",
+      body: normalizedProductDescription.value
+    })
+  }
+
+  if (systemMaterialName.value) {
+    sections.push({
+      title: "Thông tin chất liệu",
+      body: `Chất liệu hệ thống ghi nhận cho sản phẩm này là ${systemMaterialName.value}.`
+    })
+  }
+
+  const systemType = String(currentProduct.value?.fit || currentProduct.value?.category || "").trim()
+  if (systemType) {
+    sections.push({
+      title: "Phân loại và form",
+      body: `Phân loại đang lưu trong hệ thống: ${systemType}.`
+    })
+  }
+
+  if (effectiveColors.value.length || effectiveSizes.value.length) {
+    const parts = []
+    if (effectiveColors.value.length) parts.push(`${effectiveColors.value.length} màu đang hoạt động`)
+    if (effectiveSizes.value.length) parts.push(`${effectiveSizes.value.length} kích thước đang hiển thị`)
+    sections.push({
+      title: "Lựa chọn hiện có",
+      body: `Sản phẩm hiện đang được mở bán với ${parts.join(' và ')}.`
+    })
+  }
+
+  const priceRange = variantPriceRange.value
+  if (priceRange.min > 0) {
+    sections.push({
+      title: "Khoảng giá biến thể",
+      body: priceRange.min === priceRange.max
+        ? `Tất cả biến thể đang hoạt động hiện có cùng mức giá ${VND(priceRange.min)}.`
+        : `Các biến thể đang hoạt động hiện có mức giá từ ${VND(priceRange.min)} đến ${VND(priceRange.max)}.`
+    })
+  }
+
+  return sections
+})
+
+const productInfoCards = computed(() => {
+  const cards = []
+  if (displayedProductCode.value) cards.push({ label: "Mã sản phẩm", value: displayedProductCode.value })
+  if (currentProduct.value?.category) cards.push({ label: "Danh mục", value: currentProduct.value.category })
+  if (currentProduct.value?.productType && currentProduct.value.productType !== "Khác") cards.push({ label: "Dòng sản phẩm", value: currentProduct.value.productType })
+  if (currentProduct.value?.fit) cards.push({ label: "Form / loại", value: currentProduct.value.fit })
+  if (systemMaterialName.value) cards.push({ label: "Chất liệu", value: systemMaterialName.value })
+  if (systemBrandName.value) cards.push({ label: "Thương hiệu", value: systemBrandName.value })
+  if (systemOriginName.value) cards.push({ label: "Xuất xứ", value: systemOriginName.value })
+  if (backendVariants.value.length) cards.push({ label: "Tổng biến thể hoạt động", value: String(backendVariants.value.length) })
+  if (effectiveColors.value.length) cards.push({ label: "Số màu", value: String(effectiveColors.value.length) })
+  if (effectiveSizes.value.length) cards.push({ label: "Số kích thước", value: String(effectiveSizes.value.length) })
+  if (Number(currentStock.value || 0) > 0) cards.push({ label: "Tồn kho hiện hiển thị", value: `${currentStock.value} sản phẩm` })
+  if (Number(effectivePrice.value || 0) > 0) cards.push({ label: "Giá đang bán", value: VND(effectivePrice.value) })
+  return cards
+})
+
+const detailNarratives = computed(() => {
+  const lines = []
+  if (backendVariants.value.length) {
+    lines.push(`Hiện có ${backendVariants.value.length} biến thể đang hoạt động, phân bổ trên ${effectiveColors.value.length} màu và ${effectiveSizes.value.length} kích thước.`)
+  }
+
+  if (variantPriceRange.value.min > 0) {
+    lines.push(
+      variantPriceRange.value.min === variantPriceRange.value.max
+        ? `Toàn bộ biến thể đang hoạt động hiện có cùng mức giá ${VND(variantPriceRange.value.min)}.`
+        : `Mức giá đang hiển thị dao động từ ${VND(variantPriceRange.value.min)} đến ${VND(variantPriceRange.value.max)} tùy biến thể.`
+    )
+  }
+
+  if (currentProduct.value?.productType && currentProduct.value.productType !== "Khác") {
+    lines.push(`Sản phẩm được phân loại trong dòng ${currentProduct.value.productType}.`)
+  }
+
+  if (systemBrandName.value) {
+    lines.push(`Thương hiệu đang ghi nhận trong hệ thống: ${systemBrandName.value}.`)
+  }
+
+  if (systemOriginName.value) {
+    lines.push(`Nguồn gốc xuất xứ hiện được lưu là ${systemOriginName.value}.`)
+  }
+
+  return lines
+})
+
+const selectedSizeUnavailableForColor = computed(() => {
+  const size = String(selectedSize.value || "").trim()
+  if (!size) return false
+  return !isSizeAvailableForActiveColor(size)
+})
+
+const hasAdditionalDetailTab = computed(() => {
+  return productInfoCards.value.length > 0 || detailNarratives.value.length > 0
+})
+
 const relatedProducts = computed(() => {
   const currentId = currentProduct.value.id
-  const source = productCatalog.value
-  const sameCategory = source.filter((item) => item.id !== currentId && item.category === currentProduct.value.category)
-  const otherProducts = source.filter((item) => item.id !== currentId && item.category !== currentProduct.value.category)
-  return [...sameCategory, ...otherProducts].slice(0, 5)
+  const currentType = inferProductType(currentProduct.value)
+
+  const source = productCatalog.value.filter((item) => {
+    if (item.id === currentId) return false
+    const raw = item?.raw
+    if (!raw) return false
+    if (!isActiveStatus(raw?.trangThai || raw?.status)) return false
+    return getActiveVariants(raw).length > 0
+  })
+
+  return source.filter((item) => inferProductType(item) === currentType)
 })
+
+const relatedSectionTitle = computed(() => {
+  const type = inferProductType(currentProduct.value)
+  if (type && type !== "Khác") return `Sản phẩm cùng loại: ${type}`
+  return "Sản phẩm cùng loại"
+})
+
+const relatedPages = computed(() => {
+  const pages = []
+  for (let i = 0; i < relatedProducts.value.length; i += RELATED_VISIBLE_COUNT) {
+    pages.push(relatedProducts.value.slice(i, i + RELATED_VISIBLE_COUNT))
+  }
+  return pages
+})
+
+const canShowPrevRelated = computed(() => relatedPageIndex.value > 0)
+const canShowNextRelated = computed(() => relatedPageIndex.value < relatedPages.value.length - 1)
+
+const relatedTrackStyle = computed(() => ({
+  transform: `translate3d(-${relatedPageIndex.value * 100}%, 0, 0)`
+}))
+
+const showPrevRelated = () => {
+  if (!canShowPrevRelated.value) return
+  relatedPageIndex.value -= 1
+}
+
+const showNextRelated = () => {
+  if (!canShowNextRelated.value) return
+  relatedPageIndex.value += 1
+}
 
 const productDiscount = computed(() => {
   const oldPrice = Number(effectiveOriginalPrice.value || 0)
@@ -918,7 +1300,7 @@ const syncProductState = () => {
   activeImage.value = displayImages.value[0] || ""
   // Only auto-select color if there's exactly 1 color, otherwise leave unselected to show all color images
   selectedColor.value = effectiveColors.value.length === 1 ? effectiveColors.value[0]?.name || "" : ""
-  selectedSize.value = effectiveSizes.value[0] || ""
+  selectedSize.value = ""
   quantity.value = 1
 }
 
@@ -1063,18 +1445,55 @@ const increaseQuantity = () => {
   quantity.value += 1
 }
 
+const openSizeGuide = () => {
+  toast.info("Bảng size tham khảo: S (45-57kg), M (58-67kg), L (68-77kg), XL (78-88kg). Ưu tiên form vừa vai và chiều dài tay.", {
+    duration: 5200,
+    onceKey: "pd-size-guide-info"
+  })
+}
+
+const resolveSelectionSnapshot = () => {
+  const color = String(
+    selectedColor.value
+    || highlightedColor.value
+    || ""
+  ).trim()
+  const size = String(selectedSize.value || "").trim()
+
+  const variant = backendVariants.value.find((item) => {
+    return (!color || item.colorName === color) && (!size || item.sizeName === size)
+  })
+    || backendVariants.value.find((item) => !color || item.colorName === color)
+    || backendVariants.value.find((item) => !size || item.sizeName === size)
+    || selectedBackendVariant.value
+    || backendVariants.value[0]
+    || null
+
+  const availableStock = Number(variant?.soLuong || 0)
+
+  return { color, size, variant, availableStock }
+}
+
 const validateSelection = () => {
-  const activeColor = selectedColor.value || highlightedColor.value
-  if (!activeColor) {
+  const snapshot = resolveSelectionSnapshot()
+  if (!snapshot.color) {
     toast.error("Vui lòng chọn màu sắc")
     return false
   }
-  if (!selectedSize.value) {
+  if (!snapshot.size) {
     toast.error("Vui lòng chọn kích thước")
     return false
   }
 
-  const availableStock = Number(selectedBackendVariant.value?.soLuong || 0)
+  const exactVariant = backendVariants.value.find((item) => item.colorName === snapshot.color && item.sizeName === snapshot.size) || null
+  if (!exactVariant) {
+    toast.error("Kích thước này không khả dụng cho màu đang chọn. Vui lòng chọn lại size.")
+    return false
+  }
+
+  if (!selectedColor.value && snapshot.color) selectedColor.value = snapshot.color
+
+  const availableStock = Number(exactVariant?.soLuong || 0)
   if (availableStock <= 0) {
     toast.error("Sản phẩm đã hết hàng")
     return false
@@ -1113,12 +1532,13 @@ const addToCart = () => {
     return
   }
   if (!validateSelection()) return
+  const snapshot = resolveSelectionSnapshot()
   const storedCart = readCartObject()
-  const color = String(selectedColor.value || highlightedColor.value || "").trim()
-  const size = String(selectedSize.value || "").trim()
+  const color = snapshot.color
+  const size = snapshot.size
   const key = buildVariantCartKey(currentProduct.value.id, color, size, "")
   const currentInCart = Number(storedCart[key] || 0)
-  const availableStock = Number(selectedBackendVariant.value?.soLuong || 0)
+  const availableStock = Number(snapshot.availableStock || 0)
   const newTotal = currentInCart + quantity.value
   if (availableStock > 0 && newTotal > availableStock) {
     const canAdd = availableStock - currentInCart
@@ -1130,7 +1550,10 @@ const addToCart = () => {
     return
   }
   storedCart[key] = newTotal
-  writeCartObject(storedCart)
+  if (!writeCartObject(storedCart)) {
+    toast.error("Giỏ hàng local đã đầy. Vui lòng xóa bớt sản phẩm cũ hoặc dữ liệu trình duyệt rồi thử lại.")
+    return
+  }
 
   const cartImage = activeImage.value
     || currentProduct.value.images?.[0]
@@ -1139,7 +1562,7 @@ const addToCart = () => {
       maSanPham: currentProduct.value.sku,
       tenSanPham: currentProduct.value.name,
       tenMauSac: color,
-      maChiTietSanPham: selectedBackendVariant.value?.maChiTietSanPham || ''
+      maChiTietSanPham: snapshot.variant?.maChiTietSanPham || ''
     })
     || ""
   const variantsObj = readCartVariantsObject()
@@ -1147,10 +1570,13 @@ const addToCart = () => {
     color,
     size,
     voucherCode: "",
-    spctId: selectedBackendVariant.value?.id || null,
+    spctId: snapshot.variant?.id || null,
     image: cartImage
   }
-  writeCartVariantsObject(variantsObj)
+  if (!writeCartVariantsObject(variantsObj)) {
+    toast.error("Không thể lưu chi tiết biến thể do bộ nhớ trình duyệt đã đầy.")
+    return
+  }
 
   if (selectedVoucherInDetail.value) {
     persistCheckoutVoucherSelection(selectedVoucherInDetail.value)
@@ -1164,6 +1590,7 @@ const addToCart = () => {
     size,
     image: cartImage,
     price: currentProduct.value.salePrice || currentProduct.value.price,
+    productId: currentProduct.value.id,
     actionLabel: "Xem giỏ hàng",
   })
 }
@@ -1175,6 +1602,7 @@ const buyNow = () => {
     return
   }
   if (!validateSelection()) return
+  const snapshot = resolveSelectionSnapshot()
   if (selectedVoucherInDetail.value) {
     persistCheckoutVoucherSelection(selectedVoucherInDetail.value)
   } else {
@@ -1186,21 +1614,24 @@ const buyNow = () => {
       id: currentProduct.value.id,
       maSanPham: currentProduct.value.sku,
       tenSanPham: currentProduct.value.name,
-      tenMauSac: selectedColor.value || highlightedColor.value,
-      maChiTietSanPham: selectedBackendVariant.value?.maChiTietSanPham || ''
+      tenMauSac: snapshot.color,
+      maChiTietSanPham: snapshot.variant?.maChiTietSanPham || ''
     })
     || ""
-  writeCheckoutCartArray([{
+  if (!writeCheckoutCartArray([{
     id: currentProduct.value.id,
     name: currentProduct.value.name,
     price: effectivePrice.value,
     quantity: quantity.value,
-    size: selectedSize.value,
-    color: selectedColor.value || highlightedColor.value,
+    size: snapshot.size,
+    color: snapshot.color,
     voucherCode: "",
-    spctId: selectedBackendVariant.value?.id || null,
+    spctId: snapshot.variant?.id || null,
     image: buyImg
-  }])
+  }])) {
+    toast.error("Không thể tạo phiên thanh toán do bộ nhớ trình duyệt đã đầy.")
+    return
+  }
   router.push("/checkout")
 }
 
@@ -1259,7 +1690,6 @@ const goBack = () => {
   router.push("/san-pham")
 }
 
-const goHome = () => router.push("/trang-chu")
 const openCart = () => router.push("/gio-hang")
 const goToProductDetail = (id) => {
   closeQuickPreview()
@@ -1409,11 +1839,25 @@ const selectQuickPreviewColor = (colorName, index) => {
 const quickPreviewAddToCart = () => {
   if (!quickPreviewProduct.value?.id) return
   const storedCart = readCartObject()
-  const color = String(quickPreviewColor.value || "").trim()
-  const size = String(quickPreviewSize.value || "").trim()
+  const color = String(quickPreviewColor.value || quickPreviewProduct.value?.colors?.[0]?.name || "").trim()
+  const size = String(quickPreviewSize.value || quickPreviewProduct.value?.sizes?.[0] || "").trim()
+  const backendProduct = getQuickPreviewBackendProduct(quickPreviewProduct.value)
+  const variants = getActiveVariants(backendProduct)
+  const matchedVariant = variants.find((variant) => {
+    const vColor = String(variant?.mauSac?.tenMau || "").trim()
+    const vSize = String(variant?.kichThuoc?.tenKichThuoc || "").trim()
+    return (!color || vColor === color) && (!size || vSize === size)
+  })
+    || variants.find((variant) => String(variant?.mauSac?.tenMau || "").trim() === color)
+    || variants.find((variant) => String(variant?.kichThuoc?.tenKichThuoc || "").trim() === size)
+    || variants[0]
+    || null
   const key = buildVariantCartKey(quickPreviewProduct.value.id, color, size, "")
   storedCart[key] = Number(storedCart[key] || 0) + quickPreviewQty.value
-  writeCartObject(storedCart)
+  if (!writeCartObject(storedCart)) {
+    toast.error("Giỏ hàng local đã đầy. Vui lòng xóa bớt dữ liệu rồi thử lại.")
+    return
+  }
 
   const qpImage = quickPreviewActiveImage.value
     || quickPreviewProduct.value.images?.[0]
@@ -1429,10 +1873,13 @@ const quickPreviewAddToCart = () => {
     color,
     size,
     voucherCode: "",
-    spctId: null,
+    spctId: matchedVariant?.id || null,
     image: qpImage
   }
-  writeCartVariantsObject(variantsObj)
+  if (!writeCartVariantsObject(variantsObj)) {
+    toast.error("Không thể lưu biến thể sản phẩm do bộ nhớ trình duyệt đã đầy.")
+    return
+  }
 
   refreshCartCount()
   notifyCartUpdated()
@@ -1442,6 +1889,7 @@ const quickPreviewAddToCart = () => {
     size,
     image: qpImage,
     price: quickPreviewProduct.value.salePrice || quickPreviewProduct.value.price,
+    productId: quickPreviewProduct.value.id,
     actionLabel: "Xem giỏ hàng",
   })
   closeQuickPreview()
@@ -1474,6 +1922,7 @@ watch(() => route.params.id, () => {
 watch(
   () => currentProduct.value.id,
   async (productId) => {
+    relatedPageIndex.value = 0
     syncProductState()
     // Load campaign discount info for this product
     activeCampaignInfo.value = null
@@ -1489,11 +1938,17 @@ watch(
   { immediate: true }
 )
 
+
 watch(selectedColor, (colorName) => {
-  if (!effectiveSizes.value.includes(selectedSize.value)) {
-    selectedSize.value = effectiveSizes.value[0] || ""
+  const shouldSkipImageSync = skipSelectedColorSync.value
+  skipSelectedColorSync.value = false
+
+  // Color change came from image navigation (arrow/thumb), skip back-sync to image.
+  if (shouldSkipImageSync) {
+    return
   }
 
+  // Manual color selection - update the image to match the color
   const colorId = colorNameToIdMap.value[colorName]
   if (colorId && colorImageMap.value[colorId]) {
     setActiveImageWithMotion(colorImageMap.value[colorId], "auto")
@@ -1514,18 +1969,31 @@ watch(activeImage, (image) => {
     return
   }
 
+  // Find and update color selector to match the current image
   for (const color of effectiveColors.value) {
     const colorId = Number(colorNameToIdMap.value?.[color?.name] || 0)
     const colorImage = colorId > 0 ? String(colorImageMap.value?.[colorId] || "") : ""
     const fallbackImage = resolveColorImageByName(color?.name || "")
     const targetImage = colorImage || fallbackImage
     if (targetImage && isSameImage(targetImage, image)) {
-      if (selectedColor.value !== color.name) selectedColor.value = color.name
+      if (selectedColor.value !== color.name) {
+        skipSelectedColorSync.value = true
+        selectedColor.value = color.name
+      }
       return
     }
   }
 })
 
+watch(() => relatedPages.value.length, (length) => {
+  if (!length) {
+    relatedPageIndex.value = 0
+    return
+  }
+  if (relatedPageIndex.value > length - 1) {
+    relatedPageIndex.value = length - 1
+  }
+})
 watch(quickPreviewImages, (images) => {
   if (!images.length) {
     quickPreviewImageIndex.value = 0
@@ -1575,7 +2043,6 @@ onUnmounted(() => {
         Quay lại
       </button>
 
-      <div class="pd-breadcrumb">
       <section v-if="productsLoading" class="pd-main" style="min-height:60vh;display:flex;align-items:center;justify-content:center">
         <span style="color:#888;font-size:1rem">Đang tải sản phẩm…</span>
       </section>
@@ -1588,7 +2055,7 @@ onUnmounted(() => {
               :key="`${image}-${index}`"
               type="button"
               class="pd-gallery__thumb"
-              :class="{ 'is-active': image === activeImage }"
+              :class="{ 'is-active': isSameImage(image, activeImage || displayImages[0]) }"
               @click="selectGalleryImage(image)"
             >
               <img :src="image" :alt="currentProduct.name" />
@@ -1596,14 +2063,17 @@ onUnmounted(() => {
           </div>
 
           <div class="pd-gallery__stage">
-            <transition :name="galleryTransitionName" mode="out-in">
-              <img
-                :key="normalizeImageKey(activeImage || displayImages[0])"
-                class="pd-gallery__image"
-                :src="activeImage || displayImages[0]"
-                :alt="currentProduct.name"
-              />
-            </transition>
+            <div class="pd-gallery__viewport">
+              <div class="pd-gallery__track" :style="galleryTrackStyle">
+                <img
+                  v-for="(image, idx) in displayImages"
+                  :key="`${normalizeImageKey(image)}-${idx}`"
+                  class="pd-gallery__image"
+                  :src="image"
+                  :alt="`${currentProduct.name} ${idx + 1}`"
+                />
+              </div>
+            </div>
             <button v-if="displayImages.length > 1" type="button" class="pd-gallery__arrow pd-gallery__arrow--left" aria-label="Ảnh trước" @click="showPrevImage">
               <ChevronLeft :size="18" />
             </button>
@@ -1646,12 +2116,11 @@ onUnmounted(() => {
                   v-for="line in promoLines"
                   :key="line.code"
                   class="pd-promo-box__line"
-                  @click="selectVoucher(line.voucher)"
                 >
-                  Nhập mã <b>{{ line.code }}</b> {{ line.discountLabel }} đơn từ {{ line.min }}
+                  <b>{{ line.code }}</b> {{ line.discountLabel }} đơn từ {{ line.min }}
                 </li>
                 <li v-if="!promoLines.length">Hiện chưa có voucher khả dụng theo dữ liệu khuyến mãi hiện tại.</li>
-                <li>Freeship đơn từ 299K</li>
+                <li>Giao hàng toàn quốc, nhận hàng nhanh 2-5 ngày.</li>
               </ul>
             </section>
 
@@ -1675,7 +2144,7 @@ onUnmounted(() => {
             <div class="pd-option-row pd-option-row--size">
               <div class="pd-size-head">
                 <span class="pd-label">Kích thước</span>
-                <button type="button" class="pd-size-guide">
+                <button type="button" class="pd-size-guide" @click="openSizeGuide">
                   <Ruler :size="14" />
                   Hướng dẫn chọn size
                 </button>
@@ -1687,11 +2156,15 @@ onUnmounted(() => {
                   type="button"
                   class="pd-size"
                   :class="{ 'is-active': selectedSize === size }"
+                  :disabled="!isSizeAvailableForActiveColor(size) && selectedSize !== size"
                   @click="selectedSize = size"
                 >
                   {{ size }}
                 </button>
               </div>
+              <p v-if="selectedSizeUnavailableForColor" class="pd-size-note pd-size-note--warning">
+                Size này không khả dụng cho màu hiện tại. Vui lòng chọn lại size.
+              </p>
             </div>
 
             <div class="pd-buy-row">
@@ -1708,15 +2181,15 @@ onUnmounted(() => {
             <div class="pd-service-grid">
               <article>
                 <Truck :size="16" />
-                <span>Freeship đơn từ 299K</span>
+                <strong>Giao hàng<br>toàn quốc</strong>
               </article>
               <article>
                 <ShieldCheck :size="16" />
-                <span>Cam kết chính hãng</span>
+                <strong>Đảm bảo<br>chính hãng</strong>
               </article>
               <article>
                 <Wallet :size="16" />
-                <span>Thanh toán COD</span>
+                <strong>Thanh toán<br>linh hoạt</strong>
               </article>
             </div>
           </div>
@@ -1726,62 +2199,94 @@ onUnmounted(() => {
       <section class="pd-tabs">
         <div class="pd-tabs__head">
           <button type="button" :class="{ active: activeTab === 'description' }" @click="activeTab = 'description'">Mô tả</button>
-          <button type="button" :class="{ active: activeTab === 'shipping' }" @click="activeTab = 'shipping'">Chính sách giao hàng</button>
+          <button v-if="hasAdditionalDetailTab" type="button" :class="{ active: activeTab === 'details' }" @click="activeTab = 'details'">Thông tin sản phẩm</button>
         </div>
 
         <div v-if="activeTab === 'description'" class="pd-tabs__panel">
-          <h2>{{ currentProduct.name }}</h2>
-          <ul class="pd-bullets">
-            <li><strong>Chất liệu:</strong> {{ currentProduct.material }}</li>
-            <li><strong>Form:</strong> {{ currentProduct.fit }}</li>
+          <div class="pd-tabs__hero">
+            <div>
+              <h2>{{ currentProduct.name }}</h2>
+              <p v-if="shortProductDescription" class="pd-tabs__lede">{{ shortProductDescription }}</p>
+            </div>
+            <span class="pd-tabs__badge">{{ backendVariants.length }} biến thể hoạt động</span>
+          </div>
+
+          <ul v-if="descriptionHighlights.length" class="pd-inline-facts">
+            <li v-for="item in descriptionHighlights" :key="item.label">
+              <strong>{{ item.label }}:</strong> {{ item.value }}
+            </li>
           </ul>
-          <p>{{ currentProduct.description.intro }}</p>
-          <h3>Chất liệu</h3>
-          <p>{{ currentProduct.description.material }}</p>
-          <h3>Kỹ thuật thiết kế</h3>
-          <p>{{ currentProduct.description.design }}</p>
-          <h3>Form dáng</h3>
-          <p>{{ currentProduct.description.fit }}</p>
+
+          <div class="pd-detail-sections">
+            <section v-for="section in productDescriptionSections" :key="section.title" class="pd-detail-section">
+              <h3>{{ section.title }}</h3>
+              <p>{{ section.body }}</p>
+            </section>
+          </div>
         </div>
 
-        <div v-else-if="activeTab === 'shipping'" class="pd-tabs__panel">
-          <h2>Chính sách giao hàng</h2>
-          <p>DirtyWave giao hàng toàn quốc. Đơn từ 299.000₫ được áp dụng ưu đãi phí vận chuyển theo từng thời điểm, và đơn từ 1.000.000₫ được miễn phí ship tại trang checkout hiện tại.</p>
-          <p>Thời gian giao dự kiến từ 2 đến 5 ngày làm việc tuỳ khu vực nhận hàng.</p>
+        <div v-else-if="activeTab === 'details' && hasAdditionalDetailTab" class="pd-tabs__panel">
+          <div v-if="productInfoCards.length" class="pd-info-list">
+            <div v-for="item in productInfoCards" :key="item.label" class="pd-info-list__row">
+              <span>{{ item.label }}</span>
+              <strong>{{ item.value }}</strong>
+            </div>
+          </div>
+
+          <div v-if="detailNarratives.length" class="pd-detail-copy">
+            <h3>Ghi chú sản phẩm</h3>
+            <p v-for="line in detailNarratives" :key="line">{{ line }}</p>
+          </div>
         </div>
+
       </section>
 
       <section class="pd-related">
-        <h2>Sản phẩm cùng loại</h2>
-        <div class="pd-related__grid">
-          <article
-            v-for="item in relatedProducts"
-            :key="item.id"
-            class="pd-related__card"
-            @click="goToProductDetail(item.id)"
-          >
-            <div class="pd-related__image">
-              <img :src="item.images[0]" :alt="item.name" />
-              <div class="pd-related__actions">
-                <button type="button" class="pd-related__action" @click.stop="openQuickPreview(item)">
-                  <Eye :size="16" />
-                </button>
-                <button type="button" class="pd-related__action" @click.stop="goToProductDetail(item.id)">
-                  <ShoppingCart :size="16" />
-                </button>
-              </div>
+        <div class="pd-related__head">
+          <h2>{{ relatedSectionTitle }}</h2>
+          <div v-if="relatedPages.length > 1" class="pd-related__nav">
+            <button type="button" :disabled="!canShowPrevRelated" @click="showPrevRelated" aria-label="Sản phẩm trước">
+              <ChevronLeft :size="16" />
+            </button>
+            <button type="button" :disabled="!canShowNextRelated" @click="showNextRelated" aria-label="Sản phẩm tiếp theo">
+              <ChevronRight :size="16" />
+            </button>
+          </div>
+        </div>
+
+        <div class="pd-related__viewport">
+          <div class="pd-related__track" :style="relatedTrackStyle">
+            <div v-for="(page, pageIdx) in relatedPages" :key="`page-${pageIdx}`" class="pd-related__page">
+              <article
+                v-for="item in page"
+                :key="item.id"
+                class="pd-related__card"
+                @click="goToProductDetail(item.id)"
+              >
+                <div class="pd-related__image">
+                  <img :src="item.images[0]" :alt="item.name" />
+                  <div class="pd-related__actions">
+                    <button type="button" class="pd-related__action" @click.stop="openQuickPreview(item)">
+                      <Eye :size="16" />
+                    </button>
+                    <button type="button" class="pd-related__action" @click.stop="goToProductDetail(item.id)">
+                      <ShoppingCart :size="16" />
+                    </button>
+                  </div>
+                </div>
+                <div class="pd-related__body">
+                  <small>{{ item.category }}</small>
+                  <span class="pd-related__stock">{{ item.badgeTone === 'green' ? item.badge.replace('Còn lại ', 'Còn: ') : item.badge }}</span>
+                  <p>{{ item.name }}</p>
+                  <strong>{{ VND(item.price) }}</strong>
+                  <s v-if="item.originalPrice">{{ VND(item.originalPrice) }}</s>
+                  <div class="pd-related__dots">
+                    <span v-for="color in item.colors.slice(0, 3)" :key="color.name" :style="{ background: color.hex }"></span>
+                  </div>
+                </div>
+              </article>
             </div>
-            <div class="pd-related__body">
-              <small>{{ item.category }}</small>
-              <span class="pd-related__stock">{{ item.badgeTone === 'green' ? item.badge.replace('Còn lại ', 'Còn: ') : item.badge }}</span>
-              <p>{{ item.name }}</p>
-              <strong>{{ VND(item.price) }}</strong>
-              <s v-if="item.originalPrice">{{ VND(item.originalPrice) }}</s>
-              <div class="pd-related__dots">
-                <span v-for="color in item.colors.slice(0, 3)" :key="color.name" :style="{ background: color.hex }"></span>
-              </div>
-            </div>
-          </article>
+          </div>
         </div>
       </section>
     </main>
@@ -1949,7 +2454,6 @@ onUnmounted(() => {
 
 .product-detail-page a {
   color: inherit;
-  text-decoration: none;
 }
 
 .pd-topbar {
@@ -2433,7 +2937,6 @@ onUnmounted(() => {
   box-shadow: 0 14px 28px rgba(185, 28, 28, 0.12);
 }
 
-.pd-breadcrumb {
 .pd-main {
   display: grid;
   grid-template-columns: minmax(0, 520px) minmax(340px, 420px);
@@ -2499,7 +3002,23 @@ onUnmounted(() => {
   display: block;
 }
 
+.pd-gallery__viewport {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.pd-gallery__track {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  transition: transform var(--pd-swipe-ms, 320ms) cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
 .pd-gallery__image {
+  flex: 0 0 100%;
+  min-width: 100%;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -2726,7 +3245,8 @@ onUnmounted(() => {
 }
 
 .pd-promo-box__line {
-  cursor: pointer;
+  cursor: default;
+  transition: color 0.18s ease;
 }
 
 .pd-promo-box__line:hover {
@@ -2949,17 +3469,72 @@ onUnmounted(() => {
 
 .pd-service-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  padding-top: 2px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 4px;
 }
 
 .pd-service-grid article {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(197, 22, 45, 0.2);
+  border-radius: 10px;
+  background: #fff;
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  font-size: 11px;
+  color: #4b5563;
+  box-shadow: 0 6px 14px rgba(143, 17, 33, 0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.pd-service-grid article:hover {
+  transform: translateY(-1px);
+  border-color: rgba(197, 22, 45, 0.36);
+  box-shadow: 0 9px 18px rgba(143, 17, 33, 0.12);
+}
+
+.pd-service-grid article svg {
+  color: var(--pd-red-dark);
+  flex-shrink: 0;
+}
+
+.pd-service-grid article strong {
+  min-width: 0;
+  color: #111827;
+  font-size: 11.5px;
+  line-height: 1.2;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  text-align: center;
+}
+
+.pd-size:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  border-color: #d1d5db;
+  color: #9ca3af;
+  background: #f8fafc;
+}
+
+.pd-size.is-active:disabled {
+  opacity: 1;
+  border-color: rgba(197, 22, 45, 0.9);
+  color: var(--pd-red-dark);
+  background: #fff4f5;
+}
+
+.pd-size-note {
+  margin: 8px 0 0;
   font-size: 12px;
-  color: #5d5558;
+  line-height: 1.5;
+}
+
+.pd-size-note--warning {
+  color: #b91c1c;
 }
 
 .pd-tabs {
@@ -2990,6 +3565,34 @@ onUnmounted(() => {
   padding: 20px 0 0;
 }
 
+.pd-tabs__hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.pd-tabs__lede {
+  margin: 10px 0 0;
+  color: #374151;
+  max-width: 70ch;
+  line-height: 1.8;
+}
+
+.pd-tabs__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(197, 22, 45, 0.08);
+  color: var(--pd-red-dark);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .pd-tabs__panel h2 {
   margin: 0 0 10px;
   font-size: 22px;
@@ -3012,16 +3615,150 @@ onUnmounted(() => {
   line-height: 1.8;
 }
 
+.pd-inline-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 16px;
+  padding-left: 18px;
+  color: #374151;
+  line-height: 1.8;
+}
+
+.pd-inline-facts li strong {
+  color: #111827;
+}
+
+.pd-detail-sections {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.pd-detail-section {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.pd-detail-section h3 {
+  margin: 20px 0 8px;
+}
+
+.pd-info-list {
+  display: grid;
+  gap: 0;
+  margin-bottom: 24px;
+  border-top: 1px solid #efe4e7;
+  border-bottom: 1px solid #efe4e7;
+}
+
+.pd-info-list__row {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 22px;
+  padding: 16px 0;
+  border-top: 1px solid #f5ebed;
+}
+
+.pd-info-list__row:first-child {
+  border-top: 0;
+}
+
+.pd-info-list__row span {
+  color: #7c8594;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pd-info-list__row strong {
+  color: #111827;
+  line-height: 1.6;
+  font-size: 15px;
+}
+
+.pd-detail-copy {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #efe4e7;
+}
+
+.pd-detail-copy h3 {
+  margin: 0 0 10px;
+}
+
+.pd-detail-copy p + p {
+  margin-top: 8px;
+}
+
 .pd-related {
   margin-top: 36px;
 }
 
 .pd-related h2 {
-  margin: 0 0 18px;
+  margin: 0;
   font-size: 22px;
 }
 
+.pd-related__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.pd-related__nav {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.pd-related__nav button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(143, 17, 33, 0.24);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--pd-red-dark);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.pd-related__nav button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px rgba(143, 17, 33, 0.12);
+}
+
+.pd-related__nav button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .pd-related__grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.pd-related__viewport {
+  overflow: hidden;
+  width: 100%;
+}
+
+.pd-related__track {
+  display: flex;
+  width: 100%;
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.pd-related__page {
+  min-width: 100%;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px;
@@ -3047,7 +3784,7 @@ onUnmounted(() => {
 .pd-related__image {
   position: relative;
   background: linear-gradient(180deg, #f8f5f5 0%, #f0eded 100%);
-  aspect-ratio: 0.9;
+  aspect-ratio: 1.12;
 }
 
 .pd-related__image img {
@@ -3579,7 +4316,8 @@ onUnmounted(() => {
   }
 
   .pd-service-grid,
-  .pd-related__grid {
+  .pd-related__grid,
+  .pd-related__page {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -3624,8 +4362,13 @@ onUnmounted(() => {
 
   .pd-buy-row,
   .pd-service-grid,
-  .pd-related__grid {
-    grid-template-columns: 1fr;
+  .pd-related__grid,
+  .pd-related__page {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pd-related__image {
+    aspect-ratio: 1.2;
   }
 
   .pd-dropdown-panel {
@@ -3638,6 +4381,21 @@ onUnmounted(() => {
     flex-direction: column;
   }
 
+  .pd-tabs__hero,
+  .pd-variant-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pd-info-list__row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .pd-variant-row__sizes {
+    justify-content: flex-start;
+  }
+
   .pd-tabs__head {
     flex-wrap: wrap;
   }
@@ -3648,6 +4406,17 @@ onUnmounted(() => {
 
   .pd-quick-view__card {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1024px) {
+  .pd-service-grid article {
+    min-height: 68px;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+    gap: 5px;
+    padding: 10px 8px;
   }
 }
 </style>

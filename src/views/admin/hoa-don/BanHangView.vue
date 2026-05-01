@@ -14,7 +14,7 @@ import VoucherSelector from "../../../components/voucher/VoucherSelector.vue"
 import { resolveApiOrigin } from "../../../utils/apiOrigin"
 import { getProductImageOverride, getProductImageConfig } from "../../../utils/productImageOverrides"
 import { fallbackImageForVariant } from "../../../utils/productImageFallback"
-import { getActiveCampaignMap } from "../../../services/campaignPricingService"
+import { applyCampaignPriceToVariants } from "../../../services/campaignPricingService"
 import logoFallback from "../../../assets/img/logo/DirtyWaveLogo.png?url"
 import img1 from "../../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
 import img2 from "../../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
@@ -127,6 +127,45 @@ const getPosDraftKey = () => {
   const role = String(localStorage.getItem("role") || "").trim().toUpperCase()
   const userId = String(localStorage.getItem("userId") || "").trim()
   return `banhang:tabs:${role || "UNKNOWN"}:${userId || "0"}`
+}
+
+const ORDER_ITEM_PRICING_SNAPSHOTS_KEY = "orderItemPricingSnapshots"
+
+function persistOrderPricingSnapshot(orderLike, orderLines) {
+  try {
+    const orderId = Number(orderLike?.id || 0)
+    const orderCode = String(orderLike?.maHoaDon || "").trim()
+    if (!orderId && !orderCode) return
+
+    const snapshot = {
+      orderId: orderId || null,
+      maHoaDon: orderCode,
+      updatedAt: new Date().toISOString(),
+      itemPricing: (orderLines || []).map((line) => ({
+        spctId: Number(line?.spctId || 0),
+        productId: Number(line?.productId || line?.sanPhamId || 0),
+        color: String(line?.mauSac || "").trim(),
+        size: String(line?.kichThuoc || "").trim(),
+        soLuong: Math.max(Number(line?.soLuong || 0), 0),
+        giaBan: Number(line?.giaBan || 0),
+        giaBanGoc: Number(line?.giaBanGoc || line?.giaBan || 0),
+        thanhTien: Number(line?.giaBan || 0) * Math.max(Number(line?.soLuong || 0), 0),
+        campaignPercent: Number(line?.campaignPercent || 0),
+        campaignName: String(line?.campaignName || "").trim()
+      })).filter((line) => line.spctId > 0 || line.productId > 0)
+    }
+
+    const raw = localStorage.getItem(ORDER_ITEM_PRICING_SNAPSHOTS_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    const snapshots = parsed && typeof parsed === "object" ? parsed : {}
+
+    if (orderId) snapshots[String(orderId)] = snapshot
+    if (orderCode) snapshots[orderCode] = snapshot
+
+    localStorage.setItem(ORDER_ITEM_PRICING_SNAPSHOTS_KEY, JSON.stringify(snapshots))
+  } catch {
+    // ignore snapshot persistence errors
+  }
 }
 
 function compactVoucherForDraft(voucher) {
@@ -380,6 +419,7 @@ function clearPosTabAfterCheckout() {
     posTabs.value = [null]
     activeTabIndex.value = 0
   }
+  applyTabState(posTabs.value[activeTabIndex.value] || null)
   persistPosDraft()
 }
 
@@ -530,7 +570,16 @@ async function syncGroupVariantsBeforeOpen(group) {
     const detailRaw = detailRes?.data?.data || detailRes?.data || null
     if (!detailRaw || typeof detailRaw !== "object") return group
 
-    const freshVariants = flattenVariants([detailRaw], soldQtyBySpctSnapshot.value)
+    const rawVariants = Array.isArray(detailRaw?.sanPhamChiTiets) ? detailRaw.sanPhamChiTiets : []
+    const pricedVariants = rawVariants.length
+      ? await applyCampaignPriceToVariants(rawVariants, productId)
+      : rawVariants
+    const pricedProduct = {
+      ...detailRaw,
+      sanPhamChiTiets: pricedVariants
+    }
+
+    const freshVariants = flattenVariants([pricedProduct], soldQtyBySpctSnapshot.value)
       .filter((item) => Number(item?.idSanPham || 0) === productId)
 
     if (!freshVariants.length) return group
@@ -1345,6 +1394,9 @@ const flattenVariants = (products, soldBySpct = new Map()) =>
         tenSize,
         idSanPham: Number(product?.id || 0),
         giaBan: Number(v?.giaBan ?? v?.gia ?? 0),
+        giaBanGoc: Number(v?.giaBanGoc ?? v?.giaNiemYet ?? v?.giaBan ?? v?.gia ?? 0),
+        campaignPercent: Number(v?.dotGiamGiaPhanTram ?? v?.campaignPercent ?? v?.phanTramGiamGia ?? 0),
+        campaignName: String(v?.campaignInfo?.tenKhuyenMai || v?.campaignName || v?.tenKhuyenMai || "").trim(),
         soLuongTon,
         image: resolvedImage
       }
@@ -1526,9 +1578,7 @@ function resolveFallbackCustomerId() {
   return null
 }
 
-const defaultStatusCode = computed(() =>
-  paymentMethod.value.toUpperCase() === "VNPAY" ? "CHO_LAY_HANG" : "HOAN_THANH"
-)
+const defaultStatusCode = computed(() => "CHO_LAY_HANG")
 
 const selectedAddress = computed(() => {
   if (selectedAddressId.value === "manual") return null
@@ -1752,6 +1802,12 @@ function openPaymentModal() {
 }
 
 function confirmPayment() {
+  // Check if customer is inactive
+  if (selectedCustomerInfo.value && selectedCustomerInfo.value.trangThai && selectedCustomerInfo.value.trangThai !== 'Hoạt động') {
+    window.toast?.error?.("Khách hàng này đã ngừng hoạt động. Không thể thanh toán.")
+    return
+  }
+
   // For BANK (chuyển khoản) skip the paymentRemaining check — QR will be shown after order creation
   if (paymentMethod.value !== 'BANK' && paymentRemaining.value > 0) {
     window.toast?.warning?.("Số tiền nhập chưa đủ"); return
@@ -1907,7 +1963,7 @@ const submitPosOrder = async () => {
     const shipCost = taiQuay.value ? 0 : Number(shippingFee.value || 0)
     const apiPayMethod = resolveApiPaymentMethod(paymentMethod.value)
     const orderStatusCode = orderType === "POS"
-      ? (paymentMethod.value.toUpperCase() === "VNPAY" || paymentMethod.value.toUpperCase() === "BANK" ? "CHO_LAY_HANG" : "HOAN_THANH")
+      ? "CHO_LAY_HANG"
       : (paymentMethod.value.toUpperCase() === "VNPAY" ? "CHO_LAY_HANG" : "CHO_XAC_NHAN")
     const statusNote = `[${orderType}] ${orderNote.value || "Đơn bán hàng"}`
     const normalizedPhone = phone || canonicalPhone(effectiveCustomer?.soDienThoai || "")
@@ -1943,40 +1999,27 @@ const submitPosOrder = async () => {
     const orderId = createRes?.data?.hoaDon?.id ?? createRes?.data?.id
     if (!orderId) throw new Error("Không lấy được mã hóa đơn")
 
-    for (const line of lines.value) {
-      await addHoaDonItem(orderId, { spctId: line.spctId, soLuong: Number(line.soLuong), giaBan: Number(line.giaBan) })
+    const createdOrderSnapshot = {
+      id: Number(orderId),
+      maHoaDon: createRes?.data?.hoaDon?.maHoaDon ?? createRes?.data?.maHoaDon ?? ""
     }
+
+    for (const line of lines.value) {
+      await addHoaDonItem(orderId, {
+        spctId: line.spctId,
+        soLuong: Number(line.soLuong),
+        giaBan: Number(line.giaBan),
+        giaBanGoc: Number(line.giaBanGoc || line.giaBan || 0),
+        campaignPercent: Number(line.campaignPercent || 0),
+        campaignName: String(line.campaignName || "").trim(),
+        thanhTien: Number(line.giaBan || 0) * Number(line.soLuong || 0)
+      })
+    }
+
+    persistOrderPricingSnapshot(createdOrderSnapshot, lines.value)
 
     const isVnpay = paymentMethod.value.toUpperCase() === "VNPAY"
     const isBank = paymentMethod.value.toUpperCase() === "BANK"
-
-    try {
-      const updatePayload = {
-        nhanVienId: Number(cashierId.value),
-        soDienThoaiNhanHang: normalizedPhone,
-        diaChiNhanHang: addressText,
-        phiShip: shipCost,
-        giaSauGiamGia: Number(discount.value || 0),
-        thanhTien: Number(grandTotal.value || 0),
-        phuongThucThanhToan: apiPayMethod,
-        orderStatusCode,
-        orderType,
-        statusNote: isVnpay
-          ? appendPaymentFlowTag(`[${orderType}] ${orderNote.value || "Đơn bán hàng"}`, PAYMENT_FLOW_TAGS.VN_PAY_EMPLOYEE_CONFIRMED, "NV xác nhận VNPay")
-          : `[${orderType}] ${orderNote.value || "Đơn bán hàng"}`
-      }
-      if (effectiveCustomerId) updatePayload.khachHangId = Number(effectiveCustomerId)
-      await updateHoaDon(orderId, updatePayload)
-    } catch (updateErr) {
-      console.warn("updateHoaDon failed, retrying without extra fields:", updateErr)
-      try {
-        await updateHoaDon(orderId, {
-          nhanVienId: Number(cashierId.value),
-          phuongThucThanhToan: apiPayMethod,
-          statusNote: `[${orderType}] ${orderNote.value || "Đơn bán hàng"}`
-        })
-      } catch { /* order was already created, continue */ }
-    }
 
     // For BANK (chuyển khoản): show QR payment modal instead of completing POS
     if (isBank) {
@@ -1988,7 +2031,7 @@ const submitPosOrder = async () => {
         await updateHoaDonBySystemEvent(orderId, "HOAN_TAT_POS", "Hoàn tất bán hàng tại quầy", trackingUrl)
         window.toast?.success?.("Tạo đơn thành công")
       } catch {
-        window.toast?.warning?.("Đơn đã tạo nhưng chưa hoàn tất")
+        window.toast?.warning?.("Vui lòng mở lại hóa đơn để kiểm tra và hoàn tất")
       }
     } else if (!taiQuay.value) {
       window.toast?.success?.("Tạo đơn giao hàng thành công")
@@ -2005,6 +2048,7 @@ const submitPosOrder = async () => {
         posTabs.value = [null]
         activeTabIndex.value = 0
       }
+      applyTabState(posTabs.value[activeTabIndex.value] || null)
       persistPosDraft()
       router.push(`${panelBasePath.value}/hoa-don/detail/${orderId}`)
     }
@@ -2040,22 +2084,17 @@ const loadData = async () => {
     const rawProducts = toList(spRes?.data)
     soldQtyBySpctSnapshot.value = soldBySpct
     const mergedProducts = mergeProductsForPos(rawProducts)
-    variants.value = flattenVariants(mergedProducts, soldBySpct)
+    const pricedProducts = await Promise.all(mergedProducts.map(async (product) => {
+      const productId = Number(product?.id || 0)
+      const rawVariants = Array.isArray(product?.sanPhamChiTiets) ? product.sanPhamChiTiets : []
+      if (!rawVariants.length || productId <= 0) return product
 
-    // Apply active campaign discounts to giaBan
-    try {
-      const cMap = await getActiveCampaignMap()
-      if (cMap.size > 0) {
-        variants.value = variants.value.map((v) => {
-          const camp = v.idSanPham ? cMap.get(v.idSanPham) : null
-          if (!camp) return v
-          const pct = Math.max(0, Math.min(100, camp.giaTri))
-          if (pct <= 0) return v
-          const base = v.giaBan
-          return { ...v, giaBan: Math.round(base * (1 - pct / 100)), giaBanGoc: base, campaignPercent: pct, campaignName: camp.tenKhuyenMai }
-        })
+      return {
+        ...product,
+        sanPhamChiTiets: await applyCampaignPriceToVariants(rawVariants, productId)
       }
-    } catch { /* Node backend offline — use shelf price */ }
+    }))
+    variants.value = flattenVariants(pricedProducts, soldBySpct)
 
     restorePosDraft()
 
@@ -2156,7 +2195,7 @@ onBeforeUnmount(() => {
 
       <div
         class="pos-resize-gutter"
-        title="Kéo để thay đổi độ rộng phần Thêm sản phẩm"
+        title="Kéo để thu / mở rộng"
         @mousedown.prevent="startPanelResize"
       >
         <span class="pos-resize-handle"></span>
@@ -2735,15 +2774,29 @@ onBeforeUnmount(() => {
 
 .pos-resize-gutter {
   position: relative;
-  width: 2px;
-  background: #d1d5db;
+  width: 16px;
+  background: transparent;
   cursor: col-resize;
   align-self: stretch;
   transition: background 0.2s ease;
+  flex-shrink: 0;
 }
 
-.pos-resize-gutter:hover,
-.pos-layout.is-resizing .pos-resize-gutter {
+.pos-resize-gutter::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: #d1d5db;
+  transition: background 0.2s ease;
+  pointer-events: none;
+}
+
+.pos-resize-gutter:hover::before,
+.pos-layout.is-resizing .pos-resize-gutter::before {
   background: #9ca3af;
 }
 

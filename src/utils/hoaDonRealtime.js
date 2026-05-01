@@ -1,5 +1,18 @@
 import { resolveApiOrigin } from "./apiOrigin"
 
+// Node.js backend origin (port 3000) — used for WebSocket auto-derivation
+const _resolveNodeOrigin = () => {
+  const configured = String(import.meta.env.VITE_NODE_BACKEND_URL || "").trim().replace(/\/$/, "")
+  if (configured) return configured
+  try {
+    const base = new URL(resolveApiOrigin())
+    base.port = "3000"
+    return base.origin
+  } catch {
+    return "http://localhost:3000"
+  }
+}
+
 function toWebSocketUrl(origin, path = "/ws/hoa-don") {
   try {
     const url = new URL(String(origin || "").trim())
@@ -20,7 +33,9 @@ export function createHoaDonRealtimeChannel(options = {}) {
   const wsPath = String(options.wsPath || "/ws/hoa-don")
 
   const configuredWs = String(import.meta.env.VITE_HOADON_WS_URL || "").trim()
-  const autoWs = toWebSocketUrl(resolveApiOrigin(), wsPath)
+  const autoWs = String(import.meta.env.VITE_HOADON_WS_AUTO || "").trim().toLowerCase() === "true"
+    ? toWebSocketUrl(_resolveNodeOrigin(), wsPath)
+    : ""
   const wsUrl = configuredWs || autoWs
 
   let ws = null

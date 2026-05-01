@@ -883,6 +883,12 @@ const changePassword = async () => {
     return
   }
 
+  // Check if customer account is inactive
+  if (customer.value?.trangThai && customer.value.trangThai !== 'Hoạt động') {
+    toast.error('Tài khoản của bạn đã ngừng hoạt động. Vui lòng liên hệ hỗ trợ.')
+    return
+  }
+
   if (!passwordForm.currentPassword) {
     toast.error('Vui lòng nhập mật khẩu hiện tại')
     return
@@ -1163,7 +1169,7 @@ watch(orders, async (list) => {
             <article class="order-item" v-for="order in orders" :key="order.id">
               <div class="order-head">
                 <strong>#{{ order.maHoaDon || `HD-${order.id}` }}</strong>
-                <span class="status">{{ getOrderStatusLabel(order) }}</span>
+                <span class="status-badge" :class="`status-${getOrderStatusTone(order)}`">{{ getOrderStatusLabel(order) }}</span>
               </div>
               <div class="order-meta">
                 <span>Ngày tạo: {{ formatDateTime(order.ngayTao) }}</span>

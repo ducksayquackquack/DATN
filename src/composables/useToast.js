@@ -92,6 +92,7 @@ export function useToast() {
     return showToast('Thêm vào giỏ hàng thành công', 'success', {
       duration,
       variant: 'cart-add',
+      preventAside: true,
       payload
     })
   }

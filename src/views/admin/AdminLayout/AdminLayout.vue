@@ -227,6 +227,16 @@ const toggleSection = (section) => {
 }
 
 function logout() {
+  try {
+    const keysToRemove = []
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith('banhang:tabs:')) keysToRemove.push(key)
+    }
+    keysToRemove.forEach((key) => localStorage.removeItem(key))
+  } catch {
+    // Ignore storage access errors.
+  }
   localStorage.removeItem("role")
   localStorage.removeItem("userId")
   localStorage.removeItem("userEmail")

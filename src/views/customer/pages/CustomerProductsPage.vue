@@ -142,6 +142,31 @@ const toCanonicalCategory = (value = "") => {
   return ""
 }
 
+const colorHexByName = (name = "") => {
+  const normalized = String(name || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .trim()
+
+  if ((normalized.includes("hong") || normalized.includes("pink")) && (normalized.includes("tim") || normalized.includes("purple") || normalized.includes("magenta"))) return "#b85c9e"
+  if (normalized.includes("magenta")) return "#c41e85"
+  if (normalized.includes("tim") || normalized.includes("purple")) return "#7c3aed"
+  if (normalized.includes("den")) return "#1a1a1a"
+  if (normalized.includes("do") || normalized.includes("red")) return "#dc2626"
+  if (normalized.includes("trang") || normalized.includes("kem")) return "#ded7ca"
+  if (normalized.includes("xanh la") || normalized.includes("green")) return "#4f6f52"
+  if (normalized.includes("nau")) return "#6b412c"
+  if (normalized.includes("hong")) return "#d684a1"
+  if (normalized.includes("vang") || normalized.includes("yellow")) return "#d4a017"
+  if (normalized.includes("cam") || normalized.includes("orange")) return "#e07020"
+  if (normalized.includes("xam") || normalized.includes("ghi") || normalized.includes("gray") || normalized.includes("grey")) return "#7f858f"
+  if (normalized.includes("xanh") || normalized.includes("blue")) return "#2f4f75"
+  return "#9ca3af"
+}
+
 const normalizeProductKey = (value = "") =>
   String(value || "")
     .normalize("NFD")
@@ -337,13 +362,20 @@ const normalizeProduct = (item) => {
   const allVariants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
   const variants = allVariants.filter((variant) => isActiveStatus(variant?.trangThai || variant?.status))
   const variantPrices = variants.map((v) => toNumber(v?.giaBan)).filter((v) => v > 0)
+  const variantSource = variants.length ? variants : allVariants
+
+  const colors = [...new Set(
+    variantSource
+      .map((variant) => String(variant?.mauSac?.tenMau || variant?.mauSac?.tenMauSac || variant?.mauSac?.name || variant?.tenMau || variant?.tenMauSac || "").trim())
+      .filter(Boolean)
+  )].map((name) => ({ name, hex: colorHexByName(name) }))
 
   let price = toNumber(item?.giaBan || item?.gia || 0)
   if (variantPrices.length) {
     price = Math.min(...variantPrices)
   }
 
-  const stockSource = allVariants.length ? allVariants : variants
+  const stockSource = variants.length ? variants : allVariants
   const fallbackItemStock = toNumber((item?.soLuongCon ?? item?.soLuongTon ?? item?.tonKhoCon ?? item?.soLuong) || 0)
   const stock = stockSource.length
     ? stockSource.reduce((sum, v) => sum + variantRemainingStockValue(v), 0)
@@ -396,6 +428,7 @@ const normalizeProduct = (item) => {
     stock,
     sold: toNumber(item?.daBan || item?.luotBan || item?.soLuongBan || 0),
     active,
+    colors,
   }
 }
 
@@ -663,6 +696,14 @@ onMounted(loadProducts)
               <p class="cp-category">{{ item.category }}</p>
               <h2>{{ item.name }}</h2>
               <p class="cp-code">{{ item.code || `SP-${item.id}` }}</p>
+              <div v-if="Array.isArray(item.colors) && item.colors.length" class="cp-color-dots">
+                <span
+                  v-for="color in item.colors.slice(0, 4)"
+                  :key="`${item.id}-${color.name}`"
+                  :title="color.name"
+                  :style="{ background: color.hex }"
+                ></span>
+              </div>
               <div class="cp-row">
                 <strong>{{ formatVND(item.price) }}</strong>
                 <span>Còn {{ item.stock }}</span>
@@ -931,6 +972,21 @@ onMounted(loadProducts)
   margin: 0;
   color: #6f6a6d;
   font-size: 13px;
+}
+
+.cp-color-dots {
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cp-color-dots span {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(17, 24, 39, 0.18);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.14);
 }
 
 .cp-row {

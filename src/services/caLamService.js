@@ -1,6 +1,7 @@
 import axios from 'axios'
+import { resolveApiOrigin } from '../utils/apiOrigin'
 
-const API_URL = 'http://localhost:8080/api/lich-ca-lam'
+const API_URL = `${resolveApiOrigin()}/api/lich-ca-lam`
 
 export const getAllCaLam = () => {
   return axios.get(API_URL)

@@ -7,6 +7,7 @@ import { getAllSanPham, getSanPhamPage } from '../../../services/sanPhamService'
 import { normalizeOrderStatusCode } from '../../../utils/adminStatus'
 import { getRevenueBucket, isRevenueCountableOrder } from '../../../utils/orderRevenue'
 import { resolveApiOrigin } from '../../../utils/apiOrigin'
+import { shouldCountOrderForStock } from '../../../utils/stockCalculation'
 import { getProductImageOverride, getProductImageConfig } from '../../../utils/productImageOverrides'
 import { fallbackImageForVariant } from '../../../utils/productImageFallback'
 import logoImage from '../../../assets/img/logo/new logo.png?url'
@@ -39,8 +40,8 @@ const invoices = ref([])
 const statisticsError = ref('')
 const chartTooltip = ref({ visible: false, x: 0, y: 0, label: '', revenue: 0, orders: 0 })
 const pieTooltip = ref({ visible: false, x: 0, y: 0, label: '', value: 0, percentage: 0 })
-const BACKEND_URL = 'http://localhost:8080'
 const BACKEND_ORIGIN = resolveApiOrigin().replace(/\/$/, '')
+const BACKEND_URL = BACKEND_ORIGIN
 
 const curatedTopProductImageRules = [
   { keywords: ['bomber', 'windbreaker'], image: bomberWindbreakerImage },
@@ -440,6 +441,8 @@ const searchMeta = ref({
   total: 0
 })
 
+const startDateInput = ref(null)
+const endDateInput = ref(null)
 const applyFilters = () => {
   if (filters.value.startDate && filters.value.endDate && filters.value.startDate > filters.value.endDate) {
     toast.warning('Từ ngày không được lớn hơn Đến ngày')
@@ -955,11 +958,8 @@ const topProducts = computed(() => {
     }
   })
 
-  inRangeInvoices.value
-    .filter((inv) => {
-      const code = normalizeOrderStatusCode(inv.orderStatusCode, inv.orderStatusName, inv.trangThai)
-      return COMPLETED_CODES.has(code)
-    })
+  invoices.value
+    .filter((inv) => shouldCountOrderForStock(inv))
     .forEach((invoice) => {
     const details = getInvoiceDetails(invoice)
     details.forEach((d) => {
@@ -1132,6 +1132,18 @@ const goToTopProductsPage = (page) => {
   const target = Number(page || 1)
   if (!Number.isFinite(target)) return
   topProductsPage.value = Math.max(1, Math.min(target, topProductsTotalPages.value))
+}
+const openDatePicker = (target) => {
+  const input = target === 'start' ? startDateInput.value : endDateInput.value
+  if (!input) return
+
+  if (typeof input.showPicker === 'function') {
+    input.showPicker()
+    return
+  }
+
+  input.focus()
+  input.click()
 }
 
 watch(topProductsTotalPages, (total) => {
@@ -1533,28 +1545,38 @@ onMounted(() => {
           <label>Từ ngày</label>
           <div class="date-wrap">
             <input 
+              ref="startDateInput"
               v-model="filters.startDate" 
               type="date" 
               class="form-input date-native"
+              tabindex="-1"
               @keydown.prevent
               @paste.prevent
             />
             <span class="date-overlay" v-if="filters.startDate">{{ fmtDateDisplay(filters.startDate) }}</span>
             <span class="date-overlay date-placeholder" v-else>dd/mm/yyyy</span>
+            <button type="button" class="date-trigger" @click="openDatePicker('start')" aria-label="Chọn từ ngày">
+              <span class="material-icons-outlined">calendar_month</span>
+            </button>
           </div>
         </div>
         <div class="filter-item">
           <label>Đến ngày</label>
           <div class="date-wrap">
             <input 
+              ref="endDateInput"
               v-model="filters.endDate" 
               type="date" 
               class="form-input date-native"
+              tabindex="-1"
               @keydown.prevent
               @paste.prevent
             />
             <span class="date-overlay" v-if="filters.endDate">{{ fmtDateDisplay(filters.endDate) }}</span>
             <span class="date-overlay date-placeholder" v-else>dd/mm/yyyy</span>
+            <button type="button" class="date-trigger" @click="openDatePicker('end')" aria-label="Chọn đến ngày">
+              <span class="material-icons-outlined">calendar_month</span>
+            </button>
           </div>
         </div>
         <div class="filter-item">
@@ -1783,8 +1805,8 @@ onMounted(() => {
     <!-- Top Products -->
     <div class="table-section">
       <div class="section-header">
-        <h3>Biến thể bán chạy</h3>
-        <p class="section-subtitle">Top biến thể theo số lượng bán trong khoảng thời gian đã chọn</p>
+        <h3>Biến thể bán chạy lũy kế</h3>
+        <p class="section-subtitle">Top biến thể theo số lượng bán lũy kế toàn hệ thống</p>
       </div>
       <div class="top-products-wrap">
         <table class="data-table top-products-table">
@@ -2023,11 +2045,56 @@ onMounted(() => {
 
 /* Date DD/MM/YYYY overlay */
 .date-wrap { position: relative; }
-.date-native { color: transparent !important; }
+.date-native {
+  color: transparent !important;
+  padding-right: 50px;
+  pointer-events: none;
+  caret-color: transparent;
+  user-select: none;
+}
 .date-native::-webkit-datetime-edit { color: transparent; }
-.date-native::-webkit-calendar-picker-indicator { position: relative; z-index: 2; cursor: pointer; }
-.date-overlay { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 14px; color: #374151; }
+.date-native::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  pointer-events: none;
+}
+.date-overlay {
+  position: absolute;
+  left: 14px;
+  right: 50px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 14px;
+  color: #374151;
+}
 .date-placeholder { color: #9ca3af; }
+.date-trigger {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #111827;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.date-trigger:hover {
+  background: rgba(17, 24, 39, 0.06);
+}
+.date-trigger:focus-visible {
+  outline: 2px solid rgba(17, 24, 39, 0.25);
+  outline-offset: 1px;
+}
+.date-trigger .material-icons-outlined {
+  font-size: 18px;
+}
 
 .btn-search {
   display: flex;

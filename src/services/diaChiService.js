@@ -1,6 +1,7 @@
 import axios from 'axios'
+import { resolveApiOrigin } from '../utils/apiOrigin'
 
-const API_URL = 'http://localhost:8080/api/dia-chi'
+const API_URL = `${resolveApiOrigin()}/api/dia-chi`
 
 export const getDiaChiByKhachHang = (idKhachHang) => {
   return axios.get(`${API_URL}/khach-hang/${idKhachHang}`)

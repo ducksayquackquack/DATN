@@ -1,6 +1,7 @@
 import axios from "axios"
+import { resolveApiOrigin } from "../utils/apiOrigin"
 
-const API = "http://localhost:8080/api/kich-thuoc"
+const API = `${resolveApiOrigin()}/api/kich-thuoc`
 
 export const getAllKichThuoc = () =>
   axios.get(API)

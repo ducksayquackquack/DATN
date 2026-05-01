@@ -142,9 +142,7 @@
 
       <main class="wrap">
         <router-view v-slot="{ Component }">
-          <transition name="slide-up" mode="out-in">
-            <component :is="Component" />
-          </transition>
+          <component :is="Component" :key="$route.fullPath" />
         </router-view>
       </main>
 
@@ -354,6 +352,16 @@ const currentShiftName = computed(() => {
 })
 
 function logout() {
+  try {
+    const keysToRemove = []
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith('banhang:tabs:')) keysToRemove.push(key)
+    }
+    keysToRemove.forEach((key) => localStorage.removeItem(key))
+  } catch {
+    // Ignore storage access errors.
+  }
   localStorage.removeItem("role")
   localStorage.removeItem("userId")
   localStorage.removeItem("userEmail")

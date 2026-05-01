@@ -95,12 +95,8 @@ const subtotal = computed(() =>
 
 const grandTotal = computed(() => Math.max(subtotal.value - Number(discount.value || 0), 0))
 
-// Trạng thái ngay sau khi tạo đơn:
-//   VNPay  → CHO_LAY_HANG (chờ xác nhận thanh toán online trước khi hoàn tất)
-//   Còn lại → HOAN_THANH  (thu tiền ngay tại quầy, xong luôn)
-const defaultStatusCode = computed(() =>
-  paymentMethod.value.toUpperCase() === "VNPAY" ? "CHO_LAY_HANG" : "HOAN_THANH"
-)
+// Luồng POS luôn tạo nháp ở CHO_LAY_HANG, sau đó mới hoàn tất bằng HOAN_TAT_POS.
+const defaultStatusCode = computed(() => "CHO_LAY_HANG")
 
 // ─── Xác định nhân viên đăng nhập ────────────────────────────────────────────
 
@@ -232,14 +228,26 @@ const submitPosOrder = async () => {
     const selectedCustomer = khachHangList.value.find((kh) => Number(kh.id) === Number(customerId.value)) ?? null
 
     // Bước 2: tạo hóa đơn nháp
+    const isVnpay = paymentMethod.value.toUpperCase() === "VNPAY"
+
     const createRes = await createHoaDon({
       nhanVienId: Number(cashierId.value),
       khachHangId: selectedCustomer?.id ?? null,
       soDienThoaiNhanHang: selectedCustomer?.soDienThoai || "",
       diaChiNhanHang: "Mua tại quầy",
       phiShip: 0,
+      giaSauGiamGia: Number(discount.value || 0),
+      thanhTien: Number(grandTotal.value || 0),
       phuongThucThanhToan: paymentMethod.value,
-      orderType: "POS"
+      orderType: "POS",
+      orderStatusCode: defaultStatusCode.value,
+      statusNote: isVnpay
+        ? appendPaymentFlowTag(
+            `[POS] ${orderNote.value || "Đơn bán tại quầy"}`,
+            PAYMENT_FLOW_TAGS.VN_PAY_EMPLOYEE_CONFIRMED,
+            "Nhân viên thu ngân đã xác nhận thanh toán VNPay tại quầy"
+          )
+        : `[POS] ${orderNote.value || "Đơn bán tại quầy"}`
     })
     const orderId = createRes?.data?.hoaDon?.id ?? createRes?.data?.id
     if (!orderId) throw new Error("Không lấy được mã hóa đơn bán tại quầy")
@@ -256,42 +264,7 @@ const submitPosOrder = async () => {
       await addHoaDonItem(orderId, { spctId: line.spctId, soLuong: qty, giaBan: Number(line.giaBan) })
     }
 
-    const isVnpay = paymentMethod.value.toUpperCase() === "VNPAY"
-
-    // Bước 4: cập nhật thông tin & ghi chú
-    try {
-      await updateHoaDon(orderId, {
-        nhanVienId: Number(cashierId.value),
-        khachHangId: selectedCustomer?.id ?? null,
-        soDienThoaiNhanHang: selectedCustomer?.soDienThoai || "",
-        diaChiNhanHang: "Mua tại quầy",
-        phiShip: 0,
-        giaSauGiamGia: Number(discount.value || 0),
-        thanhTien: Number(grandTotal.value || 0),
-        phuongThucThanhToan: paymentMethod.value,
-        orderType: "POS",
-        // VNPay: gắn tag để hệ thống biết nhân viên đã xác nhận, chờ khách thanh toán
-        statusNote: isVnpay
-          ? appendPaymentFlowTag(
-              `[POS] ${orderNote.value || "Đơn bán tại quầy"}`,
-              PAYMENT_FLOW_TAGS.VN_PAY_EMPLOYEE_CONFIRMED,
-              "Nhân viên thu ngân đã xác nhận thanh toán VNPay tại quầy"
-            )
-          : `[POS] ${orderNote.value || "Đơn bán tại quầy"}`
-      })
-    } catch (updateErr) {
-      console.warn("updateHoaDon failed, retrying without extra fields:", updateErr)
-      try {
-        await updateHoaDon(orderId, {
-          nhanVienId: Number(cashierId.value),
-          khachHangId: selectedCustomer?.id ?? null,
-          phuongThucThanhToan: paymentMethod.value,
-          statusNote: `[POS] ${orderNote.value || "Đơn bán tại quầy"}`
-        })
-      } catch { /* order was already created, continue */ }
-    }
-
-    // Bước 5: chuyển trạng thái cuối
+    // Bước 4: chuyển trạng thái cuối
     if (!isVnpay) {
       // Tiền mặt / Chuyển khoản → hoàn tất ngay
       try {
@@ -299,7 +272,7 @@ const submitPosOrder = async () => {
         await updateHoaDonBySystemEvent(orderId, "HOAN_TAT_POS", "Đã hoàn tất bán hàng tại quầy", trackingUrl)
         window.toast?.success?.("Tạo đơn bán tại quầy thành công")
       } catch {
-        window.toast?.warning?.("Đơn đã tạo nhưng chưa hoàn tất — vào chi tiết bấm 'Hoàn tất bán hàng tại quầy'")
+        window.toast?.warning?.("Vui lòng mở lại hóa đơn để kiểm tra và hoàn tất")
       }
     } else {
       // VNPay → giữ CHO_LAY_HANG, chờ khách xác nhận thanh toán

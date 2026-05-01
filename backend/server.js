@@ -1,11 +1,15 @@
+const http = require("http")
+require("dotenv").config()
 const express = require("express")
 const crypto = require("crypto")
 const qs = require("qs")
 const cors = require("cors")
 const sql = require("mssql")
 const nodemailer = require("nodemailer")
+const { WebSocketServer } = require("ws")
 
 const app = express()
+const httpServer = http.createServer(app)
 
 app.use(cors())
 app.use(express.json())
@@ -25,11 +29,37 @@ const AUTO_SEED_CAMPAIGN_ID = Number(process.env.AUTO_SEED_CAMPAIGN_ID || 0)
 const AUTO_SEED_CAMPAIGN_CODE = String(process.env.AUTO_SEED_CAMPAIGN_CODE || "KM006").trim()
 const AUTO_SEED_PRODUCT_COUNT = Math.max(1, Number(process.env.AUTO_SEED_PRODUCT_COUNT || 5) || 5)
 
-const SMTP_HOST = String(process.env.SMTP_HOST || "").trim()
-const SMTP_PORT = Number(process.env.SMTP_PORT || 587)
-const SMTP_USER = String(process.env.SMTP_USER || "").trim()
-const SMTP_PASS = String(process.env.SMTP_PASS || "").trim()
-const SMTP_FROM = String(process.env.SMTP_FROM || SMTP_USER || "").trim()
+const SMTP_HOST = String(
+  process.env.SMTP_HOST ||
+  process.env.SPRING_MAIL_HOST ||
+  process.env.MAIL_HOST ||
+  ""
+).trim()
+const SMTP_PORT = Number(
+  process.env.SMTP_PORT ||
+  process.env.SPRING_MAIL_PORT ||
+  process.env.MAIL_PORT ||
+  587
+)
+const SMTP_USER = String(
+  process.env.SMTP_USER ||
+  process.env.SPRING_MAIL_USERNAME ||
+  process.env.MAIL_USERNAME ||
+  ""
+).trim()
+const SMTP_PASS = String(
+  process.env.SMTP_PASS ||
+  process.env.SPRING_MAIL_PASSWORD ||
+  process.env.MAIL_PASSWORD ||
+  ""
+).trim()
+const SMTP_FROM = String(
+  process.env.SMTP_FROM ||
+  process.env.MAIL_FROM ||
+  process.env.LOOKUP_MAIL_FROM ||
+  SMTP_USER ||
+  ""
+).trim()
 let mailTransporter = null
 
 function getMailTransporter() {
@@ -642,8 +672,135 @@ app.get('/api/stock/sold-by-variant', async (req, res) => {
   }
 })
 
-app.listen(3000, () => {
-  console.log("VNPay backend running on http://localhost:3000")
+// ══════════════════════════════════════════════════════════════════════════════
+// WEBSOCKET SERVER  –  ws://localhost:3000/ws/hoa-don
+// ══════════════════════════════════════════════════════════════════════════════
+
+const wss = new WebSocketServer({ server: httpServer, path: "/ws/hoa-don" })
+
+/** Send a JSON message to every open client */
+function broadcastWs(payload) {
+  const data = JSON.stringify(payload)
+  wss.clients.forEach((client) => {
+    if (client.readyState === 1 /* OPEN */) {
+      client.send(data)
+    }
+  })
+}
+
+wss.on("connection", (ws) => {
+  ws.send(JSON.stringify({ type: "CONNECTED", ts: Date.now() }))
+  ws.on("error", () => {}) // silence uncaught errors on a single socket
+})
+
+/** Allow any backend / Spring to trigger a frontend refresh */
+// ══════════════════════════════════════════════════════════════════════════════
+// MAIL – Gửi thông tin tài khoản nhân viên mới
+// ══════════════════════════════════════════════════════════════════════════════
+
+app.post("/api/mail/send-nhanvien-account", async (req, res) => {
+  const email = String(req.body?.email || "").trim()
+  const tenNhanVien = String(req.body?.tenNhanVien || "Nhân viên").trim()
+  const matKhau = String(req.body?.matKhau || "").trim()
+  const vaiTro = String(req.body?.vaiTro || "EMPLOYEE").trim()
+
+  if (!email || !matKhau) {
+    return res.status(400).json({ message: "email và matKhau là bắt buộc" })
+  }
+
+  const transporter = getMailTransporter()
+  if (!transporter) {
+    return res.status(501).json({
+      message: "MailSender chưa được cấu hình SMTP. Hãy thiết lập SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS"
+    })
+  }
+
+  const vaiTroHienThi = vaiTro === "ADMIN" ? "Quản trị viên" : "Nhân viên"
+  const year = new Date().getFullYear()
+
+  const html = `<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Tài khoản nhân viên mới</title>
+</head>
+<body style="margin:0;padding:24px 0;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;color:#111827">
+  <div style="max-width:560px;margin:0 auto;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 8px 26px rgba(15,23,42,.08)">
+    <div style="background:linear-gradient(140deg,#111827 0%,#b91c1c 45%,#dc2626 100%);padding:28px 24px;text-align:center">
+      <div style="display:inline-block;padding:7px 14px;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);font-size:12px;letter-spacing:.08em;color:#fff;font-weight:700;text-transform:uppercase">DirtyWave Internal</div>
+      <h1 style="margin:14px 0 6px;font-size:28px;line-height:1.12;color:#fff;letter-spacing:.02em">TÀI KHOẢN NHÂN VIÊN MỚI</h1>
+      <p style="margin:0;font-size:13px;color:rgba(255,255,255,.88)">Hệ thống quản lý nội bộ DirtyWave</p>
+    </div>
+
+    <div style="background:#fff;padding:26px 24px 20px">
+      <p style="margin:0 0 8px;font-size:16px;font-weight:700;color:#0f172a">Xin chào, ${tenNhanVien}!</p>
+      <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:#b91c1c;line-height:1.6">Chúc mừng bạn đã được tạo tài khoản nhân viên mới.</p>
+      <p style="margin:0 0 10px;font-size:13px;color:#64748b;line-height:1.6">Mã thông báo mẫu mới: DW-MAIL-V2</p>
+      <p style="margin:0 0 16px;font-size:14px;color:#475569;line-height:1.6">Dưới đây là thông tin đăng nhập và hướng dẫn cơ bản để truy cập hệ thống nội bộ:</p>
+
+      <div style="border:1px solid #fecaca;background:linear-gradient(180deg,#fff7f7,#fff);border-radius:12px;padding:16px 16px 10px">
+        <table style="width:100%;border-collapse:collapse;font-size:14px">
+          <tr>
+            <td style="padding:9px 0;color:#6b7280">Tên tài khoản</td>
+            <td style="padding:9px 0;text-align:right;font-weight:800;color:#b91c1c">${email}</td>
+          </tr>
+          <tr><td colspan="2" style="border-top:1px dashed #fecaca"></td></tr>
+          <tr>
+            <td style="padding:9px 0;color:#6b7280">Mật khẩu tạm thời</td>
+            <td style="padding:9px 0;text-align:right;font-weight:700;color:#0f172a">${matKhau}</td>
+          </tr>
+          <tr><td colspan="2" style="border-top:1px dashed #fecaca"></td></tr>
+          <tr>
+            <td style="padding:9px 0;color:#6b7280">Vai trò</td>
+            <td style="padding:9px 0;text-align:right;font-weight:700;color:#0f172a">${vaiTroHienThi}</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="margin-top:14px;padding:10px 12px;border-left:3px solid #ef4444;background:#fff1f2;border-radius:8px;font-size:13px;color:#9f1239">
+        Vui lòng đổi mật khẩu ngay sau khi đăng nhập lần đầu để bảo mật tài khoản.
+      </div>
+
+      <div style="margin-top:10px;padding:10px 12px;border-left:3px solid #1d4ed8;background:#eff6ff;border-radius:8px;font-size:13px;color:#1e3a8a">
+        Nếu không đăng nhập được, hãy liên hệ quản trị viên để được cấp lại mật khẩu.
+      </div>
+
+      <p style="margin:14px 0 0;font-size:13px;color:#475569">
+        Đăng nhập tại: <a href="http://localhost:5173/auth/staff-login" style="color:#b91c1c;font-weight:700">Trang nội bộ nhân viên</a>
+      </p>
+    </div>
+
+    <div style="background:#f8fafc;padding:13px 20px;border-top:1px solid #e2e8f0;text-align:center;font-size:12px;color:#94a3b8">
+      © ${year} DirtyWave - Email tự động, vui lòng không trả lời.
+    </div>
+  </div>
+</body>
+</html>`
+
+  try {
+    await transporter.sendMail({
+      from: SMTP_FROM || SMTP_USER,
+      to: email,
+      subject: `[DirtyWave] Chúc mừng, tài khoản nhân viên mới – ${tenNhanVien}`,
+      html,
+    })
+    return res.json({ success: true })
+  } catch (err) {
+    console.error("POST /api/mail/send-nhanvien-account error:", err)
+    return res.status(500).json({ message: "Gửi email thất bại" })
+  }
+})
+
+/** Allow any backend / Spring to trigger a frontend refresh */
+app.post("/api/ws/broadcast", (req, res) => {
+  const payload = req.body || {}
+  broadcastWs({ type: "REFRESH", ...payload, ts: Date.now() })
+  res.json({ ok: true, clients: wss.clients.size })
+})
+
+httpServer.listen(3000, () => {
+  console.log("DirtyWave Node backend  http://localhost:3000  ws://localhost:3000/ws/hoa-don")
   autoSeedCampaignProductsOnStartup().catch((err) => {
     console.error("[seed] Auto-seed campaign products failed:", err?.message || err)
   })

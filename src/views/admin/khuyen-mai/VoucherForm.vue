@@ -160,13 +160,14 @@ import { reactive, onMounted, computed } from "vue"
 import { useRouter, useRoute } from "vue-router"
 import axios from "axios"
 import { normalizeVoucherData } from "../../../services/khuyenMaiService"
+import { resolveApiOrigin } from "../../../utils/apiOrigin"
 
 const router = useRouter()
 const route = useRoute()
 const id = route.params.id
 const isEdit = computed(() => id && id !== 'new')
 
-const API = "http://localhost:8080/api/phieu-giam-gia"
+const API = `${resolveApiOrigin()}/api/phieu-giam-gia`
 
 function goBack() {
   router.push("/admin/khuyen-mai/list?tab=vouchers")

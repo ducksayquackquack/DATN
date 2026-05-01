@@ -311,6 +311,10 @@ onUnmounted(() => {
   display: grid;
   gap: 20px;
   color: var(--about-black);
+  background:
+    radial-gradient(circle at 8% 2%, rgba(197, 22, 45, 0.10), transparent 36%),
+    radial-gradient(circle at 92% 16%, rgba(79, 70, 229, 0.07), transparent 32%),
+    transparent;
 }
 
 .about-hero,
@@ -442,15 +446,15 @@ onUnmounted(() => {
 
 .about-primary-link,
 .about-cta-link {
-  background: var(--about-black);
+  background: linear-gradient(135deg, var(--about-red), var(--about-red-dark));
   color: var(--about-white);
-  box-shadow: 0 14px 30px rgba(17, 17, 17, 0.16);
+  box-shadow: 0 14px 30px rgba(197, 22, 45, 0.24);
 }
 
 .about-primary-link:hover,
 .about-cta-link:hover {
   transform: translateY(-2px);
-  box-shadow: 0 18px 34px rgba(17, 17, 17, 0.24);
+  box-shadow: 0 18px 34px rgba(197, 22, 45, 0.30);
 }
 
 .about-secondary-link {
@@ -502,10 +506,10 @@ onUnmounted(() => {
   width: min(320px, 100%);
   padding: 16px;
   border-radius: 16px;
-  background: var(--about-black);
+  background: linear-gradient(145deg, #7f101f, #c5162d);
   color: #f5f5f5;
   transform: rotate(-3deg);
-  box-shadow: 0 18px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 18px 32px rgba(127, 16, 31, 0.32);
 }
 
 .about-floating-note small,
@@ -643,7 +647,7 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--about-black);
+  background: linear-gradient(135deg, var(--about-red), var(--about-red-dark));
   color: #ffffff;
   font-size: 11px;
   font-weight: 700;
@@ -749,8 +753,8 @@ onUnmounted(() => {
   left: 16px;
   padding: 16px;
   border-radius: 14px;
-  background: rgba(17, 17, 17, 0.73);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(135deg, rgba(127, 16, 31, 0.82), rgba(24, 24, 56, 0.74));
+  border: 1px solid rgba(255, 255, 255, 0.18);
   backdrop-filter: blur(12px);
   color: #ffffff;
 }
@@ -801,7 +805,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  background: var(--about-black);
+  background: linear-gradient(135deg, var(--about-red), var(--about-red-dark));
   color: var(--about-white);
   font-size: 17px;
 }
@@ -842,7 +846,7 @@ onUnmounted(() => {
   justify-content: center;
   height: 48px;
   border-radius: 12px;
-  background: var(--about-black);
+  background: linear-gradient(135deg, var(--about-red), var(--about-red-dark));
   color: var(--about-white);
   font-size: 17px;
   font-weight: 700;
@@ -876,7 +880,7 @@ onUnmounted(() => {
   width: min(300px, 100%);
   padding: 16px;
   border-radius: 14px;
-  background: rgba(17, 17, 17, 0.74);
+  background: linear-gradient(135deg, rgba(127, 16, 31, 0.82), rgba(24, 24, 56, 0.70));
   border: 1px solid rgba(255, 255, 255, 0.14);
   backdrop-filter: blur(10px);
   color: #ffffff;
@@ -934,7 +938,7 @@ onUnmounted(() => {
   margin-bottom: 14px;
   padding: 0 12px;
   border-radius: 999px;
-  background: var(--about-black);
+  background: linear-gradient(135deg, var(--about-red), var(--about-red-dark));
   color: var(--about-white);
   font-size: 13px;
   font-weight: 700;
@@ -950,8 +954,9 @@ onUnmounted(() => {
   border-radius: 24px;
   overflow: hidden;
   background:
-    radial-gradient(circle at 14% 22%, rgba(255, 255, 255, 0.2), transparent 24%),
-    linear-gradient(130deg, #0f0f0f 0%, #2f0f14 55%, #7f101f 100%);
+    radial-gradient(circle at 14% 22%, rgba(255, 255, 255, 0.24), transparent 24%),
+    radial-gradient(circle at 85% 78%, rgba(79, 70, 229, 0.30), transparent 34%),
+    linear-gradient(130deg, #8f1121 0%, #c5162d 50%, #6d28d9 100%);
   color: #ffffff;
 }
 

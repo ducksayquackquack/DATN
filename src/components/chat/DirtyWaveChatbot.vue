@@ -24,7 +24,9 @@ import {
   sendChatMessage
 } from "../../services/chatbotService"
 import { searchChatProducts } from "../../services/chatProductService"
+import { getAllSanPham } from "../../services/sanPhamService"
 import { getAllKhachHang } from "../../services/KhachHangService"
+import { fallbackImageForVariant } from "../../utils/productImageFallback"
 
 import img1 from "../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
 import img2 from "../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
@@ -85,7 +87,27 @@ const sessionMemory = ref(loadSessionMemory())
 const productQty = ref(loadProductQty())
 const sessionStatus = ref("OPEN")
 const visibleMessages = computed(() => messages.value.filter((message) => !message.hidden))
+const chatCatalog = ref([])
+const chatCatalogLoaded = ref(false)
+const chatboxWidth = ref(Number(localStorage.getItem("dirtywave_chatbox_width") || 410))
+const chatboxHeight = ref(Number(localStorage.getItem("dirtywave_chatbox_height") || 680))
+const resizingState = ref(null)
 let cachedCustomerProfile = null
+
+const MIN_CHATBOX_WIDTH = 340
+const MIN_CHATBOX_HEIGHT = 520
+
+const chatboxStyle = computed(() => {
+  const maxWidth = Math.max(MIN_CHATBOX_WIDTH, window.innerWidth - 24)
+  const maxHeight = Math.max(MIN_CHATBOX_HEIGHT, window.innerHeight - 110)
+  const width = Math.min(maxWidth, Math.max(MIN_CHATBOX_WIDTH, Number(chatboxWidth.value || 410)))
+  const height = Math.min(maxHeight, Math.max(MIN_CHATBOX_HEIGHT, Number(chatboxHeight.value || 680)))
+
+  return {
+    width: `${width}px`,
+    height: `${height}px`
+  }
+})
 
 const hiddenRoutes = computed(() => {
   const path = route.path || ""
@@ -191,34 +213,360 @@ const getFallbackImage = (id) => {
   return fallbackImages[(Math.max(n, 1) - 1) % fallbackImages.length]
 }
 
+const normalizeSearchText = (value = "") =>
+  String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/\s+/g, " ")
+    .trim()
+
+const splitSearchTokens = (value = "") =>
+  normalizeSearchText(value)
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 2)
+
+const extractListFromPayload = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (!payload || typeof payload !== "object") return []
+
+  const candidates = [
+    payload?.content,
+    payload?.items,
+    payload?.data,
+    payload?.data?.content,
+    payload?.data?.items,
+    payload?.data?.data,
+    payload?.data?.data?.content,
+    payload?.result,
+    payload?.result?.content
+  ]
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate
+  }
+
+  return []
+}
+
+const isInactiveStatus = (value = "") => {
+  const normalized = normalizeSearchText(value)
+
+  return normalized.includes("ngung")
+    || normalized.includes("khong hoat dong")
+    || normalized.includes("inactive")
+    || normalized.includes("disabled")
+    || normalized.includes("tat")
+}
+
+const isActiveProductStatus = (value = "") => {
+  const normalized = normalizeSearchText(value)
+  if (isInactiveStatus(normalized)) return false
+  return !normalized || normalized.includes("hoat dong") || normalized.includes("active")
+}
+
+const isActiveVariantStatus = (value = "") => {
+  const normalized = normalizeSearchText(value)
+  if (isInactiveStatus(normalized)) return false
+  return !normalized || normalized.includes("hoat dong") || normalized.includes("active")
+}
+
+const toLabelList = (items = []) => [...new Set(
+  (Array.isArray(items) ? items : [])
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+)]
+
+function mapCatalogProduct(rawProduct = {}) {
+  const id = Number(rawProduct?.id || 0)
+  const maSanPham = String(rawProduct?.maSanPham || rawProduct?.ma || "").trim().toUpperCase()
+  const name = String(rawProduct?.tenSanPham || rawProduct?.name || maSanPham || "").trim()
+  const category = String(rawProduct?.danhMuc?.tenDanhMuc || rawProduct?.loai?.tenLoai || rawProduct?.loai || "").trim()
+  const summary = String(rawProduct?.moTa || rawProduct?.summary || "").trim()
+
+  const variants = (Array.isArray(rawProduct?.sanPhamChiTiets) ? rawProduct.sanPhamChiTiets : [])
+    .filter((variant) => isActiveVariantStatus(variant?.trangThai || variant?.status))
+
+  const variantPrices = variants
+    .map((variant) => Number(variant?.giaBan || 0))
+    .filter((value) => Number.isFinite(value) && value > 0)
+
+  const price = variantPrices.length
+    ? Math.min(...variantPrices)
+    : Number(rawProduct?.giaBan || rawProduct?.gia || 0)
+
+  const stock = variants.length
+    ? variants.reduce((sum, variant) => sum + Math.max(0, Number(variant?.soLuong || 0)), 0)
+    : Math.max(0, Number(rawProduct?.soLuong || rawProduct?.tongTon || 0))
+
+  const colors = toLabelList(variants.map((variant) =>
+    variant?.mauSac?.tenMau || variant?.mauSac?.tenMauSac || variant?.tenMauSac || variant?.tenMau
+  ))
+
+  const sizes = toLabelList(variants.map((variant) =>
+    variant?.kichThuoc?.tenKichThuoc || variant?.tenKichThuoc || variant?.size
+  ))
+
+  const defaultVariant = variants.find((variant) => Number(variant?.soLuong || 0) > 0) || variants[0] || null
+  const defaultColor = String(defaultVariant?.mauSac?.tenMau || defaultVariant?.tenMauSac || colors[0] || "").trim()
+  const defaultSize = String(defaultVariant?.kichThuoc?.tenKichThuoc || defaultVariant?.tenKichThuoc || sizes[0] || "").trim()
+
+  const directImage = String(
+    defaultVariant?.hinhAnh ||
+    defaultVariant?.anh ||
+    rawProduct?.hinhAnh ||
+    rawProduct?.anh ||
+    ""
+  ).trim()
+
+  const image = directImage || fallbackImageForVariant({
+    id,
+    maSanPham,
+    maChiTietSanPham: String(defaultVariant?.maChiTietSanPham || "").trim().toUpperCase(),
+    tenSanPham: name,
+    tenMauSac: defaultColor
+  }) || getFallbackImage(id || 1)
+
+  return {
+    id,
+    maSanPham,
+    name,
+    category,
+    summary,
+    price: Number(price || 0),
+    stock,
+    image,
+    sizes,
+    colors,
+    defaultVariantId: defaultVariant?.id ?? null,
+    defaultSize,
+    defaultColor,
+    _search: normalizeSearchText([maSanPham, name, category, summary, colors.join(" "), sizes.join(" ")].join(" "))
+  }
+}
+
+async function ensureChatCatalogLoaded(forceRefresh = false) {
+  if (chatCatalogLoaded.value && !forceRefresh) return
+
+  try {
+    const response = await getAllSanPham({ page: 0, size: 1000 })
+    const rawList = extractListFromPayload(response?.data)
+
+    chatCatalog.value = rawList
+      .filter((item) => isActiveProductStatus(item?.trangThai || item?.status))
+      .map(mapCatalogProduct)
+      .filter((item) => Number(item?.id || 0) > 0)
+    chatCatalogLoaded.value = true
+  } catch (error) {
+    console.error("Khong dong bo duoc catalog san pham cho chat", error)
+    chatCatalog.value = []
+    chatCatalogLoaded.value = false
+  }
+}
+
+function findCatalogProductMatch(product = {}) {
+  const productCode = String(product?.maSanPham || product?.code || product?.sku || "").trim().toUpperCase()
+  const productNameKey = normalizeSearchText(product?.name || product?.tenSanPham || "")
+  const productTokens = splitSearchTokens(productNameKey)
+
+  const exact = chatCatalog.value.find((item) => {
+    if (productCode && item?.maSanPham && item.maSanPham === productCode) return true
+    return productNameKey && normalizeSearchText(item?.name || "") === productNameKey
+  })
+
+  if (exact) return exact
+
+  if (!productTokens.length) return null
+
+  let best = null
+  let bestScore = 0
+
+  for (const item of chatCatalog.value) {
+    const itemText = normalizeSearchText([item?.name, item?.maSanPham, item?.category].filter(Boolean).join(" "))
+    if (!itemText) continue
+
+    const overlap = productTokens.filter((token) => itemText.includes(token)).length
+    const score = overlap / productTokens.length
+
+    if (score > bestScore) {
+      bestScore = score
+      best = item
+    }
+  }
+
+  return bestScore >= 0.5 ? best : null
+}
+
+function searchCatalogProducts({ text = "", keyword = "", color = "", size = "", maxPrice = null } = {}) {
+  const normalizedText = normalizeSearchText(text)
+  const normalizedKeyword = normalizeSearchText(keyword)
+  const normalizedColor = normalizeSearchText(color)
+  const normalizedSize = String(size || "").trim().toUpperCase()
+  const ceilingPrice = Number(maxPrice)
+
+  return chatCatalog.value.filter((item) => {
+    const searchField = item?._search || ""
+
+    if (normalizedKeyword && !searchField.includes(normalizedKeyword)) return false
+    if (normalizedText && !searchField.includes(normalizedText)) return false
+
+    if (normalizedColor) {
+      const hasColor = (Array.isArray(item?.colors) ? item.colors : []).some((entry) =>
+        normalizeSearchText(entry).includes(normalizedColor)
+      )
+      if (!hasColor) return false
+    }
+
+    if (normalizedSize) {
+      const hasSize = (Array.isArray(item?.sizes) ? item.sizes : []).some((entry) =>
+        String(entry || "").trim().toUpperCase() === normalizedSize
+      )
+      if (!hasSize) return false
+    }
+
+    if (Number.isFinite(ceilingPrice) && ceilingPrice > 0 && Number(item?.price || 0) > ceilingPrice) {
+      return false
+    }
+
+    return Number(item?.stock || 0) > 0
+  })
+}
+
 const normalizeProduct = (product = {}) => {
+  const catalogMatch = findCatalogProductMatch(product)
   const normalizedId = Number(product.id || 0)
+  const normalizedCode = String(
+    catalogMatch?.maSanPham ||
+    product.maSanPham ||
+    product.code ||
+    product.sku ||
+    ""
+  ).trim().toUpperCase()
+  const normalizedVariantCode = String(
+    product.maChiTietSanPham ||
+    product.variantCode ||
+    ""
+  ).trim().toUpperCase()
+  const directImage = String(product.image || product.anh || "").trim()
+  const shouldKeepDirectImage =
+    directImage && !directImage.startsWith("/chatbot/fallback/")
+  const resolvedFallbackImage = fallbackImageForVariant({
+    id: normalizedId || Number(catalogMatch?.id || 0),
+    maSanPham: normalizedCode,
+    maChiTietSanPham: normalizedVariantCode,
+    tenSanPham: catalogMatch?.name || product.name || product.tenSanPham || "",
+    tenMauSac: catalogMatch?.defaultColor || product.defaultColor || product.tenMauSac || ""
+  })
 
   return {
     ...product,
-    id: normalizedId,
-    name: product.name || product.tenSanPham || product.maSanPham || "",
-    price: Number(product.price || product.giaBan || product.giaTu || 0),
-    stock: Number(product.stock || product.soLuong || product.tongTon || 0),
-    image: product.image && !String(product.image).startsWith("/chatbot/fallback/")
-      ? product.image
-      : getFallbackImage(normalizedId || 1),
-    sizes: Array.isArray(product.sizes)
+    id: Number(catalogMatch?.id || normalizedId || 0),
+    maSanPham: normalizedCode,
+    maChiTietSanPham: normalizedVariantCode,
+    tenMauSac: product.tenMauSac || "",
+    name: catalogMatch?.name || product.name || product.tenSanPham || normalizedCode || "",
+    price: Number(catalogMatch?.price || product.price || product.giaBan || product.giaTu || 0),
+stock: Number(
+  product.tongTon ??
+  product.soLuongTon ??
+  product.stock ??
+  product.soLuong ??
+  catalogMatch?.stock ??
+  0
+),
+    image: shouldKeepDirectImage
+      ? directImage
+      : (catalogMatch?.image || resolvedFallbackImage || getFallbackImage(normalizedId || 1)),
+    sizes: Array.isArray(catalogMatch?.sizes)
+      ? catalogMatch.sizes
+      : Array.isArray(product.sizes)
       ? product.sizes
       : Array.isArray(product.kichThuoc)
         ? product.kichThuoc
         : [],
-    colors: Array.isArray(product.colors)
+    colors: Array.isArray(catalogMatch?.colors)
+      ? catalogMatch.colors
+      : Array.isArray(product.colors)
       ? product.colors
       : Array.isArray(product.mauSac)
         ? product.mauSac
         : [],
-    category: product.category || product.loai || product.danhMuc || "",
-    summary: product.summary || product.moTa || "",
-    defaultVariantId: product.defaultVariantId ?? null,
-    defaultSize: product.defaultSize || "",
-    defaultColor: product.defaultColor || ""
+    category: catalogMatch?.category || product.category || product.loai || product.danhMuc || "",
+    summary: product.summary || catalogMatch?.summary || product.moTa || "",
+    promotionText: product.promotionText || product.promotionName || "",
+    promotionCode: product.promotionCode || "",
+    discountValue: product.discountValue ?? null,
+    discountUnit: product.discountUnit || "",
+    defaultVariantId: catalogMatch?.defaultVariantId ?? product.defaultVariantId ?? null,
+    defaultSize: catalogMatch?.defaultSize || product.defaultSize || "",
+    defaultColor: catalogMatch?.defaultColor || product.defaultColor || ""
   }
+}
+
+function clampChatboxSize() {
+  const maxWidth = Math.max(MIN_CHATBOX_WIDTH, window.innerWidth - 24)
+  const maxHeight = Math.max(MIN_CHATBOX_HEIGHT, window.innerHeight - 110)
+  chatboxWidth.value = Math.min(maxWidth, Math.max(MIN_CHATBOX_WIDTH, Number(chatboxWidth.value || 410)))
+  chatboxHeight.value = Math.min(maxHeight, Math.max(MIN_CHATBOX_HEIGHT, Number(chatboxHeight.value || 680)))
+}
+
+function handleResizeMove(event) {
+  if (!resizingState.value) return
+
+  const clientX = Number(event.clientX || 0)
+  const clientY = Number(event.clientY || 0)
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return
+
+  const deltaX = clientX - resizingState.value.startX
+  const deltaY = clientY - resizingState.value.startY
+  const direction = String(resizingState.value.direction || "se")
+
+  const maxWidth = Math.max(MIN_CHATBOX_WIDTH, window.innerWidth - 24)
+  const maxHeight = Math.max(MIN_CHATBOX_HEIGHT, window.innerHeight - 110)
+
+  let nextWidth = Number(resizingState.value.startWidth || 410)
+  let nextHeight = Number(resizingState.value.startHeight || 680)
+
+  if (direction.includes("e")) nextWidth = resizingState.value.startWidth + deltaX
+  if (direction.includes("w")) nextWidth = resizingState.value.startWidth - deltaX
+  if (direction.includes("s")) nextHeight = resizingState.value.startHeight + deltaY
+  if (direction.includes("n")) nextHeight = resizingState.value.startHeight - deltaY
+
+  chatboxWidth.value = Math.min(maxWidth, Math.max(MIN_CHATBOX_WIDTH, nextWidth))
+  chatboxHeight.value = Math.min(maxHeight, Math.max(MIN_CHATBOX_HEIGHT, nextHeight))
+}
+
+function stopResizing() {
+  if (!resizingState.value) return
+
+  resizingState.value = null
+  localStorage.setItem("dirtywave_chatbox_width", String(Math.round(chatboxWidth.value || 410)))
+  localStorage.setItem("dirtywave_chatbox_height", String(Math.round(chatboxHeight.value || 680)))
+
+  window.removeEventListener("pointermove", handleResizeMove)
+  window.removeEventListener("pointerup", stopResizing)
+  window.removeEventListener("pointercancel", stopResizing)
+}
+
+function startResizing(event) {
+  event.preventDefault()
+  clampChatboxSize()
+
+  const clientX = Number(event.clientX || 0)
+  const clientY = Number(event.clientY || 0)
+  const direction = String(event?.currentTarget?.dataset?.dir || "se")
+  resizingState.value = {
+    startX: clientX,
+    startY: clientY,
+    startWidth: Number(chatboxWidth.value || 410),
+    startHeight: Number(chatboxHeight.value || 680),
+    direction
+  }
+
+  window.addEventListener("pointermove", handleResizeMove)
+  window.addEventListener("pointerup", stopResizing)
+  window.addEventListener("pointercancel", stopResizing)
 }
 
 function extractProducts(payload = {}) {
@@ -318,15 +666,80 @@ function extractSizeKeyword(text = "") {
   return match ? match[1].toUpperCase() : ""
 }
 
+function looksLikePromotionQuery(text = "") {
+  const normalized = normalizeIntentText(text)
+  return normalized.includes("khuyen mai")
+    || normalized.includes("voucher")
+    || normalized.includes("uu dai")
+    || normalized.includes("sale")
+}
+
 function looksLikeProductSearch(text = "") {
   const normalized = String(text).toLowerCase()
+
+  if (looksLikePromotionQuery(text)) return false
+
   const triggers = [
     "sản phẩm", "áo", "bomber", "hoodie", "coach", "jacket", "khoác",
-    "dưới", "trên", "size", "màu", "còn hàng", "sale", "khuyến mãi",
+    "dưới", "trên", "size", "màu",
     "xem tất cả", "xem sản phẩm", "tìm", "mẫu", "giá rẻ",
     "xem mẫu", "tiếp tục tìm"
   ]
+
   return triggers.some((t) => normalized.includes(t))
+}
+function normalizeIntentText(text = "") {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function isProductCountIntent(text = "") {
+  const normalized = normalizeIntentText(text)
+  if (!normalized) return false
+
+  const mentionsProduct =
+    normalized.includes("san pham") || normalized.includes("mat hang")
+
+  const asksForCount =
+    normalized.includes("bao nhieu") ||
+    normalized.includes("tong cong") ||
+    normalized.includes("so luong") ||
+    normalized.includes("co may") ||
+    normalized.includes("dem")
+
+  return mentionsProduct && asksForCount
+}
+
+async function fetchCatalogProductCount() {
+  try {
+    const response = await getAllSanPham({ page: 0, size: 1 })
+    const payload = response?.data
+    const totalFromMeta = Number(
+      payload?.totalElements ??
+      payload?.total ??
+      payload?.count ??
+      payload?.totalItems ??
+      NaN
+    )
+
+    if (Number.isFinite(totalFromMeta) && totalFromMeta >= 0) {
+      return totalFromMeta
+    }
+
+    const list = Array.isArray(payload)
+      ? payload
+      : (Array.isArray(payload?.content) ? payload.content : [])
+
+    return list.length
+  } catch (error) {
+    console.error("Khong dem duoc tong so san pham", error)
+    return null
+  }
 }
 
 function normalizeQuickReplyLabel(value = "") {
@@ -878,6 +1291,7 @@ async function startNewConversation() {
 async function openWidget() {
   launcherHovered.value = false
   isOpen.value = true
+  await ensureChatCatalogLoaded(true)
 
   await fetchSupportStatus()
   await syncHistoryFromServer()
@@ -1025,6 +1439,7 @@ function openCart() {
 async function submitMessage() {
   const text = String(input.value || "").trim()
   if (!text || isTyping.value || sessionStatus.value === "CLOSED") return
+  const productCountIntent = isProductCountIntent(text)
 
   // Push user message and clear input BEFORE opening widget
   // so syncHistoryFromServer inside openWidget doesn't wipe it
@@ -1054,11 +1469,54 @@ async function submitMessage() {
 
     const serverProducts = extractProducts(data)
     let fallbackProducts = []
+    let totalCatalogProducts = null
 
-    if (!serverProducts.length && looksLikeProductSearch(text)) {
+    if (productCountIntent) {
+      totalCatalogProducts = await fetchCatalogProductCount()
+    }
+
+    if (!serverProducts.length && looksLikeProductSearch(text) && !productCountIntent) {
       try {
         const maxPrice = extractPriceCeiling(text)
         const { keyword, color, size } = buildProductSearchKeyword(text)
+
+        await ensureChatCatalogLoaded(true)
+        const catalogProducts = searchCatalogProducts({
+          text,
+          keyword,
+          color,
+          size,
+          maxPrice
+        })
+
+        if (catalogProducts.length) {
+          fallbackProducts = catalogProducts.slice(0, 8).map(normalizeProduct)
+        } else {
+          const productRes = await searchChatProducts({
+            q: keyword || "",
+            color: color || "",
+            maxPrice
+          })
+
+          console.log("PRODUCT API RAW =", productRes?.data)
+
+          let fetchedProducts = Array.isArray(productRes?.data)
+            ? productRes.data
+                .filter((item) => isActiveProductStatus(item?.trangThai || item?.status))
+                .map(normalizeProduct)
+            : []
+
+          if (size) {
+            fetchedProducts = fetchedProducts.filter((product) =>
+              Array.isArray(product?.sizes) &&
+              product.sizes.some(
+                (item) => String(item).trim().toUpperCase() === size
+              )
+            )
+          }
+
+          fallbackProducts = fetchedProducts
+        }
 
         console.log("USER TEXT =", text)
         console.log("PARSED KEYWORD =", {
@@ -1067,29 +1525,6 @@ async function submitMessage() {
           size,
           maxPrice
         })
-
-        const productRes = await searchChatProducts({
-          q: keyword || "",
-          color: color || "",
-          maxPrice
-        })
-
-        console.log("PRODUCT API RAW =", productRes?.data)
-
-        let fetchedProducts = Array.isArray(productRes?.data)
-          ? productRes.data.map(normalizeProduct)
-          : []
-
-        if (size) {
-          fetchedProducts = fetchedProducts.filter((product) =>
-            Array.isArray(product?.sizes) &&
-            product.sizes.some(
-              (item) => String(item).trim().toUpperCase() === size
-            )
-          )
-        }
-
-        fallbackProducts = fetchedProducts
         console.log("FALLBACK PRODUCTS AFTER FILTER =", fallbackProducts)
       } catch (e) {
         console.error("Fallback search sản phẩm thất bại", e)
@@ -1103,17 +1538,25 @@ async function submitMessage() {
     clearBackendIssue()
     updateLatestPendingUserMessage("sent")
 
-    const isProductIntent = looksLikeProductSearch(text)
+    const isProductIntent = looksLikeProductSearch(text) && !productCountIntent
     const waitingHumanButStillCanSuggest =
       supportMode.value === "HUMAN" &&
       sessionStatus.value === "WAITING_EMPLOYEE" &&
       isProductIntent
     const shouldSuppressBotMessage =
       Boolean(data?.suppressBotMessage) && !waitingHumanButStillCanSuggest
-    const finalProducts = serverProducts.length ? serverProducts : fallbackProducts
+    const finalProducts = productCountIntent
+      ? []
+      : (serverProducts.length ? serverProducts : fallbackProducts)
+
+    const productCountMessage = Number.isFinite(totalCatalogProducts)
+      ? `Hiện tại shop có ${totalCatalogProducts} sản phẩm trong hệ thống.`
+      : ""
 
     const messageText =
-      String(data?.message || "").trim() ||
+      (productCountIntent
+        ? productCountMessage
+        : String(data?.message || "").trim()) ||
       (finalProducts.length
         ? `Em tìm được ${finalProducts.length} sản phẩm phù hợp cho yêu cầu "${text}":`
         : "")
@@ -1122,7 +1565,9 @@ async function submitMessage() {
       Array.isArray(data?.quickReplies) && data.quickReplies.length
         ? data.quickReplies
         : (
-            finalProducts.length
+            productCountIntent
+              ? ["Xem sản phẩm", "Bomber đen dưới 700k", "Hoodie size L"]
+              : finalProducts.length
               ? ["Xem mẫu rẻ hơn", "Tư vấn size", "Màu đen"]
               : []
           )
@@ -1247,11 +1692,14 @@ watch(isOpen, async (value) => {
 })
 
 onMounted(async () => {
+  clampChatboxSize()
+  await ensureChatCatalogLoaded()
   await fetchSupportStatus()
 
   window.addEventListener("online", handleOnline)
   window.addEventListener("offline", handleOffline)
   window.addEventListener("auth-context-changed", handleAuthContextChanged)
+  window.addEventListener("resize", clampChatboxSize)
 
   if (isOpen.value) {
     await syncHistoryFromServer()
@@ -1261,9 +1709,11 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  stopResizing()
   window.removeEventListener("online", handleOnline)
   window.removeEventListener("offline", handleOffline)
   window.removeEventListener("auth-context-changed", handleAuthContextChanged)
+  window.removeEventListener("resize", clampChatboxSize)
   stopHistoryPolling()
 })
 </script>
@@ -1271,7 +1721,7 @@ onBeforeUnmount(() => {
 <template>
   <div v-if="!hiddenRoutes" class="dw-chat-root">
     <Transition name="dw-widget">
-      <section v-if="isOpen" class="dw-chatbox">
+      <section v-if="isOpen" class="dw-chatbox" :style="chatboxStyle">
         <header class="dw-chatbox__header">
           <div class="dw-chatbox__identity">
             <div class="dw-avatar">
@@ -1340,6 +1790,9 @@ onBeforeUnmount(() => {
                         <div>
                           <strong>{{ product.name }}</strong>
                           <small>{{ product.category }} • Tồn {{ product.stock }}</small>
+                          <span v-if="product.promotionText" class="dw-product-promo">
+                            {{ product.promotionText }}
+                          </span>
                         </div>
                         <span class="dw-product-price">{{ currency(product.price) }}</span>
                       </div>
@@ -1430,6 +1883,15 @@ onBeforeUnmount(() => {
             </button>
           </div>
         </footer>
+
+        <button type="button" class="dw-resize-handle dw-resize-handle--n" data-dir="n" aria-label="Resize top" @pointerdown="startResizing" />
+        <button type="button" class="dw-resize-handle dw-resize-handle--s" data-dir="s" aria-label="Resize bottom" @pointerdown="startResizing" />
+        <button type="button" class="dw-resize-handle dw-resize-handle--e" data-dir="e" aria-label="Resize right" @pointerdown="startResizing" />
+        <button type="button" class="dw-resize-handle dw-resize-handle--w" data-dir="w" aria-label="Resize left" @pointerdown="startResizing" />
+        <button type="button" class="dw-resize-handle dw-resize-handle--ne" data-dir="ne" aria-label="Resize top-right" @pointerdown="startResizing" />
+        <button type="button" class="dw-resize-handle dw-resize-handle--nw" data-dir="nw" aria-label="Resize top-left" @pointerdown="startResizing" />
+        <button type="button" class="dw-resize-handle dw-resize-handle--se" data-dir="se" aria-label="Resize bottom-right" @pointerdown="startResizing" />
+        <button type="button" class="dw-resize-handle dw-resize-handle--sw" data-dir="sw" aria-label="Resize bottom-left" @pointerdown="startResizing" />
       </section>
     </Transition>
 
@@ -1472,6 +1934,7 @@ onBeforeUnmount(() => {
 }
 
 .dw-chatbox {
+  position: relative;
   width: min(410px, calc(100vw - 24px));
   height: min(680px, calc(100vh - 110px));
   margin: 0 0 16px auto;
@@ -1486,6 +1949,46 @@ onBeforeUnmount(() => {
   box-shadow: 0 32px 72px rgba(88, 14, 28, 0.22);
   backdrop-filter: blur(12px);
 }
+
+.dw-resize-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(143, 17, 33, 0.24);
+  opacity: 0;
+  z-index: 4;
+  touch-action: none;
+  transition: opacity 0.2s ease;
+}
+
+.dw-chatbox:hover .dw-resize-handle { opacity: 0.62; }
+
+.dw-resize-handle--n,
+.dw-resize-handle--s {
+  left: 50%;
+  transform: translateX(-50%);
+  width: 70px;
+  height: 10px;
+}
+
+.dw-resize-handle--e,
+.dw-resize-handle--w {
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px;
+  height: 70px;
+}
+
+.dw-resize-handle--n { top: 2px; cursor: ns-resize; }
+.dw-resize-handle--s { bottom: 2px; cursor: ns-resize; }
+.dw-resize-handle--e { right: 2px; cursor: ew-resize; }
+.dw-resize-handle--w { left: 2px; cursor: ew-resize; }
+.dw-resize-handle--ne { top: 4px; right: 4px; cursor: nesw-resize; }
+.dw-resize-handle--nw { top: 4px; left: 4px; cursor: nwse-resize; }
+.dw-resize-handle--se { right: 4px; bottom: 4px; cursor: nwse-resize; }
+.dw-resize-handle--sw { left: 4px; bottom: 4px; cursor: nesw-resize; }
 
 .dw-chatbox__header {
   display: flex;
@@ -1711,6 +2214,20 @@ onBeforeUnmount(() => {
 .dw-product-price { color: #991126; font-weight: 700; white-space: nowrap; font-size: 13px; }
 .dw-product-summary { margin: 0; font-size: 13px; color: #5e5658; line-height: 1.4; }
 
+.dw-product-promo {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #fff0f2;
+  border: 1px solid #f3b8c2;
+  color: #b11226;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
 .dw-product-meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; color: #7b6f73; }
 .dw-product-meta span { padding: 4px 8px; border-radius: 999px; background: #fff; border: 1px solid #eed8dd; }
 
@@ -1897,6 +2414,8 @@ onBeforeUnmount(() => {
   .dw-chatbox {
     width: 100%;
   }
+
+  .dw-resize-handle { display: none; }
 
   .dw-contact-pill span {
     display: none;

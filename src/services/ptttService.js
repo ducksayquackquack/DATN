@@ -1,6 +1,7 @@
 import axios from "axios"
+import { resolveApiOrigin } from "../utils/apiOrigin"
 
-const API = "http://localhost:8080/api/pttt"
+const API = `${resolveApiOrigin()}/api/pttt`
 
 export function getAllPTTT() {
   return axios.get(API)

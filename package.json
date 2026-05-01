@@ -6,7 +6,15 @@
   "scripts": {
     "dev": "npm run dev:clean",
     "dev:clean": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$p=(Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess); if($p){ taskkill /PID $p /T /F | Out-Null }; vite\"",
+    "dev:cloudflare": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cloudflare-frontend.ps1",
+    "dev:cloudflare:named": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cloudflare-named-frontend.ps1",
     "dev:vnpay": "npm --prefix backend run dev",
+    "live": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cloudflare-full-stack.ps1",
+    "live:skip-backend": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cloudflare-full-stack.ps1 -NoBackend",
+    "live:named": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cloudflare-named-full-stack.ps1",
+    "live:named:skip-backend": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cloudflare-named-full-stack.ps1 -NoBackend",
+    "live:dirtywave": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-dirtywave-live.ps1",
+    "live:dirtywave:skip-backend": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-dirtywave-live.ps1 -NoBackend",
     "build": "vite build",
     "preview": "vite preview"
   },

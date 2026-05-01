@@ -6,8 +6,7 @@ const NODE_BACKEND = String(import.meta.env.VITE_NODE_BACKEND_URL || "").trim().
 
 const ORDER_LOOKUP_MAIL_FALLBACK_ENDPOINTS = [
   `${resolveApiOrigin()}/api/mail/send-order-lookup`,
-  NODE_BACKEND ? `${NODE_BACKEND}/api/mail/send-order-lookup` : "",
-  "http://localhost:3000/api/mail/send-order-lookup"
+  NODE_BACKEND ? `${NODE_BACKEND}/api/mail/send-order-lookup` : ""
 ].filter(Boolean)
 
 const normalizeHoaDonId = (id) => {
@@ -102,7 +101,60 @@ export const updateHoaDonBySystemEvent = (id, eventCode, note = "", trackingUrl 
 }
 
 export const addHoaDonItem = (id, data) => {
-  return axios.post(`${API}/${ensureHoaDonId(id)}/items`, data)
+  const normalizedSpctId = Number(
+    data?.spctId
+    ?? data?.sanPhamChiTietId
+    ?? data?.idSanPhamChiTiet
+    ?? data?.chiTietSanPhamId
+    ?? 0
+  )
+  const normalizedQty = Number(data?.soLuong ?? data?.quantity ?? 0)
+  const normalizedUnitPrice = Number(
+    data?.giaSauGiam
+    ?? data?.giaBanSauDotGiamGia
+    ?? data?.donGia
+    ?? data?.giaBan
+    ?? 0
+  )
+  const normalizedBasePrice = Number(
+    data?.giaBanGoc
+    ?? data?.giaNiemYet
+    ?? data?.basePrice
+    ?? normalizedUnitPrice
+    ?? 0
+  )
+  const normalizedCampaignPercent = Number(
+    data?.dotGiamGiaPhanTram
+    ?? data?.campaignPercent
+    ?? data?.phanTramGiamGia
+    ?? 0
+  )
+
+  const payload = {
+    ...data,
+    spctId: normalizedSpctId > 0 ? normalizedSpctId : data?.spctId,
+    sanPhamChiTietId: normalizedSpctId > 0 ? normalizedSpctId : data?.sanPhamChiTietId,
+    idSanPhamChiTiet: normalizedSpctId > 0 ? normalizedSpctId : data?.idSanPhamChiTiet,
+    chiTietSanPhamId: normalizedSpctId > 0 ? normalizedSpctId : data?.chiTietSanPhamId,
+    soLuong: normalizedQty > 0 ? normalizedQty : data?.soLuong,
+    quantity: normalizedQty > 0 ? normalizedQty : data?.quantity,
+    giaBan: normalizedUnitPrice > 0 ? normalizedUnitPrice : data?.giaBan,
+    donGia: normalizedUnitPrice > 0 ? normalizedUnitPrice : data?.donGia,
+    giaSauGiam: normalizedUnitPrice > 0 ? normalizedUnitPrice : data?.giaSauGiam,
+    giaBanSauDotGiamGia: normalizedUnitPrice > 0 ? normalizedUnitPrice : data?.giaBanSauDotGiamGia,
+    giaBanGoc: normalizedBasePrice > 0 ? normalizedBasePrice : data?.giaBanGoc,
+    giaNiemYet: normalizedBasePrice > 0 ? normalizedBasePrice : data?.giaNiemYet,
+    dotGiamGiaPhanTram: normalizedCampaignPercent > 0 ? normalizedCampaignPercent : data?.dotGiamGiaPhanTram,
+    campaignPercent: normalizedCampaignPercent > 0 ? normalizedCampaignPercent : data?.campaignPercent,
+    campaignName: data?.campaignName,
+    tenKhuyenMai: data?.tenKhuyenMai || data?.campaignName
+  }
+
+  if (normalizedQty > 0 && normalizedUnitPrice > 0) {
+    payload.thanhTien = Number(data?.thanhTien || (normalizedQty * normalizedUnitPrice))
+  }
+
+  return axios.post(`${API}/${ensureHoaDonId(id)}/items`, payload)
 }
 
 export const updateHoaDonItemQty = (id, itemId, data) => {
@@ -113,6 +165,31 @@ export const deleteHoaDonItem = (id, itemId) => {
   return axios.delete(`${API}/${ensureHoaDonId(id)}/items/${itemId}`)
 }
 
+const extractHoaDonItems = (payload) => {
+  const candidates = [
+    payload?.items,
+    payload?.hoaDonChiTiets,
+    payload?.chiTietHoaDons,
+    payload?.chiTiets,
+    payload?.chiTietDonHang,
+    payload?.details,
+    payload?.lineItems,
+    payload?.data?.items,
+    payload?.data?.hoaDonChiTiets,
+    payload?.data?.chiTietHoaDons,
+    payload?.data?.chiTiets,
+    payload?.data?.chiTietDonHang,
+    payload?.data?.details,
+    payload?.data?.lineItems
+  ]
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate
+  }
+
+  return []
+}
+
 export const cancelHoaDon = (id, reason = "") => {
   return axios.post(`${API}/${id}/cancel`, null, {
     params: reason ? { reason } : {}
@@ -121,7 +198,7 @@ export const cancelHoaDon = (id, reason = "") => {
 
 export const getHoaDonChiTiet = async (id) => {
   const res = await getHoaDonById(id)
-  const items = Array.isArray(res.data?.items) ? res.data.items : []
+  const items = extractHoaDonItems(res.data)
   return {
     ...res,
     data: items

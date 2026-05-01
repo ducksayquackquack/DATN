@@ -1,7 +1,8 @@
 import axios from "axios"
+import { resolveApiOrigin } from "../utils/apiOrigin"
 
-const API = "http://localhost:8080/api/payment"
-const FALLBACK_API = "http://localhost:3000/api/vnpay"
+const API = `${resolveApiOrigin()}/api/payment`
+const FALLBACK_API = `${resolveApiOrigin()}/api/vnpay`
 
 const getDefaultReturnUrl = () => {
   if (typeof window !== "undefined" && window.location?.origin) {

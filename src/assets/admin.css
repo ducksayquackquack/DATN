@@ -1263,3 +1263,541 @@ body.ops-theme .btn-danger:hover {
   filter: brightness(1.03);
   transform: translateY(-1px);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   COMPREHENSIVE RESPONSIVE DESIGN - Mobile First
+   ═════════════════════════════════════════════════════════════ */
+
+/* ─ Override inline styles for responsive inputs ─ */
+input[style*="width:320px"],
+input[style*="width: 320px"],
+select[style*="width:220px"],
+select[style*="width: 220px"] {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* ─ Table horizontal scroll wrapper ─ */
+.table {
+  overflow-x: auto;
+  display: block;
+  max-width: 100%;
+}
+
+.table thead,
+.table tbody,
+.table th,
+.table td {
+  max-width: 100%;
+}
+
+/* ─ Tablet & smaller devices: 1024px and below ─ */
+@media (max-width: 1024px) {
+  .wrap {
+    padding: 16px;
+  }
+
+  .page-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .card .head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  /* Make toolbar filters responsive */
+  .toolbar {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .filters {
+    gap: 8px;
+    flex-direction: column;
+  }
+
+  input[type="text"],
+  input[type="number"],
+  select,
+  .form-input,
+  .form-select {
+    width: 100%;
+  }
+
+  /* Reduce table column widths to fit */
+  .table th[style*="width"],
+  .table td[style*="width"] {
+    min-width: 80px !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Make table scrollable */
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table {
+    font-size: 13px;
+  }
+
+  .table th,
+  .table td {
+    padding: 12px 14px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .filter-group {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .page-title {
+    font-size: 20px;
+  }
+
+  .btn {
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+
+  .iconbtn {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* ─ Tablets & medium devices: 768px and below ─ */
+@media (max-width: 768px) {
+  .wrap {
+    padding: 14px;
+  }
+
+  body {
+    font-size: 13px;
+  }
+
+  .page-title {
+    font-size: 18px;
+  }
+
+  .page-subtitle {
+    font-size: 13px;
+  }
+
+  .card .head {
+    padding: 14px;
+  }
+
+  .card .body {
+    padding: 12px;
+  }
+
+  /* Stack toolbar vertically */
+  .toolbar {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .filters {
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .filters > * {
+    width: 100%;
+    flex: 1;
+  }
+
+  input[type="text"],
+  input[type="number"],
+  select {
+    width: 100%;
+    height: 36px;
+    font-size: 13px;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  /* Table optimizations */
+  .table {
+    font-size: 12px;
+    table-layout: auto;
+  }
+
+  .table th,
+  .table td {
+    padding: 10px 8px;
+    min-width: min-content;
+  }
+
+  .table th {
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+
+  .table th[style*="width"],
+  .table td[style*="width"] {
+    width: auto !important;
+    min-width: 60px !important;
+  }
+
+  /* Actions column - stack buttons vertically on mobile */
+  .actions {
+    flex-direction: column;
+    gap: 4px;
+    justify-content: center;
+  }
+
+  .iconbtn {
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
+  }
+
+  .pagination {
+    flex-direction: column;
+    gap: 8px;
+    font-size: 12px;
+  }
+
+  .pager {
+    gap: 4px;
+  }
+
+  .pill {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+
+  .stat-card {
+    padding: 16px;
+  }
+
+  .stat-value {
+    font-size: 24px;
+  }
+
+  .topbar .row {
+    padding: 12px 14px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .search {
+    min-width: 100%;
+    width: 100%;
+  }
+
+  .userbox {
+    gap: 8px;
+  }
+
+  .avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 13px;
+  }
+}
+
+/* ─ Small devices & phones: 640px and below ─ */
+@media (max-width: 640px) {
+  .wrap {
+    padding: 12px;
+  }
+
+  html {
+    font-size: 12px;
+  }
+
+  body {
+    font-size: 12px;
+  }
+
+  .page-title {
+    font-size: 16px;
+    margin-bottom: 4px;
+  }
+
+  .page-subtitle {
+    font-size: 12px;
+  }
+
+  .card {
+    border-radius: 12px;
+  }
+
+  .card .head {
+    padding: 12px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .card .head h1,
+  .card .head h2 {
+    font-size: 16px;
+    margin: 0;
+  }
+
+  .card .body {
+    padding: 10px;
+  }
+
+  .toolbar {
+    gap: 8px;
+    margin-bottom: 4px !important;
+  }
+
+  .filters {
+    gap: 6px;
+  }
+
+  /* Single column layout for header actions */
+  .page-header {
+    gap: 8px;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 9px 10px;
+    font-size: 12px;
+    gap: 6px;
+  }
+
+  .btn.primary {
+    width: 100%;
+  }
+
+  input[type="text"],
+  input[type="number"],
+  select,
+  textarea {
+    width: 100%;
+    height: 34px;
+    font-size: 12px;
+    padding: 0 10px;
+  }
+
+  textarea {
+    min-height: 80px;
+  }
+
+  /* Table: Make columns narrower, enable horizontal scroll */
+  .table {
+    font-size: 11px;
+    table-layout: auto;
+  }
+
+  .table th,
+  .table td {
+    padding: 8px 6px;
+    min-width: 50px;
+    white-space: nowrap;
+  }
+
+  .table th {
+    font-size: 10px;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .table th[style*="width"],
+  .table td[style*="width"] {
+    width: auto !important;
+    min-width: 50px !important;
+  }
+
+  /* Hide some columns on very small screens */
+  .table th:nth-child(n+4),
+  .table td:nth-child(n+4) {
+    font-size: 10px;
+  }
+
+  .actions {
+    gap: 2px;
+    flex-direction: row;
+    justify-content: center;
+  }
+
+  .iconbtn {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    font-size: 10px;
+  }
+
+  .pill {
+    font-size: 10px;
+    padding: 3px 6px;
+  }
+
+  .pagination {
+    font-size: 11px;
+  }
+
+  .stat-card {
+    padding: 12px;
+  }
+
+  .stat-label {
+    font-size: 12px;
+  }
+
+  .stat-value {
+    font-size: 20px;
+  }
+
+  .topbar {
+    padding: 0;
+  }
+
+  .topbar .row {
+    padding: 10px 12px;
+    gap: 6px;
+  }
+
+  .search {
+    padding: 8px 12px;
+    gap: 6px;
+    min-width: auto;
+    width: 100%;
+  }
+
+  .search input {
+    font-size: 12px;
+  }
+
+  .userbox {
+    gap: 6px;
+    font-size: 11px;
+  }
+
+  .avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 11px;
+  }
+
+  /* Hide brand text on mobile */
+  .brand-text {
+    display: none;
+  }
+
+  .brand-logo {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+/* ─ Extra small devices: 480px and below ─ */
+@media (max-width: 480px) {
+  .wrap {
+    padding: 10px;
+  }
+
+  html {
+    font-size: 11px;
+  }
+
+  body {
+    font-size: 11px;
+  }
+
+  .page-title {
+    font-size: 14px;
+  }
+
+  .page-subtitle {
+    font-size: 11px;
+  }
+
+  .card .head h1,
+  .card .head h2 {
+    font-size: 14px;
+  }
+
+  .btn {
+    padding: 8px 8px;
+    font-size: 11px;
+    gap: 4px;
+  }
+
+  .btn-search {
+    padding: 8px 8px;
+  }
+
+  input[type="text"],
+  input[type="number"],
+  select,
+  textarea {
+    height: 32px;
+    font-size: 11px;
+  }
+
+  .table {
+    font-size: 10px;
+  }
+
+  .table th,
+  .table td {
+    padding: 6px 4px;
+    min-width: 40px;
+  }
+
+  .table th {
+    font-size: 9px;
+  }
+
+  .iconbtn {
+    width: 24px;
+    height: 24px;
+    font-size: 9px;
+  }
+
+  .pagination {
+    font-size: 10px;
+    flex-direction: column;
+  }
+
+  .stat-card {
+    padding: 10px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+  }
+
+  .stat-value {
+    font-size: 18px;
+  }
+
+  .topbar .row {
+    padding: 8px 10px;
+   flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 10px;
+  }
+
+  .brand-logo {
+    width: 40px;
+    height: 40px;
+  }
+}

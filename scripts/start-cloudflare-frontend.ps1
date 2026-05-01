@@ -1,12 +1,43 @@
 param(
-  [int]$Port = 5173
+  [int]$Port = 5173,
+  [switch]$SkipBackend
 )
 
 $ErrorActionPreference = 'Stop'
 $envFile = Join-Path (Join-Path $PSScriptRoot '..') '.env.local'
+$rootDir = Join-Path $PSScriptRoot '..'
+$backendDir = Join-Path $rootDir 'backend'
 $cfLogFile = Join-Path $env:TEMP 'dirtywave-cloudflare-tunnel.log'
 $cfErrLogFile = Join-Path $env:TEMP 'dirtywave-cloudflare-tunnel.err.log'
 $cfPidFile = Join-Path $env:TEMP 'dirtywave-cloudflare-tunnel.pid'
+$backendPidFile = Join-Path $env:TEMP 'dirtywave-node-backend.pid'
+
+function Stop-PortProcess($port) {
+  $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($conn -and $conn.OwningProcess) {
+    try {
+      Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
+      Start-Sleep -Milliseconds 400
+      Write-Host "  Released port $port (PID $($conn.OwningProcess))" -ForegroundColor DarkGray
+    } catch {
+    }
+  }
+}
+
+function Stop-StaleBackendProcess {
+  if (Test-Path $backendPidFile) {
+    $rawPid = Get-Content $backendPidFile -Raw -ErrorAction SilentlyContinue
+    $pidValue = 0
+    [void][int]::TryParse($rawPid.ToString().Trim(), [ref]$pidValue)
+    if ($pidValue -gt 0) {
+      try {
+        Stop-Process -Id $pidValue -Force -ErrorAction SilentlyContinue
+      } catch {
+      }
+    }
+    Remove-Item $backendPidFile -Force -ErrorAction SilentlyContinue
+  }
+}
 
 function Resolve-CloudflaredCommand {
   $cmd = Get-Command cloudflared -ErrorAction SilentlyContinue
@@ -79,6 +110,25 @@ Write-Host ''
 Write-Host '=== DIRTYWAVE DEV STARTER (CLOUDFLARE) ===' -ForegroundColor Cyan
 Write-Host ''
 
+if (-not $SkipBackend) {
+  if (-not (Test-Path (Join-Path $backendDir 'package.json'))) {
+    Write-Host "ERROR: Backend folder missing package.json at $backendDir" -ForegroundColor Red
+    exit 1
+  }
+
+  Stop-StaleBackendProcess
+  Stop-PortProcess 3000
+
+  Write-Host 'Starting Node backend on :3000...' -ForegroundColor Yellow
+  $backendProc = Start-Process -FilePath 'powershell' `
+    -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', "Set-Location '$backendDir'; npm run dev") `
+    -WindowStyle Hidden `
+    -PassThru
+
+  Set-Content -Path $backendPidFile -Value $backendProc.Id -Encoding ASCII
+  Start-Sleep -Seconds 1
+}
+
 $cloudflared = Resolve-CloudflaredCommand
 if (-not $cloudflared) {
   Write-Host 'ERROR: cloudflared not found.' -ForegroundColor Red
@@ -132,8 +182,12 @@ Write-Host "Saved .env.local -> VITE_API_ORIGIN=(auto)" -ForegroundColor Cyan
 Write-Host "Cloudflared PID: $($cfProc.Id)" -ForegroundColor DarkGray
 Write-Host ''
 Write-Host 'Starting Vite...' -ForegroundColor Yellow
-Write-Host '(Run Spring Boot backend separately on port 8080)' -ForegroundColor DarkGray
+if ($SkipBackend) {
+  Write-Host '(Node backend is skipped; ensure mail backend is already running on port 3000)' -ForegroundColor DarkGray
+} else {
+  Write-Host '(Node backend started automatically on port 3000)' -ForegroundColor DarkGray
+}
 Write-Host ''
 
-Set-Location (Join-Path $PSScriptRoot '..')
+Set-Location $rootDir
 npm run dev

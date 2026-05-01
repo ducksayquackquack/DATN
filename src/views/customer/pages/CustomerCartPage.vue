@@ -89,8 +89,20 @@ const normalizeImage = (value) => {
 
 const isCuratedCatalogCode = (value = "") => /^SP0*(?:[1-9]|1\d|20)$/i.test(String(value || "").trim())
 
+const isActiveVariantStatus = (value = "") => {
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+  return !normalized.includes("ngung") && !normalized.includes("inactive")
+}
+
 const normalizeBackendProduct = (item) => {
-  const variants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
+  const variants = Array.isArray(item?.sanPhamChiTiets)
+    ? item.sanPhamChiTiets.filter((variant) => isActiveVariantStatus(variant?.trangThai || variant?.status))
+    : []
   const variantPrices = variants.map((v) => toNumber(v?.giaBan)).filter((v) => v > 0)
   const price = variantPrices.length ? Math.min(...variantPrices) : toNumber(item?.giaBan || item?.gia || 0)
   const id = Number(item?.id)
@@ -635,7 +647,10 @@ const beginCheckout = () => {
     spctId: line.spctId || null,
   }))
 
-  writeCheckoutCartArray(payload)
+  if (!writeCheckoutCartArray(payload)) {
+    window.toast?.error?.("Không thể tiếp tục thanh toán vì bộ nhớ trình duyệt đã đầy. Vui lòng xóa bớt dữ liệu và thử lại.")
+    return
+  }
   router.push("/checkout")
 }
 
@@ -721,7 +736,9 @@ const loadProducts = async () => {
     const response = await getAllSanPham()
     const rows = Array.isArray(response?.data) ? response.data : []
     const withCampaignPrice = await Promise.all(rows.map(async (item) => {
-      const variants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
+      const variants = Array.isArray(item?.sanPhamChiTiets)
+        ? item.sanPhamChiTiets.filter((variant) => isActiveVariantStatus(variant?.trangThai || variant?.status))
+        : []
       if (!variants.length) return item
       let pricedVariants = variants
       try {

@@ -1,6 +1,7 @@
 import axios from "axios"
+import { resolveApiOrigin } from "../utils/apiOrigin"
 
-const API = "http://localhost:8080/api/loai"
+const API = `${resolveApiOrigin()}/api/loai`
 
 export const getAllLoai = () =>
   axios.get(API)

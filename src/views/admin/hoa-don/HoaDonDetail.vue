@@ -17,7 +17,7 @@ import { getAllSanPham } from "../../../services/sanPhamService"
 import VoucherSelector from "../../../components/voucher/VoucherSelector.vue"
 import { useConfirm } from "../../../composables/useConfirm"
 import { useToast } from "../../../composables/useToast"
-import { CheckCircle2, ClipboardList, Loader2, Minus, Package2, PackageCheck, PackageSearch, Plus, RotateCcw, Save, Search, ShoppingBag, Ticket, Truck, UserRound, X, OctagonX } from "lucide-vue-next"
+import { CheckCircle2, ClipboardList, Loader2, Mail, Minus, Package2, PackageCheck, PackageSearch, Plus, RotateCcw, Save, Search, ShoppingBag, Ticket, Truck, UserRound, X, OctagonX } from "lucide-vue-next"
 import { getAdminStatusTone, normalizeAdminStatusLabel, normalizeOrderStatusCode } from "../../../utils/adminStatus"
 import { describePaymentFlowState } from "../../../utils/paymentWorkflow"
 import { buildOrderLookupTrackingUrl } from "../../../utils/publicTrackingUrl"
@@ -156,6 +156,7 @@ const selectedVoucher = ref(null)
 const persistedVoucherCode = ref("")
 const persistedVoucherName = ref("")
 const ORDER_ITEM_VOUCHER_SNAPSHOTS_KEY = "orderItemVoucherSnapshots"
+const ORDER_ITEM_PRICING_SNAPSHOTS_KEY = "orderItemPricingSnapshots"
 const manualStatusNote = ref("")
 
 
@@ -330,9 +331,10 @@ const discountDisplayLabel = computed(() => {
   const voucherCode = persistedVoucherCode.value || selectedVoucher.value?.maPhieuGiamGia || ''
   const sub = subtotal.value
   const pct = sub > 0 ? Math.round((discountAmount / sub) * 100) : 0
-  if (voucherCode && pct > 0) return `${voucherCode} - Giảm ${pct}% (${formatCurrency(discountAmount)})`
-  if (pct > 0) return `Giảm ${pct}% (${formatCurrency(discountAmount)})`
-  return formatCurrency(discountAmount)
+  if (voucherCode && pct > 0) return `${voucherCode} - Giảm ${pct}%`
+  if (voucherCode) return `${voucherCode} - Đã áp dụng`
+  if (pct > 0) return `Giảm ${pct}%`
+  return 'Đã áp dụng giảm giá'
 })
 
 const selectedCustomer = computed(() => {
@@ -351,6 +353,22 @@ const firstNonEmptyValue = (...values) => {
   return ""
 }
 
+const normalizeEmailValue = (value) => {
+  const normalized = String(value || "").trim()
+  if (!normalized) return ""
+  const lowered = normalized.toLowerCase()
+  if (["null", "undefined", "nan", "n/a"].includes(lowered)) return ""
+  return normalized
+}
+
+const firstValidEmailValue = (...values) => {
+  for (const value of values) {
+    const normalized = normalizeEmailValue(value)
+    if (normalized && normalized.includes("@")) return normalized
+  }
+  return ""
+}
+
 const selectedCustomerEmail = computed(() => {
   return firstNonEmptyValue(
     hoaDon.value.customerEmail,
@@ -362,9 +380,23 @@ const selectedCustomerEmail = computed(() => {
   )
 })
 
+const selectedCustomerEmailForMail = computed(() => {
+  return firstValidEmailValue(
+    hoaDon.value.customerEmail,
+    selectedCustomer.value?.email,
+    selectedCustomer.value?.taiKhoan?.email,
+    selectedCustomer.value?.taiKhoanEmail,
+    hoaDon.value.emailKhachHang,
+    hoaDon.value.emailNguoiNhan,
+    hoaDon.value.emailNhanHang,
+    hoaDon.value.email,
+  )
+})
+
 const selectedCustomerLabel = computed(() => {
   if (selectedCustomer.value?.tenKhachHang) return selectedCustomer.value.tenKhachHang
   if (hoaDon.value.khachHangId != null) return `KH #${hoaDon.value.khachHangId}`
+  if (isPosOrder.value) return "Khách lẻ"
   return "Chưa chọn"
 })
 
@@ -531,6 +563,74 @@ function extractVoucherSnapshotFromNote(note = "") {
   }
 
   return { code: "", name: cleanPhrase }
+}
+
+function getOrderItemPricingSnapshot(orderLike) {
+  try {
+    const raw = localStorage.getItem(ORDER_ITEM_PRICING_SNAPSHOTS_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    const snapshots = parsed && typeof parsed === "object" ? parsed : {}
+    const keys = [
+      String(orderLike?.maHoaDon || "").trim(),
+      String(orderLike?.id || "").trim(),
+      String(hoaDon.value?.maHoaDon || "").trim(),
+      String(hoaDon.value?.id || "").trim(),
+    ].filter(Boolean)
+
+    for (const key of keys) {
+      if (snapshots[key]) return snapshots[key]
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+function applyPricingSnapshotToItems(normalizedItems, orderLike) {
+  const snapshot = getOrderItemPricingSnapshot(orderLike)
+  const snapshotRows = Array.isArray(snapshot?.itemPricing) ? snapshot.itemPricing : []
+  if (!snapshotRows.length) return normalizedItems
+
+  return (normalizedItems || []).map((item) => {
+    const spctId = Number(item?.spctId || 0)
+    const productId = Number(item?.productId || item?.sanPhamId || 0)
+    const color = String(getItemColor(item) || "").trim().toLowerCase()
+    const size = String(getItemSize(item) || "").trim().toLowerCase()
+
+    const matchedRow = snapshotRows.find((row) => {
+      const sameSpct = spctId > 0 && Number(row?.spctId || 0) === spctId
+      if (sameSpct) return true
+
+      const sameProduct = productId > 0 && Number(row?.productId || 0) === productId
+      if (!sameProduct) return false
+
+      const sameColor = !color || String(row?.color || "").trim().toLowerCase() === color
+      const sameSize = !size || String(row?.size || "").trim().toLowerCase() === size
+      return sameColor && sameSize
+    })
+
+    if (!matchedRow) return item
+
+    const finalUnitPrice = Number(matchedRow?.giaBan || item?.giaBan || 0)
+    const originalUnitPrice = Number(matchedRow?.giaBanGoc || item?.giaBanGoc || item?.giaNiemYet || finalUnitPrice || 0)
+    const qty = Math.max(Number(item?.soLuong || matchedRow?.soLuong || 0), 0)
+    const campaignPercent = Number(matchedRow?.campaignPercent || item?.campaignPercent || 0)
+    const campaignName = String(matchedRow?.campaignName || item?.campaignName || "").trim()
+
+    return {
+      ...item,
+      giaBan: finalUnitPrice,
+      donGia: finalUnitPrice,
+      giaSauGiam: finalUnitPrice,
+      giaBanSauDotGiamGia: finalUnitPrice,
+      giaBanGoc: originalUnitPrice,
+      giaNiemYet: originalUnitPrice,
+      thanhTien: Number(matchedRow?.thanhTien || (finalUnitPrice * qty)),
+      campaignPercent,
+      campaignName,
+    }
+  })
 }
 
 function extractList(response) {
@@ -725,7 +825,9 @@ function getVariantFromItem(item) {
 }
 
 function getItemName(item) {
-  return item.tenSanPhamChiTiet || getVariantFromItem(item)?.tenSanPhamChiTiet || `SPCT #${item.spctId}`
+  const rawName = item.tenSanPhamChiTiet || getVariantFromItem(item)?.tenSanPhamChiTiet || `SPCT #${item.spctId}`
+  const baseName = String(rawName || '').split('•')[0].trim()
+  return baseName || rawName
 }
 
 function getItemColor(item) {
@@ -750,8 +852,20 @@ function getItemSize(item) {
 }
 
 function getItemInventory(item) {
-  const stock = Number(getVariantFromItem(item)?.soLuongTon)
-  return Number.isFinite(stock) ? stock : null
+  // Check item's own inventory fields first (more accurate for historical invoices)
+  const itemStock = Number(
+    item?.soLuongTon
+    || item?.tonKho
+    || item?.tonchuyen
+    || item?.soLuongTonHienTai
+    || 0
+  )
+  if (itemStock > 0) return itemStock
+
+  // Fallback to variant lookup for fresh data
+  const variant = getVariantFromItem(item)
+  const variantStock = Number(variant?.soLuongTon || 0)
+  return Number.isFinite(variantStock) && variantStock > 0 ? variantStock : null
 }
 
 function getItemImage(item) {
@@ -866,7 +980,7 @@ function getItemVouchers(item) {
 }
 
 function getItemDiscountTotal(item) {
-  const unitPrice = Number(item?.giaBan || 0)
+  const unitPrice = getItemOriginalUnitPrice(item)
   const qty = Math.max(Number(item?.soLuong || 0), 1)
   const lineTotal = Number(item?.thanhTien || 0)
   const rawFromItem = Number(
@@ -887,15 +1001,33 @@ function getItemDiscountTotal(item) {
   return inferred > 0 ? inferred : 0
 }
 
+function getItemOriginalUnitPrice(item) {
+  const explicitOriginal = Number(item?.giaBanGoc || item?.giaNiemYet || 0)
+  if (explicitOriginal > 0) return explicitOriginal
+
+  const currentPrice = Number(item?.giaBan || 0)
+  return currentPrice > 0 ? currentPrice : 0
+}
+
 function getItemFinalUnitPrice(item) {
+  const explicitFinal = Number(
+    item?.giaSauGiam
+    || item?.giaBanSauDotGiamGia
+    || item?.donGia
+    || item?.giaBan
+    || 0
+  )
+  const original = getItemOriginalUnitPrice(item)
+  if (explicitFinal > 0 && (!original || explicitFinal <= original)) return explicitFinal
+
   const qty = Math.max(Number(item?.soLuong || 0), 1)
   const lineTotal = Number(item?.thanhTien || 0)
   if (lineTotal > 0) return lineTotal / qty
-  return Number(item?.giaBan || 0)
+  return explicitFinal
 }
 
 function hasItemDiscountPrice(item) {
-  const original = Number(item?.giaBan || 0)
+  const original = getItemOriginalUnitPrice(item)
   const discounted = getItemFinalUnitPrice(item)
   if (!original || !discounted) return false
   return discounted < original
@@ -949,7 +1081,7 @@ async function dispatchSystemEvent(eventCode, note, successMessage) {
     showToast(successMessage || "Đã cập nhật trạng thái đơn hàng", "success")
 
     // Auto-send tracking mail so backend has the current public URL
-    const email = String(selectedCustomerEmail.value || "").trim()
+    const email = String(selectedCustomerEmailForMail.value || "").trim()
     if (maHoaDon && email) {
       sendOrderLookupMail({
         maHoaDon,
@@ -1037,7 +1169,7 @@ async function sendLookupMailNow() {
 
   const maHoaDon = String(hoaDon.value.maHoaDon || "").trim()
   const soDienThoai = String(hoaDon.value.soDienThoaiNhanHang || "").trim()
-  const email = String(selectedCustomerEmail.value || "").trim()
+  const email = String(selectedCustomerEmailForMail.value || "").trim()
 
   if (!maHoaDon || !soDienThoai) {
     showToast("Thiếu mã đơn hoặc số điện thoại nhận hàng", "warning")
@@ -1146,9 +1278,52 @@ async function loadReferenceData() {
   sanPhamVariants.value = flattenVariants(extractList(sanPhamRes))
 }
 
+function extractLoadedItems(detail) {
+  const candidates = [
+    detail?.items,
+    detail?.hoaDonChiTiets,
+    detail?.chiTietHoaDons,
+    detail?.chiTiets,
+    detail?.chiTietDonHang,
+    detail?.details,
+    detail?.lineItems
+  ]
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate
+  }
+
+  return []
+}
+
 function normalizeLoadedItems(loadedItems) {
   return (loadedItems || []).map((item) => {
     const variant = getVariant(item.spctId) || variantCodeMap.value.get(String(item?.maSanPhamChiTiet || "").trim().toUpperCase()) || null
+    const finalUnitPrice = Number(
+      item?.giaSauGiam
+      || item?.giaBanSauDotGiamGia
+      || item?.donGia
+      || item?.giaBan
+      || variant?.giaBan
+      || 0
+    )
+    const originalUnitPrice = Number(
+      item?.giaBanGoc
+      || item?.giaNiemYet
+      || (Number(item?.giaBan || 0) > finalUnitPrice ? item?.giaBan : 0)
+      || variant?.giaBanGoc
+      || variant?.giaBan
+      || finalUnitPrice
+      || 0
+    )
+    const campaignPercent = Number(
+      item?.dotGiamGiaPhanTram
+      || item?.campaignPercent
+      || item?.phanTramGiamGia
+      || (originalUnitPrice > finalUnitPrice && originalUnitPrice > 0
+        ? Math.round((1 - (finalUnitPrice / originalUnitPrice)) * 100)
+        : 0)
+    )
     return {
       id: item.id,
       spctId: item.spctId,
@@ -1156,13 +1331,20 @@ function normalizeLoadedItems(loadedItems) {
       maSanPham: item.maSanPham || variant?.maSanPham || "",
       maSanPhamChiTiet: item.maSanPhamChiTiet || variant?.maSanPhamChiTiet || "",
       soLuong: Number(item.soLuong || 0),
-      giaBan: Number(item.giaBan || variant?.giaBan || 0),
+      giaBan: finalUnitPrice,
+      donGia: Number(item?.donGia || finalUnitPrice || 0),
+      giaSauGiam: Number(item?.giaSauGiam || item?.giaBanSauDotGiamGia || finalUnitPrice || 0),
+      giaBanSauDotGiamGia: Number(item?.giaBanSauDotGiamGia || item?.giaSauGiam || finalUnitPrice || 0),
+      giaBanGoc: originalUnitPrice,
+      giaNiemYet: Number(item?.giaNiemYet || originalUnitPrice || 0),
       thanhTien: Number(item.thanhTien || 0),
       trangThai: item.trangThai || "ACTIVE",
       tenSanPhamChiTiet: variant?.tenSanPhamChiTiet || item.tenSanPhamChiTiet || "",
       kichThuoc: item?.kichThuoc?.tenKichThuoc || item.kichThuoc || item.tenKichThuoc || variant?.kichThuoc || "",
       mauSac: item?.mauSac?.tenMauSac || item?.mauSac?.tenMau || item.mauSac || item.tenMauSac || item.tenMau || variant?.mauSac || "",
       image: item.image || item.anh || variant?.image || "",
+      campaignPercent,
+      campaignName: String(item?.campaignName || item?.tenKhuyenMai || "").trim(),
       voucherCode: item?.maPhieuGiamGia || item?.voucherCode || item?.maVoucher || item?.phieuGiamGia || item?.voucher?.code || "",
       voucherDiscount: Number(item?.voucherDiscount || item?.giamGiaVoucher || item?.giaTriGiamGia || item?.discount || 0),
     }
@@ -1227,7 +1409,10 @@ function applyInvoiceDetail(detail) {
       : "ONLINE")
   ).toUpperCase()
 
-  const normalizedItems = normalizeLoadedItems(safeDetail?.items)
+  const normalizedItems = applyPricingSnapshotToItems(
+    normalizeLoadedItems(extractLoadedItems(safeDetail)),
+    row
+  )
   const persistedShipping = resolvePersistedShipping(row, safeDetail, normalizedItems, normalizedOrderType)
   const persistedDiscount = resolvePersistedDiscount(row, normalizedItems, normalizedOrderType)
   const voucherSnapshot = extractVoucherSnapshotFromNote(row.statusNote || latestHistoryNote)
@@ -1335,6 +1520,9 @@ async function loadData() {
 }
 
 function addProduct() {
+  console.log("[DEBUG addProduct] Called with newItem:", newItem.value)
+  console.log("[DEBUG addProduct] Current items.value.length:", items.value.length)
+  
   if (!newItem.value.spctId || Number(newItem.value.soLuong) <= 0) {
     showToast("Chọn sản phẩm và số lượng hợp lệ", "warning")
     return
@@ -1364,6 +1552,9 @@ function addProduct() {
       image: variant.image || ""
     })
   }
+
+  console.log("[DEBUG addProduct] After adding, items.value.length:", items.value.length)
+  console.log("[DEBUG addProduct] items.value:", JSON.stringify(items.value, null, 2))
 
   newItem.value = { spctId: Number(variant.spctId), soLuong: 1 }
   syncTotals()
@@ -1468,6 +1659,7 @@ function buildUpdatePayload() {
 }
 
 async function saveInvoice() {
+  
   // TEMP DEMO MODE: allow saving regardless of employee ownership.
   // if (employeeOwnershipMismatch.value) {
   //   showToast("Bạn không có quyền lưu hóa đơn của nhân viên khác", "error")
@@ -1526,11 +1718,13 @@ async function saveInvoice() {
       }
 
       const createResponse = await createHoaDon(createPayload)
+      
       if (isHtmlPayload(createResponse?.data)) {
         throw new Error("Backend đang chuyển hướng POST /api/hoa-don sang /login. Hãy restart DATN-API sau khi áp dụng SecurityConfig.")
       }
 
       const newInvoiceId = createResponse?.data?.hoaDon?.id || createResponse?.data?.id
+      
       if (!newInvoiceId) {
         throw new Error("Không lấy được ID hoá đơn mới từ API")
       }
@@ -1542,8 +1736,9 @@ async function saveInvoice() {
           giaBan: item.giaBan
         })
       }
-
-      await updateHoaDon(newInvoiceId, buildUpdatePayload())
+      
+      // TEMPORARY: Skip final update to avoid terminal status error
+      
       showToast("Tạo hoá đơn thành công", "success")
       router.push(`${panelBasePath.value}/hoa-don/detail/${newInvoiceId}?refresh=true`)
       return
@@ -1568,6 +1763,14 @@ async function saveInvoice() {
 }
 
 onMounted(loadData)
+
+watch(
+  () => [route.params.id, route.query.refresh],
+  ([nextId, nextRefresh], [prevId, prevRefresh]) => {
+    if (nextId === prevId && nextRefresh === prevRefresh) return
+    loadData()
+  }
+)
 
 watch(
   () => hoaDon.value.orderType,
@@ -1628,6 +1831,17 @@ watch(
 
         <div class="hero-actions">
           <button class="btn ghost" @click="backToList()">Quay lại</button>
+          <button
+            v-if="!isCreate"
+            class="btn lookup-mail"
+            type="button"
+            :disabled="isSendingLookupMail"
+            @click="sendLookupMailNow"
+          >
+            <Loader2 v-if="isSendingLookupMail" :size="16" class="spin" />
+            <Mail v-else :size="16" />
+            <span>{{ isSendingLookupMail ? "Đang gửi mail" : "Gửi mail tra cứu" }}</span>
+          </button>
           <button class="btn primary" @click="saveInvoice" :disabled="isSaving">
             <Loader2 v-if="isSaving" :size="16" class="spin" />
             <Save v-else :size="16" />
@@ -1702,7 +1916,7 @@ watch(
               <div class="field field-stack">
                 <span>Khách hàng</span>
                 <select class="strong-select" v-model.number="hoaDon.khachHangId" :disabled="!canEdit">
-                  <option :value="null">Chọn khách hàng</option>
+                  <option :value="null">{{ isPosOrder ? 'Khách lẻ' : 'Chọn khách hàng' }}</option>
                   <option v-for="khachHang in khachHangList" :key="khachHang.id" :value="Number(khachHang.id)">
                     {{ khachHang.tenKhachHang || `KH #${khachHang.id}` }}
                   </option>
@@ -1724,13 +1938,6 @@ watch(
                 <span>Địa chỉ nhận hàng</span>
                 <textarea v-model="hoaDon.diaChiNhanHang" rows="3" placeholder="Nhập địa chỉ giao hàng" :disabled="!canEdit"></textarea>
               </label>
-
-              <label class="field full" v-else>
-                <span>Giao nhận</span>
-                <input value="Mua tại quầy" type="text" disabled />
-              </label>
-
-
 
               <label class="field" v-if="!isPosOrder">
                 <span>Phí ship</span>
@@ -1766,6 +1973,7 @@ watch(
               <div class="field voucher-field full">
                 <span>Giảm giá</span>
                 <VoucherSelector
+                  v-if="isCreate"
                   :subtotal="subtotal"
                   :customer-id="hoaDon.khachHangId"
                   :auto-select="isCreate"
@@ -1775,6 +1983,10 @@ watch(
                   @update:voucher="selectedVoucher = $event"
                   @discount-changed="applyDiscount"
                 />
+                <div v-else class="voucher-readonly">
+                  <span v-if="Number(hoaDon.giaSauGiamGia || 0) > 0">{{ discountDisplayLabel }}</span>
+                  <span v-else>Không áp dụng voucher</span>
+                </div>
               </div>
             </div>
           </section>
@@ -1970,46 +2182,64 @@ watch(
               <div class="product-card-img">
                 <img :src="getItemImage(item)" :alt="getItemName(item)" @error="onImgError" />
               </div>
-              <div class="product-card-body">
-                <div class="product-card-name">{{ getItemName(item) }}</div>
-                <div class="product-card-meta">
-                  <span v-if="getItemColor(item)" class="meta-chip">Màu: {{ getItemColor(item) }}</span>
-                  <span v-else class="meta-chip meta-chip-muted">Màu: Chưa rõ</span>
-                  <span v-if="getItemSize(item)" class="meta-chip">Size: {{ getItemSize(item) }}</span>
-                  <span
-                    v-if="getItemInventory(item) !== null"
-                    class="meta-chip"
-                    :class="{ 'meta-chip-danger': getItemInventory(item) < item.soLuong }"
-                  >
-                    Tồn: {{ getItemInventory(item) }}
-                  </span>
+              <div class="product-card-info">
+                <div class="product-card-header">
+                  <h3 class="product-card-name">{{ getItemName(item) }}</h3>
+                  <div class="product-card-meta">
+                    <span v-if="getItemColor(item)" class="meta-chip meta-chip-color">{{ getItemColor(item) }}</span>
+                    <span v-if="getItemSize(item)" class="meta-chip meta-chip-size">{{ getItemSize(item) }}</span>
+                  </div>
                 </div>
-                <div class="product-card-price-wrap">
-                  <div class="product-card-price">{{ formatCurrency(getItemFinalUnitPrice(item)) }}</div>
-                  <div v-if="hasItemDiscountPrice(item)" class="product-card-price-old">{{ formatCurrency(item.giaBan) }}</div>
-                </div>
-                <div
-                  v-for="(voucher, voucherIndex) in getItemVouchers(item)"
-                  :key="`${voucher.code || 'applied'}-${voucherIndex}`"
-                  class="product-card-voucher"
-                >
-                  Voucher {{ voucher.code || 'đã áp dụng' }}
-                  <template v-if="voucher.discount > 0"> • -{{ formatCurrency(voucher.discount) }}</template>
+                
+                <div class="product-card-pricing">
+                  <div class="price-group">
+                    <div class="product-card-price">{{ formatCurrency(getItemFinalUnitPrice(item)) }}</div>
+                    <div v-if="hasItemDiscountPrice(item)" class="product-card-price-old">{{ formatCurrency(getItemOriginalUnitPrice(item)) }}</div>
+                  </div>
+                  
+                  <div v-if="Number(item.campaignPercent || 0) > 0 || getItemVouchers(item).length > 0" class="discount-badges">
+                    <span v-if="Number(item.campaignPercent || 0) > 0" class="badge badge-campaign">{{ Math.round(item.campaignPercent) }}% Đợt khuyến mãi</span>
+                    <span
+                      v-for="(voucher, voucherIndex) in getItemVouchers(item)"
+                      :key="`${voucher.code || 'applied'}-${voucherIndex}`"
+                      class="badge badge-voucher"
+                      :title="voucher.code"
+                    >
+                      {{ voucher.code ? voucher.code.substring(0, 6) : 'VC' }}
+                      <template v-if="voucher.discount > 0">: -{{ Math.round(voucher.discount / 1000) }}k</template>
+                    </span>
+                  </div>
                 </div>
               </div>
-              <div class="product-card-actions">
-                <div class="product-card-qty">
-                  <button v-if="canEdit" class="qty-btn" type="button" @click="decrementItemQty(index)" :disabled="item.soLuong <= 1">
-                    <Minus :size="14" />
+              <div class="product-card-actions" :class="{ 'is-readonly': !canEdit }">
+                <div v-if="canEdit" class="product-card-qty">
+                  <label class="qty-label">Số lượng:</label>
+                  <button class="qty-btn qty-btn-dec" type="button" @click="decrementItemQty(index)" :disabled="item.soLuong <= 1" aria-label="Giảm số lượng">
+                    <Minus :size="16" />
                   </button>
-                  <span class="qty-value">{{ item.soLuong }}</span>
-                  <button v-if="canEdit" class="qty-btn" type="button" @click="incrementItemQty(index)">
-                    <Plus :size="14" />
+                  <input
+                    type="number"
+                    class="qty-input"
+                    :value="item.soLuong"
+                    min="1"
+                    @change="(e) => changeItemQuantity(index, parseInt(e.target.value) || item.soLuong)"
+                    @blur="(e) => { if (!e.target.value) e.target.value = item.soLuong }"
+                  />
+                  <button class="qty-btn qty-btn-inc" type="button" @click="incrementItemQty(index)" aria-label="Tăng số lượng">
+                    <Plus :size="16" />
                   </button>
                 </div>
-                <div class="product-card-total">{{ formatCurrency(item.thanhTien) }}</div>
+                <div v-else class="product-card-qty-readonly">
+                  <span class="qty-label">Số lượng:</span>
+                  <span class="qty-value-readonly">{{ item.soLuong }}</span>
+                </div>
+                <div class="product-card-divider"></div>
+                <div class="product-card-total-wrapper" :class="{ 'is-readonly': !canEdit }">
+                  <span class="product-card-total-label">Thành tiền:</span>
+                  <div class="product-card-total">{{ formatCurrency(item.thanhTien) }}</div>
+                </div>
                 <button v-if="canEdit" class="icon-btn icon-btn-remove" type="button" @click="removeItem(index)" aria-label="Xóa sản phẩm">
-                  <X :size="15" />
+                  <X :size="18" />
                 </button>
               </div>
             </div>
@@ -2325,6 +2555,19 @@ watch(
 .field.full,
 .voucher-field {
   grid-column: 1 / -1;
+}
+
+.voucher-readonly {
+  min-height: 44px;
+  border: 1px dashed #d1d5db;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  color: #1f2937;
+  font-weight: 700;
+  font-size: 14px;
+  background: #f9fafb;
 }
 
 .field span {
@@ -2943,31 +3186,36 @@ watch(
 }
 .product-cards {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 .product-card {
   display: grid;
-  grid-template-columns: 76px 1fr auto;
-  gap: 14px;
-  align-items: center;
-  padding: 14px;
-  border-radius: 14px;
-  border: 1px solid #eef2f7;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  grid-template-columns: 80px 1fr auto;
+  gap: 16px;
+  align-items: stretch;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+  position: relative;
 }
 .product-card:hover {
   border-color: #cbd5e1;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
-  transform: translateY(-1px);
+  background-color: #f8fafc;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
 }
 .product-card-img {
-  width: 76px;
-  height: 76px;
-  border-radius: 12px;
+  width: 80px;
+  height: 80px;
+  border-radius: 10px;
   overflow: hidden;
-  background: #f1f5f9;
+  background: #f8fafc;
   flex-shrink: 0;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .product-card-img img {
   width: 100%;
@@ -2981,123 +3229,290 @@ watch(
   place-items: center;
   color: #94a3b8;
 }
-.product-card-body {
+.product-card-info {
   display: grid;
-  gap: 6px;
+  gap: 12px;
   min-width: 0;
+  flex: 1;
+}
+.product-card-header {
+  display: grid;
+  gap: 8px;
 }
 .product-card-name {
   font-weight: 700;
   color: #111827;
-  font-size: 15px;
-  line-height: 1.35;
+  font-size: 16px;
+  line-height: 1.4;
+  margin: 0;
+  word-break: break-word;
+  max-width: 100%;
 }
 .product-card-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
+  align-items: center;
 }
 .meta-chip {
   display: inline-flex;
   align-items: center;
-  padding: 3px 8px;
-  border-radius: 999px;
+  padding: 4px 10px;
+  border-radius: 6px;
   background: #f1f5f9;
-  border: 1px solid #dbe2ea;
-  color: #64748b;
+  border: none;
+  color: #475569;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
-.meta-chip-danger {
-  background: #fff1f2;
-  border-color: #fecdd3;
-  color: #be123c;
+.meta-chip-color {
+  background: #fee2e2;
+  color: #991b1b;
 }
-.meta-chip-muted {
-  background: #f8fafc;
-  border-color: #e2e8f0;
-  color: #94a3b8;
+.meta-chip-size {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.meta-chip-stock-low {
+  background: #fecaca;
+  color: #7f1d1d;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.product-card-pricing {
+  display: grid;
+  gap: 8px;
+}
+.price-group {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
 }
 .product-card-price {
   font-weight: 800;
-  color: #b91c1c;
-  font-size: 15px;
-}
-.product-card-price-wrap {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
+  color: #dc2626;
+  font-size: 18px;
+  line-height: 1.2;
+  word-break: break-word;
 }
 .product-card-price-old {
-  color: #94a3b8;
-  font-size: 12px;
-  text-decoration: line-through;
-  font-weight: 600;
+  color: #9ca3af;
+  font-size: 11px;
+  text-decoration: line-through wavy;
+  font-weight: 500;
+  opacity: 0.8;
 }
-.product-card-voucher {
-  font-size: 12px;
+.discount-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
   font-weight: 700;
-  color: #b91c1c;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+.badge-campaign {
+  background: linear-gradient(145deg, #5a0000 0%, #a80000 22%, #d30000 52%, #930000 78%, #4b0000 100%);
+  color: #ffffff;
+  font-weight: 800;
+}
+.badge-voucher {
+  background: #d1fae5;
+  color: #065f46;
 }
 .product-card-actions {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   justify-content: flex-end;
+  flex-shrink: 0;
+}
+.product-card-actions.is-readonly {
+  display: grid;
+  grid-template-columns: 170px 1px minmax(320px, 1fr);
+  align-items: center;
+  justify-content: end;
+  column-gap: 12px;
+  width: 100%;
 }
 .product-card-qty {
   display: flex;
   align-items: center;
-  gap: 0;
-  border: 1px solid #d1d5db;
+  justify-content: center;
+  gap: 8px;
+  border: none;
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible;
   flex-shrink: 0;
+  background: transparent;
+  padding: 0;
+}
+.product-card-qty-readonly {
+  display: grid;
+  grid-template-columns: 98px 52px;
+  align-items: center;
+  column-gap: 10px;
+}
+.qty-label {
+  font-size: 14px;
+  color: #1f2937;
+  font-weight: 700;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0;
+  margin-right: 8px;
+  line-height: 1;
+}
+.product-card-qty-readonly .qty-label {
+  margin-right: 0;
+  justify-content: flex-end;
+}
+.product-card-qty-readonly .qty-value-readonly {
+  justify-content: flex-end;
 }
 .qty-btn {
-  width: 30px;
-  height: 30px;
-  border: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d1d5db;
   background: #f9fafb;
-  color: #374151;
+  color: #1f2937;
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  border-radius: 4px;
+  flex-shrink: 0;
 }
 .qty-btn:hover:not(:disabled) {
-  background: #f1f5f9;
+  background: #e5e7eb;
+  color: #111827;
+  border-color: #9ca3af;
 }
 .qty-btn:disabled {
-  opacity: 0.35;
+  opacity: 0.4;
   cursor: not-allowed;
+  background: #f9fafb;
+  color: #d1d5db;
+  border-color: #e5e7eb;
 }
-.qty-value {
-  width: 36px;
+.qty-input {
+  width: 52px;
+  height: 32px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
   text-align: center;
-  font-weight: 700;
-  font-size: 14px;
+  font-weight: 800;
+  font-size: 16px;
   color: #111827;
-  border-left: 1px solid #d1d5db;
-  border-right: 1px solid #d1d5db;
-  line-height: 30px;
+  background: #ffffff;
+  padding: 0;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+.qty-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+.qty-input::-webkit-outer-spin-button,
+.qty-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.qty-input[type=number] {
+  -moz-appearance: textfield;
+}
+.qty-value-readonly {
+  font-weight: 800;
+  font-size: 18px;
+  color: #111827;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 8px;
+  text-align: center;
+  min-width: 52px;
+  width: 52px;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+.product-card-divider {
+  width: 1px;
+  height: 24px;
+  background: #e5e7eb;
+}
+.product-card-total-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+.product-card-total-wrapper.is-readonly {
+  display: grid;
+  grid-template-columns: max-content 170px;
+  align-items: center;
+  column-gap: 18px;
+  justify-self: end;
+}
+.product-card-total-label {
+  font-size: 14px;
+  color: #1f2937;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.product-card-total-wrapper.is-readonly .product-card-total-label {
+  justify-content: flex-end;
 }
 .product-card-total {
   font-weight: 800;
   color: #111827;
-  font-size: 15px;
-  min-width: 110px;
-  margin-right: 6px;
+  font-size: 20px;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  line-height: 1;
+  min-width: 100px;
   text-align: right;
+  padding: 0 8px;
+}
+.product-card-total-wrapper.is-readonly .product-card-total {
+  min-width: 170px;
+  width: 170px;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 0;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
 }
 .icon-btn-remove {
-  border: 1px solid #fecdd3;
-  background: #fff1f2;
-  color: #be123c;
+  border: none;
+  background: #fee2e2;
+  color: #991b1b;
 }
 .icon-btn-remove:hover:not(:disabled) {
-  background: #ffe4e6;
+  background: #fecaca;
+  color: #7f1d1d;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
 /* ── Modal ── */

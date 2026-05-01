@@ -9,7 +9,7 @@ import visa from "../../assets/img/payments/visa.png?url"
 import mastercard from "../../assets/img/payments/mastercard.png?url"
 import vnpay from "../../assets/img/payments/vnpay.png?url"
 import { createVnpayPayment } from "../../services/vnpayService"
-import { createBackendCheckoutOrder, loadCheckoutContext } from "../../services/checkoutOrderService"
+import { createBackendCheckoutOrder, isAccountActiveForCheckout, loadCheckoutContext } from "../../services/checkoutOrderService"
 import { quoteShippingFeeAll } from "../../services/shippingQuoteService"
 import { getAllSanPham } from "../../services/sanPhamService"
 import { applyCampaignPriceToVariants } from "../../services/campaignPricingService"
@@ -75,6 +75,7 @@ const year = new Date().getFullYear()
 const submitting = ref(false)
 const loadingProfile = ref(true)
 const errorMsg = ref("")
+const checkoutStorageWarningShown = ref(false)
 const voucherCode = ref("")
 const voucherHint = ref("")
 const vouchers = ref([])
@@ -108,6 +109,7 @@ const ORDER_ITEM_VOUCHER_SNAPSHOTS_KEY = "orderItemVoucherSnapshots"
 const cart = ref(readCheckoutCartArray())
 const customerId = ref(null)
 const variantCatalog = ref({})
+const checkoutAccountActive = ref(true)
 
 // ── Name/code-based image fallback (mirrors HomeView + CartPage) ──
 const nameFallbackRules = [
@@ -173,6 +175,16 @@ const normalizeVariantToken = (value) => {
     .replace(/\p{M}/gu, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "")
+}
+
+const isActiveVariantStatus = (value = "") => {
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+  return !normalized.includes("ngung") && !normalized.includes("inactive")
 }
 
 const normalizeImage = (value) => String(value || "").trim()
@@ -323,6 +335,7 @@ const shippingLoading = ref(false)
 const shippingError = ref("")
 const shippingQuote = ref(null)
 const shippingRequestSeq = ref(0)
+const DEFAULT_SHIPPING_FEE = 30000
 const shippingSpec = ref({
   weightGram: 1200,
   lengthCm: 30,
@@ -351,7 +364,27 @@ const deliveryAddress = computed(() => {
     .join(", ")
 })
 
-const shipping = computed(() => Number(shippingQuote.value?.fee || 0))
+const hasShippingAddress = computed(() => {
+  if (selectedSavedAddress.value) {
+    const a = selectedSavedAddress.value
+    return Boolean(String(a?.tinhThanh || "").trim() && String(a?.quanHuyen || "").trim())
+  }
+
+  const province = String(delivery.value.province || "").trim()
+  const district = String(delivery.value.district || "").trim()
+  const ward = String(delivery.value.ward || "").trim()
+  const needsWard = wards.value.length > 0
+  if (!province || !district) return false
+  if (needsWard && !ward) return false
+  return true
+})
+
+const shipping = computed(() => {
+  const fee = Number(shippingQuote.value?.fee)
+  if (Number.isFinite(fee) && fee > 0) return fee
+  if (hasShippingAddress.value) return DEFAULT_SHIPPING_FEE
+  return 0
+})
 const getItemKey = (item) => {
   const id = String(item?.id || "").trim()
   const color = String(item?.color || "").trim()
@@ -454,7 +487,15 @@ const activeVoucherItemSubtotal = computed(() => {
 })
 
 const persistCheckoutCart = () => {
-  writeCheckoutCartArray(cart.value)
+  const ok = writeCheckoutCartArray(cart.value)
+  if (!ok) {
+    if (!checkoutStorageWarningShown.value) {
+      toast.error("Không thể lưu giỏ thanh toán do bộ nhớ trình duyệt đã đầy.")
+      checkoutStorageWarningShown.value = true
+    }
+    return
+  }
+  checkoutStorageWarningShown.value = false
 }
 
 const clearCartStorage = () => {
@@ -644,7 +685,9 @@ const loadVariantCatalog = async () => {
     for (const product of products) {
       const productId = String(product?.id || "")
       const numId = Number(productId)
-      const variants = Array.isArray(product?.sanPhamChiTiets) ? product.sanPhamChiTiets : []
+      const variants = Array.isArray(product?.sanPhamChiTiets)
+        ? product.sanPhamChiTiets.filter((variant) => isActiveVariantStatus(variant?.trangThai || variant?.status))
+        : []
       const pricedVariants = await applyCampaignPriceToVariants(variants, product.id)
 
       catalog[productId] = pricedVariants.map((variant) => {
@@ -682,6 +725,7 @@ const loadVariantCatalog = async () => {
 
 const canSubmit = computed(() => {
   if (submitting.value) return false
+  if (!checkoutAccountActive.value) return false
   return Array.isArray(cart.value) && cart.value.length > 0
 })
 
@@ -975,8 +1019,8 @@ const fetchShippingQuote = async () => {
     shippingQuote.value = matched || quotes[0] || null
   } catch (error) {
     if (requestSeq !== shippingRequestSeq.value) return
-    shippingQuote.value = { fee: 30000 }
-    shippingError.value = error?.response?.data?.message || "Không lấy được phí ship realtime, tạm dùng mức 30.000đ"
+    shippingQuote.value = { fee: DEFAULT_SHIPPING_FEE }
+    shippingError.value = error?.response?.data?.message || `Không lấy được phí ship realtime, tạm dùng mức ${VND(DEFAULT_SHIPPING_FEE)}`
   } finally {
     if (requestSeq === shippingRequestSeq.value) {
       shippingLoading.value = false
@@ -1010,6 +1054,14 @@ const validateCheckout = () => {
     if (!String(delivery.value.province || "").trim()) return "Vui lòng chọn Tỉnh/Thành phố nhận hàng"
     if (!String(delivery.value.district || "").trim()) return "Vui lòng nhập Quận/Huyện nhận hàng"
     if (String(delivery.value.addressDetail || "").trim().length < 6) return "Địa chỉ cụ thể cần chi tiết hơn"
+  }
+
+  if (hasShippingAddress.value && Number(shipping.value || 0) <= 0) {
+    return "Không tính được phí vận chuyển, vui lòng kiểm tra lại địa chỉ giao hàng"
+  }
+
+  if (!checkoutAccountActive.value) {
+    return "Tài khoản đang ngừng hoạt động, không thể thanh toán"
   }
 
   return ""
@@ -1086,6 +1138,7 @@ const loadProfile = async () => {
   loadingProfile.value = true
   try {
     const context = await loadCheckoutContext()
+    checkoutAccountActive.value = isAccountActiveForCheckout(context.account)
     customerId.value = context.customer?.id || null
     savedAddresses.value = Array.isArray(context.addresses) ? context.addresses : []
 

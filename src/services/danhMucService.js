@@ -1,6 +1,7 @@
 import axios from "axios"
+import { resolveApiOrigin } from "../utils/apiOrigin"
 
-const API = "http://localhost:8080/api/admin/danh-muc"
+const API = `${resolveApiOrigin()}/api/admin/danh-muc`
 
 export const getAllDanhMuc = () => {
   return axios.get(API)

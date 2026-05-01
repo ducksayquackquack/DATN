@@ -77,16 +77,17 @@
                 </span>
               </td>
 
-              <td style="text-align:center">
+              <td class="status-cell" style="text-align:center">
                 <span
-                  class="pill"
+                  class="pill status-pill-compact"
                   :class="`status-${getAdminStatusTone(item.status)}`"
+                  :title="item.status"
                 >
-                  ● {{ item.status }}
+                  ● {{ item.status === 'Ngừng hoạt động' ? 'Ngừng' : item.status }}
                 </span>
               </td>
 
-              <td style="text-align:center">
+              <td class="action-cell" style="text-align:center">
                 <router-link
                   class="iconbtn"
                   :to="`/admin/nhan-vien/form/${item.id}`"
@@ -220,5 +221,27 @@ async function toggleStatus(item) {
 @media (max-width: 768px) {
   .body { overflow-x: auto; }
   table { min-width: 700px; }
+}
+
+.status-cell {
+  white-space: nowrap;
+}
+
+.status-pill-compact {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 10px;
+  min-width: 90px;
+}
+
+.action-cell .iconbtn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 </style>

@@ -1,6 +1,7 @@
 import axios from "axios"
+import { resolveApiOrigin } from "../utils/apiOrigin"
 
-const API = "http://localhost:8080/api/nhan-vien"
+const API = `${resolveApiOrigin()}/api/nhan-vien`
 
 // GET ALL
 export function getAllNhanVien() {
