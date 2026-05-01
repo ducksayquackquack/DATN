@@ -721,7 +721,6 @@ const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
 
   const galleryImages = [...new Set([
     curatedPrimaryImage,
-    ...configImages,
     ...colorImageEntries.map((entry) => String(entry?.image || '').trim()).filter(Boolean),
     ...variants.map((variant) => pickImageValue([
       variant,
@@ -734,6 +733,7 @@ const mapBackendProductToHomeCard = (item, fallbackIndex = 0) => {
     ...normalizeColorImageEntries(item?.images || []).map((entry) => entry.image).filter(Boolean),
     pickImageValue([item, item?.anh, item?.hinhAnh, item?.images, item?.image, item?.listAnh]),
     ...staticImages,
+    ...configImages,
     overrideImage
   ].map((entry) => String(entry || '').trim()).filter(Boolean))]
 
