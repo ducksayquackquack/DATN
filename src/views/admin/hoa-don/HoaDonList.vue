@@ -2144,6 +2144,9 @@ const sendLookupMailFromList = async (hd) => {
 
 .table {
   width: 100%;
+  display: table;
+  overflow-x: visible;
+  max-width: none;
   border-collapse: collapse;
   font-size: 15px;
 }
