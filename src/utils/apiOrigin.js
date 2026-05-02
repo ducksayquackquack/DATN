@@ -14,7 +14,7 @@ const isLocalOrigin = (origin) => {
 }
 
 const LOCAL_API_ORIGIN = 'http://localhost:8080'
-const STABLE_PUBLIC_API_ORIGIN = 'https://datn-iitf.onrender.com'
+const STABLE_PUBLIC_API_ORIGIN = 'https://triumph-throat-passage-folders.trycloudflare.com'
 
 export const resolveApiOrigin = () => {
   const { protocol, hostname, origin } = window.location
