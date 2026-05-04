@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '../../composables/useToast'
 import taiKhoanService from '../../services/taiKhoanService'
-import { createKhachHang, getKhachHangByTaiKhoanId } from '../../services/KhachHangService'
+import { createKhachHang, getKhachHangByTaiKhoanId, listAllKhachHang } from '../../services/KhachHangService'
 import { createDiaChi } from '../../services/diaChiService'
 import logo from '../../assets/img/logo/new logo.png?url'
 
@@ -33,6 +33,8 @@ const LOCAL_AUTH_USERS_KEY = 'localAuthUsers'
 const LOCAL_REGISTERED_PROFILES_KEY = 'localRegisteredProfiles'
 const PHONE_REGEX = /^(0|\+84)\d{9,10}$/
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const normalizePhone = (value = '') => String(value || '').replace(/\s+/g, '').trim()
 
 const persistLocalRegisteredUser = (email, rawPassword) => {
   try {
@@ -117,17 +119,47 @@ const fetchAccountByEmail = async (email) => {
   return null
 }
 
+const fetchCustomerByPhone = async (phone) => {
+  const normalizedPhone = normalizePhone(phone)
+  if (!normalizedPhone) return null
+
+  const customers = await listAllKhachHang(100)
+  return customers.find((item) => normalizePhone(item?.soDienThoai) === normalizedPhone) || null
+}
+
 const extractApiErrorMessage = (err) => {
   const data = err?.response?.data
   if (typeof data === 'string' && data.trim()) return data.trim()
   if (typeof data?.message === 'string' && data.message.trim()) return data.message.trim()
   if (typeof data?.error === 'string' && data.error.trim()) return data.error.trim()
+  if (Array.isArray(data?.errors) && data.errors.length) {
+    const first = data.errors.find((item) => typeof item === 'string' && item.trim())
+    if (first) return first.trim()
+  }
+  if (data?.errors && typeof data.errors === 'object') {
+    const firstEntry = Object.values(data.errors)
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .find((value) => typeof value === 'string' && value.trim())
+    if (firstEntry) return String(firstEntry).trim()
+  }
   return ''
 }
 
 const isDuplicateEmailError = (message = '') => {
   const normalized = String(message || '').trim().toLowerCase()
   return normalized.includes('email') && (
+    normalized.includes('tồn tại') ||
+    normalized.includes('ton tai') ||
+    normalized.includes('đã có') ||
+    normalized.includes('da co') ||
+    normalized.includes('already') ||
+    normalized.includes('duplicate')
+  )
+}
+
+const isDuplicatePhoneError = (message = '') => {
+  const normalized = String(message || '').trim().toLowerCase()
+  return (normalized.includes('so dien thoai') || normalized.includes('số điện thoại') || normalized.includes('phone')) && (
     normalized.includes('tồn tại') ||
     normalized.includes('ton tai') ||
     normalized.includes('đã có') ||
@@ -249,7 +281,7 @@ const validate = () => {
     return fail('Email không hợp lệ.')
   }
 
-  if (!PHONE_REGEX.test(String(form.value.phone || '').replace(/\s+/g, ''))) {
+  if (!PHONE_REGEX.test(normalizePhone(form.value.phone))) {
     return fail('Số điện thoại không hợp lệ.')
   }
 
@@ -292,10 +324,11 @@ const submit = async () => {
   success.value = ''
 
   const normalizedEmail = form.value.email.trim().toLowerCase()
+  const normalizedPhone = normalizePhone(form.value.phone)
   const basePayload = {
     email: normalizedEmail,
     tenKhachHang: form.value.fullName.trim(),
-    soDienThoai: form.value.phone.trim(),
+    soDienThoai: normalizedPhone,
     gioiTinh: normalizeGender(form.value.gender),
     ngaySinh: form.value.birthDate,
     diaChiCuThe: form.value.diaChiCuThe.trim(),
@@ -308,8 +341,20 @@ const submit = async () => {
 
   try {
     const existingAccount = await fetchAccountByEmail(normalizedEmail)
-    let accountId = Number(existingAccount?.id) || null
-    const reusedExistingAccount = Boolean(accountId)
+    if (existingAccount?.id) {
+      error.value = 'Email đã tồn tại. Vui lòng dùng email khác.'
+      toastError(error.value)
+      return
+    }
+
+    const existingCustomerByPhone = await fetchCustomerByPhone(normalizedPhone)
+    if (existingCustomerByPhone?.id) {
+      error.value = 'Số điện thoại đã tồn tại. Vui lòng dùng số khác.'
+      toastError(error.value)
+      return
+    }
+
+    let accountId = null
 
     // Try strict username/password contract first because /api/auth/login accepts this shape.
     const payloadCandidates = [
@@ -321,34 +366,32 @@ const submit = async () => {
       { ...basePayload, vaiTro: 'CUSTOMER', tenDangNhap: normalizedEmail, password: form.value.password }
     ]
 
-    if (!accountId) {
-      let created = false
-      let createdAccountId = null
-      let lastError = null
-      for (const payload of payloadCandidates) {
-        try {
-          const response = await taiKhoanService.create(payload)
-          const responseAccountId = Number(response?.data?.id || response?.data?.data?.id)
-          if (Number.isFinite(responseAccountId) && responseAccountId > 0) {
-            createdAccountId = responseAccountId
-          }
-          created = true
-          break
-        } catch (err) {
-          lastError = err
+    let created = false
+    let createdAccountId = null
+    let lastError = null
+    for (const payload of payloadCandidates) {
+      try {
+        const response = await taiKhoanService.create(payload)
+        const responseAccountId = Number(response?.data?.id || response?.data?.data?.id)
+        if (Number.isFinite(responseAccountId) && responseAccountId > 0) {
+          createdAccountId = responseAccountId
         }
+        created = true
+        break
+      } catch (err) {
+        lastError = err
       }
-
-      if (!created) {
-        throw lastError || new Error('Create account failed')
-      }
-
-      const resolvedAccount = createdAccountId
-        ? { id: createdAccountId }
-        : await fetchAccountByEmail(normalizedEmail)
-
-      accountId = Number(resolvedAccount?.id) || null
     }
+
+    if (!created) {
+      throw lastError || new Error('Create account failed')
+    }
+
+    const resolvedAccount = createdAccountId
+      ? { id: createdAccountId }
+      : await fetchAccountByEmail(normalizedEmail)
+
+    accountId = Number(resolvedAccount?.id) || null
 
     if (!accountId) {
       throw new Error('Account lookup failed')
@@ -383,9 +426,7 @@ const submit = async () => {
     persistLocalRegisteredUser(normalizedEmail, form.value.password)
     persistLocalRegisteredProfile(normalizedEmail)
 
-    success.value = reusedExistingAccount
-      ? 'Email đã có tài khoản trước đó. Đang chuyển sang đăng nhập...'
-      : 'Tạo tài khoản thành công. Đang chuyển sang đăng nhập...'
+    success.value = 'Tạo tài khoản thành công. Đang chuyển sang đăng nhập...'
 
     if (profileWarning) {
       toastWarning(profileWarning)
@@ -400,10 +441,19 @@ const submit = async () => {
 
     if (isDuplicateEmailError(apiMessage)) {
       error.value = 'Email đã tồn tại. Vui lòng dùng email khác.'
+    } else if (isDuplicatePhoneError(apiMessage)) {
+      error.value = 'Số điện thoại đã tồn tại. Vui lòng dùng số khác.'
     } else if (apiMessage) {
       error.value = apiMessage
     } else {
-      error.value = 'Không thể tạo tài khoản. Vui lòng kiểm tra lại thông tin.'
+      const fallbackStatus = Number(e?.response?.status || 0)
+      if (fallbackStatus === 400) {
+        error.value = 'Thông tin đăng ký chưa hợp lệ. Vui lòng kiểm tra lại các trường bắt buộc.'
+      } else if (fallbackStatus === 409) {
+        error.value = 'Thông tin tài khoản bị trùng (email hoặc số điện thoại).'
+      } else {
+        error.value = 'Không thể tạo tài khoản lúc này. Vui lòng thử lại sau.'
+      }
     }
 
     toastError(error.value)
@@ -743,6 +793,8 @@ const navigateWithTransition = (path) => {
 }
 
 .error {
+  grid-column: 1 / -1;
+  width: 100%;
   margin-top: 12px;
   color: #dc2626;
   text-align: center;
@@ -750,6 +802,8 @@ const navigateWithTransition = (path) => {
 }
 
 .success {
+  grid-column: 1 / -1;
+  width: 100%;
   margin-top: 12px;
   color: #0f766e;
   text-align: center;

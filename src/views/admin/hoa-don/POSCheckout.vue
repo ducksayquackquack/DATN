@@ -230,13 +230,16 @@ const submitPosOrder = async () => {
     // Bước 2: tạo hóa đơn nháp
     const isVnpay = paymentMethod.value.toUpperCase() === "VNPAY"
 
+    const discountAmount = Number(discount.value || 0)
     const createRes = await createHoaDon({
       nhanVienId: Number(cashierId.value),
       khachHangId: selectedCustomer?.id ?? null,
       soDienThoaiNhanHang: selectedCustomer?.soDienThoai || "",
       diaChiNhanHang: "Mua tại quầy",
       phiShip: 0,
-      giaSauGiamGia: Number(discount.value || 0),
+      giaSauGiamGia: discountAmount,
+      giamGia: discountAmount,
+      discountAmount,
       thanhTien: Number(grandTotal.value || 0),
       phuongThucThanhToan: paymentMethod.value,
       orderType: "POS",

@@ -150,6 +150,13 @@ const internalAssistantContext = computed(() => {
     }
   }
 
+  if (path.includes("/san-pham")) {
+  return {
+    pageType: "PRODUCT_LIST",
+    route: path
+  }
+}
+
   if (path.includes("/hoa-don/detail")) {
     return {
       pageType: "ORDER_DETAIL",

@@ -144,7 +144,7 @@ onUnmounted(() => {
 
         <div class="about-hero-stage">
           <article class="about-floating-note reveal">
-            <small>Season note</small>
+            <small>Ghi chú mùa</small>
             <strong>Thiết kế không cần nói quá to. Nó chỉ cần đủ đúng để bạn muốn mặc lại lần thứ 30.</strong>
           </article>
 
@@ -157,14 +157,14 @@ onUnmounted(() => {
               <img :src="showcaseImage" alt="DirtyWave styling" />
             </figure>
 
-            <div class="about-grid-tag">Jacket Wardrobe</div>
+            <div class="about-grid-tag">Tủ đồ áo khoác</div>
           </div>
         </div>
       </section>
 
       <section class="about-manifesto reveal">
         <article class="about-manifesto-card about-manifesto-lead reveal">
-          <span class="about-section-label">Manifesto</span>
+          <span class="about-section-label">Tuyên ngôn</span>
           <h2>Không làm nhiều sản phẩm. Chỉ làm những món bạn muốn giữ lại trong tủ đồ lâu hơn.</h2>
           <p>
             Chúng tôi tin một chiếc áo tốt phải vừa có cấu trúc đẹp khi đứng yên,
@@ -174,15 +174,15 @@ onUnmounted(() => {
           <div class="about-manifesto-bars">
             <div class="about-manifesto-bar">
               <span>01</span>
-              <strong>Less trend, more longevity</strong>
+              <strong>Ít chạy theo trend, ưu tiên bền lâu</strong>
             </div>
             <div class="about-manifesto-bar">
               <span>02</span>
-              <strong>Less noise, more character</strong>
+              <strong>Ít phô trương, nhiều cá tính</strong>
             </div>
             <div class="about-manifesto-bar">
               <span>03</span>
-              <strong>Less clutter, more intention</strong>
+              <strong>Ít rối mắt, nhiều chủ đích</strong>
             </div>
           </div>
         </article>
@@ -200,7 +200,7 @@ onUnmounted(() => {
 
       <section class="about-editorial reveal">
         <article class="about-story-card reveal">
-          <span class="about-section-label">Story</span>
+          <span class="about-section-label">Câu chuyện</span>
           <h2>DirtyWave bắt đầu từ một câu hỏi rất thật: vì sao nhiều chiếc áo nhìn ổn trên ảnh nhưng không sống được trong lịch mặc hằng ngày?</h2>
           <p>
             Chúng tôi phát triển thương hiệu bằng những buổi thử đồ liên tục, nơi khác biệt lớn nhất không nằm ở việc bắt trend,
@@ -211,7 +211,7 @@ onUnmounted(() => {
           </p>
 
           <div class="about-quote-strip">
-            <span>Studio thought</span>
+            <span>Góc nhìn studio</span>
             <strong>Tối giản không đồng nghĩa với đơn điệu. Tối giản đúng là chọn lọc kỹ hơn.</strong>
           </div>
         </article>
@@ -219,7 +219,7 @@ onUnmounted(() => {
         <article class="about-poster-card reveal">
           <img :src="detailImage" alt="DirtyWave studio" />
           <div class="about-poster-copy">
-            <small>Material direction</small>
+            <small>Định hướng chất liệu</small>
             <strong>Ưu tiên bề mặt chắc, đứng khối đẹp và đủ nhẹ để mặc từ ngày thường tới cuối tuần.</strong>
           </div>
         </article>
@@ -227,7 +227,7 @@ onUnmounted(() => {
 
       <section class="about-pillars-section reveal">
         <div class="about-pillars-header">
-          <span class="about-section-label">Core principles</span>
+          <span class="about-section-label">Nguyên tắc cốt lõi</span>
           <h2>Bốn nguyên tắc giúp DirtyWave giữ chất riêng nhưng vẫn cực dễ mặc</h2>
         </div>
 

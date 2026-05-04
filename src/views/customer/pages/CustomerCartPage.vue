@@ -1226,7 +1226,8 @@ onUnmounted(() => {
   align-items: center;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible;
+  flex-shrink: 0;
 }
 
 .cart-line__qty button {
@@ -1244,16 +1245,18 @@ onUnmounted(() => {
 .cart-line__qty button:hover { background: #f3f4f6; }
 
 .cart-line__qty span {
-  min-width: 34px;
+  min-width: 44px;
   text-align: center;
   font-size: 14px;
   font-weight: 600;
   color: #111827;
-  padding: 0 4px;
+  padding: 0 10px;
   border-left: 1px solid #e5e7eb;
   border-right: 1px solid #e5e7eb;
   height: 30px;
   line-height: 30px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .cart-line__actions { display: flex; gap: 4px; }

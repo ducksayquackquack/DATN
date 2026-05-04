@@ -265,6 +265,7 @@ const refreshCartCount = () => {
 
 const loadCurrentUser = async () => {
   const storedRole = normalizeRole(localStorage.getItem("role"))
+  const storedUserId = Number(localStorage.getItem("userId") || 0)
   const userEmail = String(localStorage.getItem("userEmail") || "").trim().toLowerCase()
   userAvatar.value = ""
   userDisplayName.value = "Tài khoản"
@@ -274,6 +275,11 @@ const loadCurrentUser = async () => {
   // Customer navbar should never render admin/employee identity.
   if (storedRole && !isCustomerRole(storedRole)) {
     return
+  }
+
+  // Keep customer menu usable even when account API is temporarily unreachable.
+  if (isCustomerRole(storedRole) && (userEmail || storedUserId > 0)) {
+    isLoggedInAsCustomer.value = true
   }
 
   if (userEmail) userDisplayName.value = toDisplayNameFromEmail(userEmail)
@@ -367,7 +373,7 @@ const toggleMobileMenu = () => {
 }
 
 const toggleProfileMenu = (event) => {
-  event.stopPropagation()
+  event?.stopPropagation?.()
   profileOpen.value = !profileOpen.value
 }
 
@@ -948,14 +954,14 @@ onUnmounted(() => {
   gap: 10px;
   min-width: 320px;
   padding: 10px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.18);
   border-radius: 999px;
   box-shadow: none;
 }
 
 .sn-search svg {
-  color: rgba(255, 255, 255, 0.68);
+  color: rgba(255, 255, 255, 0.9);
   flex-shrink: 0;
 }
 
@@ -975,7 +981,7 @@ onUnmounted(() => {
 }
 
 .sn-search input::placeholder {
-  color: rgba(255, 255, 255, 0.52);
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .sn-search-dropdown {
@@ -1163,6 +1169,7 @@ onUnmounted(() => {
 /* Profile */
 .sn-profile-wrapper {
   position: relative;
+  z-index: 3100;
 }
 
 .sn-user-btn {
@@ -1226,7 +1233,8 @@ onUnmounted(() => {
   border-radius: 14px;
   background: white;
   box-shadow: 0 18px 40px rgba(21, 21, 21, 0.14);
-  z-index: 200;
+  z-index: 3200;
+  pointer-events: auto;
 }
 
 .sn-dropdown-item {

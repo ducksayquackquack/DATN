@@ -1376,16 +1376,20 @@ const submitCreate = async () => {
   }
 
   if (selectedVariantIds.value.length === 0) {
-    const confirmed = await confirmAction("Bạn chưa chọn sản phẩm nào. Tiếp tục tạo?");
-    if (!confirmed) return;
+    notifyWarning("Bạn chưa chọn sản phẩm áp dụng. Vui lòng chọn ít nhất 1 sản phẩm trước khi lưu.");
+    return;
   }
 
   const payload = { ...formData, idChiTietSanPhams: selectedVariantIds.value };
 
   try {
     isLoading.value = true;
-    await discountService.createDiscountComposite(payload);
-    notifySuccess("Tạo đợt giảm giá thành công");
+    const result = await discountService.createDiscountComposite(payload);
+    if (result?._syncFailed) {
+      notifyWarning("Đã tạo đợt giảm giá thành công nhưng không thể đồng bộ sản phẩm tự động. Sản phẩm sẽ được liên kết khi hệ thống đồng bộ tiếp theo.");
+    } else {
+      notifySuccess("Tạo đợt giảm giá thành công");
+    }
     router.push(`${basePath.value}/khuyen-mai/list`);
   } catch (e) {
     notifyError("Lỗi tạo mới: " + (e.response?.data?.message || e.message));

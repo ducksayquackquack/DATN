@@ -96,6 +96,19 @@ const formatDate = (value) => {
   return date ? date.toLocaleString('vi-VN') : '-'
 }
 
+const formatPromoDateTime = (value) => {
+  const date = parseDate(value)
+  if (!date) return '-'
+
+  const hasNonZeroTime = date.getHours() !== 0 || date.getMinutes() !== 0 || date.getSeconds() !== 0
+  const datePart = date.toLocaleDateString('vi-VN')
+  if (!hasNonZeroTime) return datePart
+
+  const hh = String(date.getHours()).padStart(2, '0')
+  const mm = String(date.getMinutes()).padStart(2, '0')
+  return `${hh}:${mm} ${datePart}`
+}
+
 const formatCurrency = (value) => `${new Intl.NumberFormat('vi-VN').format(toNumber(value))}₫`
 
 const invoiceTotal = (item) => {
@@ -118,6 +131,14 @@ const invoiceStatus = (item) => {
   return { label: item?.orderStatusName || item?.trangThai || 'Không xác định', tone: 'pending' }
 }
 
+const isActiveStatus = (statusValue) => {
+  const normalized = String(statusValue || '').trim().toLowerCase()
+  if (!normalized) return true
+  if (normalized.includes('ngừng') || normalized.includes('hủy') || normalized.includes('inactive')) return false
+  if (normalized.includes('không hoạt động') || normalized.includes('khong hoat dong')) return false
+  return true
+}
+
 const productStock = (item) => {
   const details = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
   if (details.length) {
@@ -129,6 +150,29 @@ const productStock = (item) => {
     }, 0)
   }
   return toNumber(item?.soLuong || item?.ton || 0)
+}
+
+const variantAvailableStock = (variant) => {
+  const base = toNumber(variant?.soLuong ?? variant?.soLuongTon ?? variant?.tonKho ?? variant?.ton)
+  const spctId = Number(variant?.id || 0)
+  const sold = spctId > 0 ? toNumber(soldBySpct.value.get(spctId)) : 0
+  return Math.max(0, base - sold)
+}
+
+const getProductVariants = (product) => {
+  const rows = Array.isArray(product?.sanPhamChiTiets) ? product.sanPhamChiTiets : []
+  return rows.filter((variant) => isActiveStatus(variant?.trangThai))
+}
+
+const buildVariantSubtitle = (variant) => {
+  const code = String(variant?.ma || variant?.barcode || '').trim()
+  const color = String(variant?.mauSac?.tenMau || variant?.mauSac?.tenMauSac || '').trim()
+  const size = String(variant?.kichThuoc?.tenKichThuoc || variant?.kichThuoc?.tenSize || '').trim()
+  const parts = []
+  if (code) parts.push(code)
+  if (color) parts.push(`Màu ${color}`)
+  if (size) parts.push(`Size ${size}`)
+  return parts.join(' • ')
 }
 
 const isActivePromotion = (item) => {
@@ -159,12 +203,19 @@ const pendingOrders = computed(() => {
 const lowStockProducts = computed(() => {
   const rows = []
   for (const item of products.value) {
-    const stock = productStock(item)
-    if (stock <= 12) {
+    if (!isActiveStatus(item?.trangThai)) continue
+
+    const variants = getProductVariants(item)
+    for (const variant of variants) {
+      const stock = variantAvailableStock(variant)
+      if (stock > 12) continue
+
       rows.push({
-        id: item?.id,
+        id: Number(variant?.id || 0),
+        key: `${item?.id || 'p'}-${variant?.id || variant?.ma || variant?.barcode || 'v'}`,
         maSanPham: item?.maSanPham || `SP-${item?.id || 'N/A'}`,
         tenSanPham: item?.tenSanPham || 'Sản phẩm',
+        bienThe: buildVariantSubtitle(variant),
         ton: stock,
         urgency: stock === 0 ? 'out' : stock <= 5 ? 'critical' : 'low'
       })
@@ -180,7 +231,7 @@ const activePromos = computed(() => {
     .map((item) => ({
       id: item?.id,
       name: item?.tenKhuyenMai || item?.maKhuyenMai || 'Khuyến mãi',
-      end: item?.ngayKetThuc
+      periodLabel: `Từ ${formatPromoDateTime(item?.ngayBatDau)} đến ${formatPromoDateTime(item?.ngayKetThuc)}`
     }))
 })
 
@@ -391,10 +442,10 @@ onUnmounted(() => {
             <button class="ew-link-btn" type="button" @click="go('/employee/san-pham/list')">Xem kho</button>
           </div>
           <div class="ew-list">
-            <div v-for="item in lowStockProducts" :key="item.id" class="ew-list-item">
+            <div v-for="item in lowStockProducts" :key="item.key" class="ew-list-item">
               <div>
                 <div class="ew-list-title">{{ item.tenSanPham }}</div>
-                <div class="ew-list-sub">{{ item.maSanPham }}</div>
+                <div class="ew-list-sub">{{ item.maSanPham }} • {{ item.bienThe }}</div>
               </div>
               <span class="ew-stock-badge" :class="`ew-stock-${item.urgency}`">
                 {{ item.ton === 0 ? 'Hết hàng' : `Còn ${item.ton}` }}
@@ -413,7 +464,7 @@ onUnmounted(() => {
             <div v-for="promo in activePromos" :key="promo.id" class="ew-list-item">
               <div>
                 <div class="ew-list-title">{{ promo.name }}</div>
-                <div class="ew-list-sub" v-if="promo.end">Đến {{ formatDate(promo.end) }}</div>
+                <div class="ew-list-sub">{{ promo.periodLabel }}</div>
               </div>
             </div>
             <div v-if="!activePromos.length" class="ew-empty">Chưa có khuyến mãi nào đang chạy.</div>

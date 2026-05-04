@@ -345,6 +345,7 @@
               <tr
                 v-for="(item, index) in paginatedVariantsDisplay"
                 :key="item.id"
+                :class="{ 'row-unchecked': !selectedVariantIds.includes(item.id) }"
               >
                 <td class="text-center" @click.stop>
                   <input
@@ -668,6 +669,10 @@ const itemsPerPage = 5;
 
 const rawVariants = ref([]);
 const selectedVariantIds = ref([]);
+// stagedVariantIds: pool items shown in the bottom table.
+// Only grows (when variants are ticked) — never shrinks on untick.
+// Cleared only by "Remove All".
+const stagedVariantIds = ref([]);
 const searchKeyword = ref("");
 
 const isLoading = ref(false);
@@ -778,8 +783,16 @@ const isEnded = computed(() => {
   return new Date() > end;
 });
 
+// Keep staged pool in sync: only adds new IDs, never removes
+watch(selectedVariantIds, (newIds) => {
+  const staged = new Set(stagedVariantIds.value);
+  newIds.forEach((id) => staged.add(id));
+  stagedVariantIds.value = [...staged];
+}, { deep: true });
+
+// Bottom table shows ALL staged variants (ticked + unticked), not just selected
 const allSelectedVariants = computed(() =>
-  rawVariants.value.filter((v) => selectedVariantIds.value.includes(v.id))
+  rawVariants.value.filter((v) => stagedVariantIds.value.includes(v.id))
 );
 
 const filterOptions = computed(() => {
@@ -1115,6 +1128,7 @@ const toggleAllVariants = (e) => {
 const removeAll = () => {
   if (window.confirm("Bạn có chắc muốn bỏ chọn tất cả sản phẩm?")) {
     selectedVariantIds.value = [];
+    stagedVariantIds.value = [];
     syncSliderRange(0, 0);
     notifySuccess("Danh sách sản phẩm đã được làm trống");
   }
@@ -1141,8 +1155,8 @@ const submitUpdate = async () => {
   }
 
   if (selectedVariantIds.value.length === 0) {
-    const confirmed = await confirmAction("Đợt giảm giá này chưa chọn sản phẩm nào. Bạn có chắc muốn lưu không?");
-    if (!confirmed) return;
+    notifyWarning("Bạn chưa chọn sản phẩm áp dụng. Vui lòng chọn ít nhất 1 sản phẩm trước khi lưu.");
+    return;
   }
 
   // Map variant IDs → product IDs locally (avoids redundant API call in service)
@@ -1159,11 +1173,11 @@ const submitUpdate = async () => {
     isLoading.value = true;
     const result = await discountService.update(discountId, payload);
     if (result?._syncFailed) {
-      notifyWarning("Đã lưu đợt giảm giá nhưng không đồng bộ được sản phẩm. Hãy chắc chắn Node backend (localhost:3000) đang chạy.");
+      notifyWarning("Đã lưu đợt giảm giá nhưng không thể đồng bộ sản phẩm tự động. Sản phẩm sẽ được liên kết khi hệ thống đồng bộ tiếp theo.");
     } else {
       notifySuccess("Cập nhật đợt giảm giá thành công");
     }
-    goBack();
+    await loadData();
   } catch (e) {
     notifyError("Lỗi cập nhật: " + (e.response?.data?.message || e.message));
   } finally {
@@ -1204,6 +1218,23 @@ const mapColor = (colorName) => {
   return "#ccc";
 };
 
+const buildStagedVariantIds = (selectedIds = []) => {
+  const selectedSet = new Set((Array.isArray(selectedIds) ? selectedIds : []).map((id) => Number(id)));
+  const selectedProductIds = new Set(
+    rawVariants.value
+      .filter((v) => selectedSet.has(Number(v?.id)))
+      .map((v) => Number(v?.idSanPham))
+      .filter((id) => Number.isFinite(id) && id > 0)
+  );
+
+  const expanded = rawVariants.value
+    .filter((v) => selectedProductIds.has(Number(v?.idSanPham)))
+    .map((v) => Number(v?.id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+
+  return [...new Set([...selectedSet, ...expanded])];
+}
+
 const loadData = async () => {
   isLoading.value = true;
   try {
@@ -1224,19 +1255,41 @@ const loadData = async () => {
       }
     }
 
-    const appliedProducts = await discountService.getAssociatedProducts(discountId);
+    // Ưu tiên variant-level: đọc idKhuyenMai trực tiếp từ từng chi-tiet-san-pham
+    const discIdNum = Number(discountId);
+    const localVariantIds = discountService.getLocalAssociatedVariantIds(discIdNum)
+      .filter((id) => rawVariants.value.some((v) => Number(v?.id) === Number(id)));
 
-    if (Array.isArray(appliedProducts) && appliedProducts.length > 0) {
-      // Map product IDs back to all their variant IDs
-      const appliedProductIds = new Set(appliedProducts.map((p) => Number(p.id)).filter((id) => id > 0));
-      selectedVariantIds.value = rawVariants.value
-        .filter((v) => appliedProductIds.has(Number(v.idSanPham)))
-        .map((v) => v.id)
-        .filter((id) => id != null);
-      if (selectedVariantIds.value.length === 0 && appliedProductIds.size > 0) {
-        console.warn('[DetailDiscount] Có sản phẩm được gắn nhưng không match được biến thể nào.',
-          'productIds:', [...appliedProductIds],
-          'sample rawVariant idSanPham:', rawVariants.value.slice(0, 3).map(v => v.idSanPham))
+    if (localVariantIds.length > 0) {
+      selectedVariantIds.value = [...localVariantIds];
+      stagedVariantIds.value = buildStagedVariantIds(localVariantIds);
+      return;
+    }
+
+    const fromVariantLevel = rawVariants.value
+      .filter((v) => Number(v?.idKhuyenMai ?? v?.id_khuyen_mai ?? 0) === discIdNum)
+      .map((v) => v.id)
+      .filter((id) => id != null);
+
+    if (fromVariantLevel.length > 0) {
+      selectedVariantIds.value = fromVariantLevel;
+      stagedVariantIds.value = buildStagedVariantIds(fromVariantLevel);
+    } else {
+      // Fallback: product-level lookup (dùng khi backend không trả idKhuyenMai trên variant)
+      const appliedProducts = await discountService.getAssociatedProducts(discountId);
+      if (Array.isArray(appliedProducts) && appliedProducts.length > 0) {
+        const appliedProductIds = new Set(appliedProducts.map((p) => Number(p.id)).filter((id) => id > 0));
+        const ids = rawVariants.value
+          .filter((v) => appliedProductIds.has(Number(v.idSanPham)))
+          .map((v) => v.id)
+          .filter((id) => id != null);
+        selectedVariantIds.value = ids;
+        stagedVariantIds.value = buildStagedVariantIds(ids);
+        if (ids.length === 0 && appliedProductIds.size > 0) {
+          console.warn('[DetailDiscount] Có sản phẩm được gắn nhưng không match được biến thể nào.',
+            'productIds:', [...appliedProductIds],
+            'sample rawVariant idSanPham:', rawVariants.value.slice(0, 3).map(v => v.idSanPham))
+        }
       }
     }
   } catch (e) {
@@ -1782,6 +1835,14 @@ onMounted(() => loadData());
   cursor: pointer;
   accent-color: #ef4444;
   background-color: #fff;
+}
+
+.row-unchecked {
+  opacity: 0.42;
+  background: rgba(17, 24, 39, 0.03);
+}
+.row-unchecked:hover {
+  opacity: 0.72;
 }
 
 .color-dot {

@@ -4,6 +4,10 @@ import { getKhachHangByTaiKhoanId } from "../services/KhachHangService"
 import { hasPaymentFlowTag, PAYMENT_FLOW_TAGS } from "../utils/paymentWorkflow"
 
 const STORAGE_KEY = "notifications:seen"
+const STAFF_REFRESH_COOLDOWN_MS = 60 * 1000
+
+let staffRefreshFailStreak = 0
+let staffRefreshPausedUntil = 0
 
 const normalizeIdentityPart = (value) => String(value || "").trim().toLowerCase()
 
@@ -220,13 +224,23 @@ export function useNotifications(scope = "customer") {
       return
     }
 
+    if (Date.now() < staffRefreshPausedUntil) {
+      return
+    }
+
     loading.value = true
     try {
       const response = await getAllHoaDon()
       const rows = normalizeList(response)
       notifications.value = buildStaffNotifications(rows, scope, identityKey)
+      staffRefreshFailStreak = 0
+      staffRefreshPausedUntil = 0
     } catch {
       notifications.value = []
+      staffRefreshFailStreak += 1
+      if (staffRefreshFailStreak >= 2) {
+        staffRefreshPausedUntil = Date.now() + STAFF_REFRESH_COOLDOWN_MS
+      }
     } finally {
       loading.value = false
     }

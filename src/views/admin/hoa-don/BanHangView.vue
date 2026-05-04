@@ -3,7 +3,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { createHoaDon, addHoaDonItem, updateHoaDon, updateHoaDonBySystemEvent } from "../../../services/hoaDonService"
 import { getAllSanPham, getSanPhamById } from "../../../services/sanPhamService"
-import { getAllKhachHang } from "../../../services/KhachHangService"
+import { createKhachHang, getAllKhachHang } from "../../../services/KhachHangService"
+import taiKhoanService from "../../../services/taiKhoanService"
 import { getAllNhanVien, getNhanVienByTaiKhoanId } from "../../../services/nhanVienService"
 import { getDiaChiByKhachHang } from "../../../services/diaChiService"
 import { quoteShippingFeeAll } from "../../../services/shippingQuoteService"
@@ -130,6 +131,7 @@ const getPosDraftKey = () => {
 }
 
 const ORDER_ITEM_PRICING_SNAPSHOTS_KEY = "orderItemPricingSnapshots"
+const ORDER_ITEM_VOUCHER_SNAPSHOTS_KEY = "orderItemVoucherSnapshots"
 
 function persistOrderPricingSnapshot(orderLike, orderLines) {
   try {
@@ -168,12 +170,41 @@ function persistOrderPricingSnapshot(orderLike, orderLines) {
   }
 }
 
+function persistOrderVoucherSnapshot({ keys = [], itemVouchers = [] } = {}) {
+  const normalizedKeys = Array.isArray(keys)
+    ? keys.map((key) => String(key || "").trim()).filter(Boolean)
+    : []
+  if (!normalizedKeys.length) return
+
+  try {
+    const raw = localStorage.getItem(ORDER_ITEM_VOUCHER_SNAPSHOTS_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    const snapshots = parsed && typeof parsed === "object" ? parsed : {}
+    const payload = {
+      createdAt: new Date().toISOString(),
+      itemVouchers: Array.isArray(itemVouchers) ? itemVouchers : [],
+    }
+
+    for (const key of normalizedKeys) {
+      snapshots[key] = payload
+    }
+
+    localStorage.setItem(ORDER_ITEM_VOUCHER_SNAPSHOTS_KEY, JSON.stringify(snapshots))
+  } catch {
+    // ignore snapshot persistence errors
+  }
+}
+
 function compactVoucherForDraft(voucher) {
   if (!voucher || typeof voucher !== "object") return null
   return {
     id: Number(voucher.id || 0) || null,
     tenPhieuGiamGia: String(voucher.tenPhieuGiamGia || ""),
-    maPhieuGiamGia: String(voucher.maPhieuGiamGia || "")
+    maPhieuGiamGia: String(voucher.maPhieuGiamGia || ""),
+    hinhThucGiam: Boolean(voucher.hinhThucGiam),
+    giaTriGiamGia: Number(voucher.giaTriGiamGia || 0),
+    hoaDonToiThieu: Number(voucher.hoaDonToiThieu || 0),
+    soTienGiamToiDa: Number(voucher.soTienGiamToiDa || 0)
   }
 }
 
@@ -196,7 +227,6 @@ function captureTabState() {
     taiQuay: Boolean(taiQuay.value),
     paymentMethod: String(paymentMethod.value || "CASH"),
     orderNote: String(orderNote.value || ""),
-    discount: Number(discount.value || 0),
     selectedVoucher: compactVoucherForDraft(selectedVoucher.value),
     cashierId: cashierId.value ? Number(cashierId.value) : null,
     customerId: customerId.value ? Number(customerId.value) : null,
@@ -227,7 +257,7 @@ function applyTabState(state) {
   taiQuay.value = Boolean(state.taiQuay)
   paymentMethod.value = String(state.paymentMethod || "CASH")
   orderNote.value = String(state.orderNote || "")
-  discount.value = Number(state.discount || 0)
+  discount.value = 0  // recalculated by VoucherSelector when voucher is restored
   selectedVoucher.value = state.selectedVoucher || null
   if (state.cashierId) cashierId.value = Number(state.cashierId)
   customerId.value = state.customerId ? Number(state.customerId) : null
@@ -432,8 +462,15 @@ async function confirmQrDemoPayment() {
     await new Promise((resolve) => setTimeout(resolve, 900))
     const trackingUrl = buildOrderLookupTrackingUrl({ maHoaDon: qrContent.value })
     if (qrIsTaiQuay.value) {
-      // POS order starts at CHO_LAY_HANG → HOAN_TAT_POS is valid
-      await updateHoaDonBySystemEvent(qrOrderId.value, "HOAN_TAT_POS", "Hoàn tất bán hàng tại quầy", trackingUrl)
+      // Prefer explicit completion update for compatibility with stock/accounting flows.
+      try {
+        await updateHoaDon(qrOrderId.value, {
+          orderStatusCode: "HOAN_THANH",
+          statusNote: "[POS] Đã xác nhận thanh toán chuyển khoản tại quầy"
+        })
+      } catch {
+        await updateHoaDonBySystemEvent(qrOrderId.value, "HOAN_TAT_POS", "Hoàn tất bán hàng tại quầy", trackingUrl)
+      }
     } else {
       // Online transfer is paid successfully, auto-close order to completed.
       try {
@@ -466,11 +503,12 @@ async function confirmQrDemoPayment() {
       }))
     }
 
+    applyLocalStockAfterCheckout(lines.value)
     clearPosTabAfterCheckout()
     showQrModal.value = false
     qrState.value = "paid"
     showQrPaidModal.value = true
-    window.toast?.success?.("Đã thanh toán thành công (demo)")
+    window.toast?.success?.("Đã thanh toán chuyển khoản thành công")
   } catch (error) {
     qrState.value = "preview"
     window.toast?.error?.(error?.response?.data?.message || error?.message || "Không thể hoàn tất thanh toán")
@@ -508,12 +546,23 @@ function formatCampaignLabel(label, percent) {
   return normalized || `Giảm ${Number(percent || 0)}%`
 }
 
+function productCodeOrder(value = "") {
+  const code = String(value || "").trim().toUpperCase()
+  const match = code.match(/^SP0*(\d+)$/)
+  if (match?.[1]) {
+    const numeric = Number(match[1])
+    if (Number.isFinite(numeric)) return numeric
+  }
+  return Number.POSITIVE_INFINITY
+}
+
 // Product grouping for grid display
 const productGroups = computed(() => {
   const kw = posProductSearch.value.trim().toLowerCase()
   const groupMap = new Map()
   for (const v of variants.value) {
-    const key = Number(v.idSanPham || 0) || v.tenSanPham
+    const productId = Number(v.idSanPham || 0)
+    const key = productId || v.tenSanPham
     if (!groupMap.has(key)) {
       groupMap.set(key, {
         idSanPham: v.idSanPham,
@@ -558,6 +607,21 @@ const productGroups = computed(() => {
       [g.tenSanPham, g.maSanPham, ...g.variants.map(v => [v.maSanPhamChiTiet, v.tenMau, v.tenSize].join(" "))].join(" ").toLowerCase().includes(kw)
     )
   }
+  groups.sort((left, right) => {
+    const leftOrder = productCodeOrder(left?.maSanPham)
+    const rightOrder = productCodeOrder(right?.maSanPham)
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder
+
+    const leftCode = String(left?.maSanPham || "")
+    const rightCode = String(right?.maSanPham || "")
+    const codeCompare = leftCode.localeCompare(rightCode, "vi", { numeric: true, sensitivity: "base" })
+    if (codeCompare !== 0) return codeCompare
+
+    return String(left?.tenSanPham || "").localeCompare(String(right?.tenSanPham || ""), "vi", {
+      numeric: true,
+      sensitivity: "base"
+    })
+  })
   return groups
 })
 
@@ -587,7 +651,7 @@ async function syncGroupVariantsBeforeOpen(group) {
     return {
       ...group,
       idSanPham: productId,
-      tenSanPham: detailRaw?.tenSanPham || group?.tenSanPham,
+      tenSanPham: group?.tenSanPham || detailRaw?.tenSanPham,
       maSanPham: detailRaw?.maSanPham || group?.maSanPham,
       variants: freshVariants
     }
@@ -1170,6 +1234,8 @@ function colorSearchTokens(colorName = "") {
     "be": ["beige"],
     "cam": ["orange"],
     "vang": ["yellow"],
+    "hong": ["pink", "rose", "fuchsia", "lavender", "lilac"],
+    "tim": ["purple", "violet"],
     "xanh duong": ["blue"],
     "xanh la": ["green"],
     "xanh navy": ["navy", "blue"],
@@ -1204,6 +1270,55 @@ function pickImageFromListByColor(images = [], colorName = "") {
 
   const found = list.find((img) => tokens.some((token) => imageHasColorToken(img, token)))
   return found || ""
+}
+
+function collectProductGalleryImages(product = {}) {
+  const candidates = [
+    product?.images,
+    product?.listAnh,
+    product?.danhSachAnh,
+    product?.anhSanPhams,
+    product?.hinhAnhSanPhams,
+    product?.gallery,
+    product?.galleries,
+  ]
+
+  return [...new Set(
+    candidates
+      .flatMap((entry) => Array.isArray(entry) ? entry : [entry])
+      .map((entry) => {
+        if (!entry) return ""
+        if (typeof entry === "string") return toImageUrl(entry)
+        return pickImageValue(entry)
+      })
+      .filter(Boolean)
+  )]
+}
+
+function pickProductGalleryImageForVariant(product = {}, variant = {}, colorName = "", variants = []) {
+  const gallery = collectProductGalleryImages(product)
+  if (!gallery.length) return ""
+  if (gallery.length === 1) return gallery[0]
+
+  const byColorToken = pickImageFromListByColor(gallery, colorName)
+  if (byColorToken) return byColorToken
+
+  const colorId = Number(variant?.mauSac?.id || variant?.mauSacId || variant?.idMauSac || 0)
+  if (!Number.isFinite(colorId) || colorId <= 0) return gallery[0]
+
+  const colorOrder = []
+  for (const row of (Array.isArray(variants) ? variants : [])) {
+    const rowColorId = Number(row?.mauSac?.id || row?.mauSacId || row?.idMauSac || 0)
+    if (!Number.isFinite(rowColorId) || rowColorId <= 0 || colorOrder.includes(rowColorId)) continue
+    colorOrder.push(rowColorId)
+  }
+
+  const colorIndex = colorOrder.indexOf(colorId)
+  if (colorIndex >= 0) {
+    return gallery[Math.min(colorIndex, gallery.length - 1)]
+  }
+
+  return gallery[0]
 }
 
 function getStaticColorCandidates(productId, productLike = {}) {
@@ -1341,6 +1456,7 @@ const flattenVariants = (products, soldBySpct = new Map()) =>
       const variantDirectImage = pickImageValue(v)
       const productDirectImage = pickImageValue(product)
       const tenMauRaw = normalizeDisplayColorName(v?.mauSac?.tenMau || v?.mauSac?.tenMauSac)
+      const productGalleryImage = pickProductGalleryImageForVariant(product, v, tenMauRaw, activeVariants)
       const tenMau = hideColorForProduct ? "" : tenMauRaw
       const tenSize = String(v?.kichThuoc?.tenKichThuoc || v?.tenKichThuoc || v?.size || "").trim()
       const soLuongTon = variantAvailableStockForPos(v, soldBySpct)
@@ -1363,17 +1479,17 @@ const flattenVariants = (products, soldBySpct = new Map()) =>
         /^SP\d+$/i.test(productCode) && hasCuratedImage
           ? (staticColorImage || fallbackImageFor(product?.id, productCode, product?.tenSanPham))
           : ""
-      // API images always take priority over static fallbacks
-      // BUT: if we have a color-matched static image from a known palette, prefer it
-      // over generic API images that may not be color-specific
+      // Prefer real variant/product images first; curated fallbacks are only used
+      // when API data has no usable image.
       const resolvedImage =
         priorityStaticImage ||
         variantDirectImage ||
+        productGalleryImage ||
         productDirectImage ||
-        forcedCatalogImage ||
         configColorResolved ||
         staticColorImage ||
         configGalleryImage ||
+        forcedCatalogImage ||
         (overrideImage ? toImageUrl(overrideImage) : "") ||
         fallbackImageForVariant({
           id: Number(product?.id || 0),
@@ -1422,6 +1538,29 @@ const availableStockForVariant = (variant) => {
 
 const rawStockForVariant = (variant) => Number(variant?.soLuongTon || 0)
 
+function applyLocalStockAfterCheckout(checkoutLines = []) {
+  if (!Array.isArray(checkoutLines) || !checkoutLines.length) return
+
+  const soldByVariant = new Map()
+  for (const line of checkoutLines) {
+    const spctId = Number(line?.spctId || 0)
+    const qty = Math.max(Number(line?.soLuong || 0), 0)
+    if (!spctId || qty <= 0) continue
+    soldByVariant.set(spctId, Number(soldByVariant.get(spctId) || 0) + qty)
+  }
+  if (!soldByVariant.size) return
+
+  variants.value = variants.value.map((variant) => {
+    const spctId = Number(variant?.spctId || 0)
+    const sold = Number(soldByVariant.get(spctId) || 0)
+    if (!spctId || sold <= 0) return variant
+    return {
+      ...variant,
+      soLuongTon: Math.max(Number(variant?.soLuongTon || 0) - sold, 0)
+    }
+  })
+}
+
 // ═══════ Computed ═══════════════════════════════════════đ═══════════════════════════════════════đ═══════════════════════════════════════đ—đ
 
 const filteredProductVariants = computed(() => {
@@ -1448,8 +1587,10 @@ const subtotal = computed(() =>
   lines.value.reduce((sum, l) => sum + Number(l.giaBan || 0) * Number(l.soLuong || 0), 0)
 )
 const grandTotal = computed(() => {
-  const raw = Math.max(subtotal.value - Number(discount.value || 0) + (taiQuay.value ? 0 : Number(shippingFee.value || 0)), 0)
-  return Math.ceil(raw / 1000) * 1000
+  return Math.max(
+    subtotal.value - Number(discount.value || 0) + (taiQuay.value ? 0 : Number(shippingFee.value || 0)),
+    0
+  )
 })
 
 const paymentEntered = computed(() => Number(paymentCash.value || 0) + Number(paymentBank.value || 0))
@@ -1461,8 +1602,11 @@ const paymentRemainingBank = computed(() => Math.max(grandTotal.value - Number(p
 
 const resolveApiPaymentMethod = (method) => {
   const normalized = String(method || "").toUpperCase()
-  if (normalized === "BOTH") return "CASH_BANK"
-  return normalized || "CASH"
+  if (normalized === "VNPAY") return "VNPAY"
+  if (normalized === "BANK") return "BANK"
+  // Backend currently rejects mixed enum in some environments, fallback to CASH.
+  if (normalized === "BOTH") return "CASH"
+  return "CASH"
 }
 
 const selectedCustomerInfo = computed(() =>
@@ -1474,7 +1618,9 @@ const selectedCustomerLabel = computed(() => {
 })
 
 const selectedCustomerPhone = computed(() =>
-  String(selectedCustomerInfo.value?.soDienThoai || "").trim()
+  (isGuestLikeCustomer(selectedCustomerInfo.value)
+    ? ""
+    : String(selectedCustomerInfo.value?.soDienThoai || "").trim())
 )
 
 const POS_GUEST_CACHE_KEY = "pos:guest-customer-id"
@@ -1575,6 +1721,103 @@ function resolveFallbackCustomerId() {
 
   // Do not fallback to a real customer id (e.g. #1) because it will attach
   // guest orders to real customer profiles.
+  return null
+}
+
+async function ensurePosGuestCustomerId() {
+  const existingId = resolveFallbackCustomerId()
+  if (existingId) return existingId
+
+  const timestamp = Date.now().toString()
+  const generatedPhone = `09${timestamp.slice(-8)}`
+  const generatedEmail = `pos.guest.${timestamp}@dirtywave.local`
+  const generatedPassword = "DW@123456"
+  let accountId = 0
+
+  const accountPayloadCandidates = [
+    {
+      email: generatedEmail,
+      username: generatedEmail,
+      matKhau: generatedPassword,
+      vaiTro: "CUSTOMER",
+      trangThaiHoatDong: "Hoạt động",
+      trangThaiTaiKhoan: "Kích hoạt"
+    },
+    {
+      email: generatedEmail,
+      tenDangNhap: generatedEmail,
+      matKhau: generatedPassword,
+      vaiTro: "ROLE_CUSTOMER",
+      trangThaiHoatDong: "Hoạt động",
+      trangThaiTaiKhoan: "Kích hoạt"
+    },
+    {
+      email: generatedEmail,
+      username: generatedEmail,
+      password: generatedPassword,
+      vaiTro: "CUSTOMER",
+      trangThaiHoatDong: "Hoạt động",
+      trangThaiTaiKhoan: "Kích hoạt"
+    }
+  ]
+
+  for (const accountPayload of accountPayloadCandidates) {
+    try {
+      const accountRes = await taiKhoanService.create(accountPayload)
+      accountId = Number(accountRes?.data?.id || accountRes?.data?.data?.id || 0)
+      if (accountId > 0) break
+    } catch {
+      // Try next payload shape.
+    }
+  }
+
+  if (accountId > 0) {
+    const customerPayloadCandidates = [
+      {
+        tenKhachHang: "Khách lẻ",
+        gioiTinh: "Nam",
+        ngaySinh: "1990-01-01",
+        soDienThoai: generatedPhone,
+        email: generatedEmail,
+        diaChiNhanHang: "Mua tại quầy",
+        idTaiKhoan: accountId,
+        taiKhoan: { id: accountId },
+        trangThai: "Hoạt động"
+      },
+      {
+        tenKhachHang: "Khách lẻ",
+        soDienThoai: generatedPhone,
+        idTaiKhoan: accountId,
+        taiKhoanId: accountId,
+        trangThai: "Hoạt động"
+      }
+    ]
+
+    for (const payload of customerPayloadCandidates) {
+      try {
+        const createRes = await createKhachHang(payload)
+        const createdId = Number(
+          createRes?.data?.id ||
+          createRes?.data?.khachHang?.id ||
+          createRes?.data?.data?.id ||
+          0
+        )
+        if (createdId > 0) {
+          try { localStorage.setItem(POS_GUEST_CACHE_KEY, String(createdId)) } catch { /* ignore */ }
+          detectedGuestCustomerId.value = createdId
+          return createdId
+        }
+      } catch {
+        // Try next payload shape.
+      }
+    }
+  }
+
+  const detectedId = await detectGuestCustomerIdAcrossPages()
+  if (Number(detectedId || 0) > 0) {
+    return Number(detectedId)
+  }
+
   return null
 }
 
@@ -1829,6 +2072,7 @@ const isValidVietnamPhone = (value) => /^(0|\+84)\d{9,10}$/.test(normalizedPhone
 const customerSearchResults = computed(() => {
   const keyword = canonicalPhone(customerPhoneSearch.value)
   const base = khachHangList.value.filter((kh) => {
+    if (isGuestLikeCustomer(kh)) return false
     const phone = canonicalPhone(kh?.soDienThoai)
     if (!phone) return false
     if (!keyword) return true
@@ -1840,7 +2084,9 @@ const customerSearchResults = computed(() => {
 const hasExactPhoneMatch = computed(() => {
   const keyword = canonicalPhone(customerPhoneSearch.value)
   if (!keyword) return false
-  return khachHangList.value.some((kh) => canonicalPhone(kh?.soDienThoai) === keyword)
+  return khachHangList.value
+    .filter((kh) => !isGuestLikeCustomer(kh))
+    .some((kh) => canonicalPhone(kh?.soDienThoai) === keyword)
 })
 
 const openCustomerSearchModal = async () => {
@@ -1866,13 +2112,21 @@ const selectFirstCustomerFromSearch = () => {
   if (first) selectCustomerFromSearch(first)
 }
 
-const chooseGuestCustomer = () => {
+const chooseGuestCustomer = async () => {
   customerId.value = null
   customerAddresses.value = []
   selectedAddressId.value = "manual"
   customerPhoneSearch.value = ""
   closeCustomerSearchModal()
-  window.toast?.success?.("Đã chọn khách lẻ")
+
+  const guestId = await ensurePosGuestCustomerId()
+  if (Number(guestId || 0) > 0) {
+    customerId.value = Number(guestId)
+    window.toast?.success?.("Đã chọn khách lẻ")
+    return
+  }
+
+  window.toast?.error?.("Chưa thể tạo khách lẻ tự động. Vui lòng thử lại hoặc chọn khách hàng cụ thể.")
 }
 
 // ═══════ Employee context ═══════════════════════════════════════đ═══════════════════════════════════════đ════════════════════đ═══════—đ
@@ -1958,6 +2212,19 @@ const submitPosOrder = async () => {
     if (!effectiveCustomerId) {
       effectiveCustomerId = resolveFallbackCustomerId()
     }
+    if (!effectiveCustomerId) {
+      const createdGuestId = await ensurePosGuestCustomerId()
+      if (createdGuestId) {
+        effectiveCustomerId = Number(createdGuestId)
+        customerId.value = Number(createdGuestId)
+        window.toast?.success?.("Đã tự tạo khách lẻ mặc định cho đơn tại quầy.")
+      }
+    }
+    if (!effectiveCustomerId) {
+      window.toast?.error?.("Backend hiện yêu cầu khách hàng bắt buộc. Vui lòng chọn khách hàng trước khi thanh toán.")
+      saving.value = false
+      return
+    }
 
     const effectiveCustomer = khachHangList.value.find((kh) => Number(kh?.id) === Number(effectiveCustomerId)) || selectedCustomer
     const shipCost = taiQuay.value ? 0 : Number(shippingFee.value || 0)
@@ -1965,22 +2232,38 @@ const submitPosOrder = async () => {
     const orderStatusCode = orderType === "POS"
       ? "CHO_LAY_HANG"
       : (paymentMethod.value.toUpperCase() === "VNPAY" ? "CHO_LAY_HANG" : "CHO_XAC_NHAN")
-    const statusNote = `[${orderType}] ${orderNote.value || "Đơn bán hàng"}`
+    const voucherDescriptor = String(
+      selectedVoucher.value?.maPhieuGiamGia
+      || selectedVoucher.value?.tenPhieuGiamGia
+      || ""
+    ).trim()
+    const statusNote = [
+      `[${orderType}] ${orderNote.value || "Đơn bán hàng"}`,
+      voucherDescriptor ? `Áp dụng voucher ${voucherDescriptor}` : ""
+    ].filter(Boolean).join(" | ")
     const normalizedPhone = phone || canonicalPhone(effectiveCustomer?.soDienThoai || "")
 
+    const discountAmount = Number(discount.value || 0)
     const createPayload = {
       nhanVienId: Number(cashierId.value),
+      idNhanVien: Number(cashierId.value),
       soDienThoaiNhanHang: normalizedPhone,
       diaChiNhanHang: addressText,
       phiShip: shipCost,
-      giaSauGiamGia: Number(discount.value || 0),
+      giaSauGiamGia: discountAmount,
+      giamGia: discountAmount,
+      discountAmount,
       thanhTien: Number(grandTotal.value || 0),
       phuongThucThanhToan: apiPayMethod,
+      paymentMethod: apiPayMethod,
       orderStatusCode,
       statusNote,
       orderType
     }
-    if (effectiveCustomerId) createPayload.khachHangId = Number(effectiveCustomerId)
+    if (effectiveCustomerId) {
+      createPayload.khachHangId = Number(effectiveCustomerId)
+      createPayload.idKhachHang = Number(effectiveCustomerId)
+    }
 
     // Validate tồn kho lần cuối trước khi gửi API
     for (const line of lines.value) {
@@ -2007,16 +2290,24 @@ const submitPosOrder = async () => {
     for (const line of lines.value) {
       await addHoaDonItem(orderId, {
         spctId: line.spctId,
+        sanPhamChiTietId: line.spctId,
+        idSanPhamChiTiet: line.spctId,
         soLuong: Number(line.soLuong),
+        quantity: Number(line.soLuong),
         giaBan: Number(line.giaBan),
+        donGia: Number(line.giaBan),
+        giaSauGiam: Number(line.giaBan),
+        giaBanSauDotGiamGia: Number(line.giaBan),
         giaBanGoc: Number(line.giaBanGoc || line.giaBan || 0),
-        campaignPercent: Number(line.campaignPercent || 0),
-        campaignName: String(line.campaignName || "").trim(),
         thanhTien: Number(line.giaBan || 0) * Number(line.soLuong || 0)
       })
     }
 
     persistOrderPricingSnapshot(createdOrderSnapshot, lines.value)
+    persistOrderVoucherSnapshot({
+      keys: [createdOrderSnapshot.id, createdOrderSnapshot.maHoaDon],
+      itemVouchers: []
+    })
 
     const isVnpay = paymentMethod.value.toUpperCase() === "VNPAY"
     const isBank = paymentMethod.value.toUpperCase() === "BANK"
@@ -2033,6 +2324,7 @@ const submitPosOrder = async () => {
       } catch {
         window.toast?.warning?.("Vui lòng mở lại hóa đơn để kiểm tra và hoàn tất")
       }
+      applyLocalStockAfterCheckout(lines.value)
     } else if (!taiQuay.value) {
       window.toast?.success?.("Tạo đơn giao hàng thành công")
     } else {
@@ -2059,7 +2351,11 @@ const submitPosOrder = async () => {
       responseData?.message,
       responseData?.error,
       responseData?.details,
-      Array.isArray(responseData?.errors) ? responseData.errors.join("; ") : ""
+      Array.isArray(responseData?.errors)
+        ? responseData.errors.join("; ")
+        : (responseData?.errors && typeof responseData.errors === "object"
+          ? Object.values(responseData.errors).flat().join("; ")
+          : "")
     ].filter(Boolean).join(" | ")
     window.toast?.error?.(detailText || error.message || "Không thể tạo đơn")
   } finally {
@@ -2171,13 +2467,11 @@ onBeforeUnmount(() => {
               <div class="pos-product-price-row">
                 <div class="pos-product-price-main">
                   <div class="pos-product-price">
-                    <template v-if="group.minPrice === group.maxPrice">{{ formatCurrency(group.minPrice) }}</template>
-                    <template v-else>{{ formatCurrency(group.minPrice) }} - {{ formatCurrency(group.maxPrice) }}</template>
+                    {{ formatCurrency(group.minPrice) }}
                   </div>
                   <div class="pos-product-old-price" :class="{ 'is-placeholder': !group.hasDiscount }">
                     <template v-if="group.hasDiscount">
-                      <template v-if="group.minBasePrice === group.maxBasePrice">{{ formatCurrency(group.minBasePrice) }}</template>
-                      <template v-else>{{ formatCurrency(group.minBasePrice) }} - {{ formatCurrency(group.maxBasePrice) }}</template>
+                      {{ formatCurrency(group.minBasePrice) }}
                     </template>
                     <template v-else>0 đ</template>
                   </div>
@@ -2310,6 +2604,8 @@ onBeforeUnmount(() => {
             :subtotal="subtotal"
             :customer-id="customerId"
             :auto-select="true"
+            :initial-voucher-code="selectedVoucher?.maPhieuGiamGia || ''"
+            :initial-voucher-name="selectedVoucher?.tenPhieuGiamGia || ''"
             @update:voucher="selectedVoucher = $event"
             @discount-changed="applyDiscount"
           />
@@ -2630,16 +2926,16 @@ onBeforeUnmount(() => {
               </div>
               <div v-if="qrState === 'processing'" class="pos-qr-waiting">
                 <span class="pos-qr-spinner"></span>
-                Đang chờ thanh toán...
+                Đang xác nhận thanh toán...
               </div>
 
               <p class="pos-qr-note">
-                Demo: bấm Thanh toán để tự động xác nhận, không cần quét QR.
+                Sau khi nhận được tiền chuyển khoản, bấm nút bên dưới để xác nhận thanh toán.
               </p>
 
               <div class="pos-qr-actions">
                 <button class="pos-btn-pay" style="width:100%" :disabled="qrPolling" @click="confirmQrDemoPayment">
-                  {{ qrPolling ? 'Đang chờ thanh toán...' : 'Thanh toán' }}
+                  {{ qrPolling ? 'Đang xác nhận thanh toán...' : 'Xác nhận đã thanh toán' }}
                 </button>
                 <button class="pos-btn-cancel" style="width:100%" @click="cancelQrPayment">
                   <X :size="14" /> Huỷ thanh toán

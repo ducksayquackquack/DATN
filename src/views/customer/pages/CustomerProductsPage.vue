@@ -2,10 +2,12 @@
 import { computed, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import CustomerPageLayout from "../../../components/customer/CustomerPageLayout.vue"
+import { applyCampaignPriceToVariants } from "../../../services/campaignPricingService"
 import { getAllSanPham } from "../../../services/sanPhamService"
 import { resolveApiOrigin } from "../../../utils/apiOrigin"
 import { getProductImageOverride } from "../../../utils/productImageOverrides"
 import { fallbackImageForVariant } from "../../../utils/productImageFallback"
+import { shouldDisplayPublicProduct } from "../../../utils/publicProductVisibility"
 import { computeSoldBySpct, computeSoldBySpctDirect, variantAvailableStock } from "../../../utils/stockCalculation"
 import img1 from "../../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
 import img2 from "../../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
@@ -361,8 +363,23 @@ const variantRemainingStockValue = (variant) => {
 const normalizeProduct = (item) => {
   const allVariants = Array.isArray(item?.sanPhamChiTiets) ? item.sanPhamChiTiets : []
   const variants = allVariants.filter((variant) => isActiveStatus(variant?.trangThai || variant?.status))
-  const variantPrices = variants.map((v) => toNumber(v?.giaBan)).filter((v) => v > 0)
   const variantSource = variants.length ? variants : allVariants
+  const variantPricing = variantSource
+    .map((variant) => {
+      const currentPrice = toNumber(
+        variant?.giaBanSauDotGiamGia
+        ?? variant?.giaSauGiam
+        ?? variant?.giaBan
+        ?? variant?.price
+      )
+      const baseCandidate = toNumber(variant?.giaBanGoc ?? variant?.giaNiemYet ?? 0)
+
+      return {
+        currentPrice,
+        basePrice: baseCandidate > 0 ? Math.max(baseCandidate, currentPrice) : currentPrice,
+      }
+    })
+    .filter((entry) => entry.currentPrice > 0)
 
   const colors = [...new Set(
     variantSource
@@ -371,9 +388,16 @@ const normalizeProduct = (item) => {
   )].map((name) => ({ name, hex: colorHexByName(name) }))
 
   let price = toNumber(item?.giaBan || item?.gia || 0)
-  if (variantPrices.length) {
-    price = Math.min(...variantPrices)
+  if (variantPricing.length) {
+    price = Math.min(...variantPricing.map((entry) => entry.currentPrice))
   }
+
+  const cheapestVariant = variantPricing.length
+    ? variantPricing.reduce((lowest, current) => (current.currentPrice < lowest.currentPrice ? current : lowest), variantPricing[0])
+    : null
+  const originalPrice = cheapestVariant && cheapestVariant.basePrice > cheapestVariant.currentPrice
+    ? cheapestVariant.basePrice
+    : 0
 
   const stockSource = variants.length ? variants : allVariants
   const fallbackItemStock = toNumber((item?.soLuongCon ?? item?.soLuongTon ?? item?.tonKhoCon ?? item?.soLuong) || 0)
@@ -425,6 +449,7 @@ const normalizeProduct = (item) => {
     category,
     categoryKey: normalizeText(category),
     price,
+    originalPrice,
     stock,
     sold: toNumber(item?.daBan || item?.luotBan || item?.soLuongBan || 0),
     active,
@@ -547,8 +572,20 @@ const loadProducts = async () => {
     soldBySpct.value = soldMap instanceof Map ? soldMap : new Map()
 
     const source = Array.isArray(productRes?.data) ? productRes.data : []
+    const pricedProducts = await Promise.all(source.map(async (product) => {
+      const productId = Number(product?.id || 0)
+      const rawVariants = Array.isArray(product?.sanPhamChiTiets) ? product.sanPhamChiTiets : []
+      if (!rawVariants.length || productId <= 0) return product
 
-    products.value = source.map(normalizeProduct)
+      return {
+        ...product,
+        sanPhamChiTiets: await applyCampaignPriceToVariants(rawVariants, productId)
+      }
+    }))
+
+    products.value = pricedProducts
+      .filter((item) => shouldDisplayPublicProduct(item))
+      .map(normalizeProduct)
   } catch {
     soldBySpct.value = new Map()
     products.value = []
@@ -705,7 +742,10 @@ onMounted(loadProducts)
                 ></span>
               </div>
               <div class="cp-row">
-                <strong>{{ formatVND(item.price) }}</strong>
+                <div class="cp-price-stack">
+                  <strong>{{ formatVND(item.price) }}</strong>
+                  <span v-if="item.originalPrice > item.price" class="cp-old-price">{{ formatVND(item.originalPrice) }}</span>
+                </div>
                 <span>Còn {{ item.stock }}</span>
               </div>
             </div>
@@ -997,8 +1037,19 @@ onMounted(loadProducts)
   align-items: center;
 }
 
+.cp-price-stack {
+  display: grid;
+  gap: 2px;
+}
+
 .cp-row strong {
   color: #c5162d;
+}
+
+.cp-old-price {
+  color: #8f96a3;
+  font-size: 12px;
+  text-decoration: line-through;
 }
 
 .cp-row span {

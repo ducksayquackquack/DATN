@@ -73,7 +73,7 @@
 
               <td style="text-align:center">
                 <span class="pill">
-                  {{ item.role === "Quản trị hệ thống" ? "ADMIN" : "STAFF" }}
+                  {{ item.roleCode }}
                 </span>
               </td>
 
@@ -132,17 +132,33 @@ const statusFilter = ref("")
 const roleFilter = ref("")
 const list = ref([])
 
+const normalizeRoleToken = (value = "") => String(value || "")
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .replace(/đ/g, "d")
+  .replace(/Đ/g, "D")
+  .trim()
+  .toUpperCase()
+  .replace(/^ROLE_/, "")
+  .replace(/\s+/g, "_")
+
+const isAdminRole = (value = "") => {
+  const normalized = normalizeRoleToken(value)
+  return normalized === "ADMIN" || normalized === "QUAN_TRI_HE_THONG" || normalized === "QUAN_TRI_VIEN"
+}
+
 async function loadData() {
   const res = await getAllNhanVien()
 
   list.value = res.data.map(item => ({
+    roleCode: isAdminRole(item.chucVu?.maChucVu || item.chucVu?.tenChucVu || item.vaiTro || item.taiKhoan?.vaiTro) ? "ADMIN" : "STAFF",
     id: item.id,
     code: item.maNhanVien,
     name: item.tenNhanVien,
     phone: item.soDienThoai,
     email: item.email || item.taiKhoan?.email || "", 
     role:
-      item.chucVu?.tenChucVu === "ADMIN"
+      isAdminRole(item.chucVu?.maChucVu || item.chucVu?.tenChucVu || item.vaiTro || item.taiKhoan?.vaiTro)
         ? "Quản trị hệ thống"
         : "Nhân viên bán hàng",
     status: normalizeAdminStatusLabel(item.trangThaiHoatDong)
@@ -156,6 +172,7 @@ const filteredList = computed(() => {
 
     const matchSearch =
       item.name.toLowerCase().includes(search.value.toLowerCase()) ||
+      item.email?.toLowerCase().includes(search.value.toLowerCase()) ||
       item.phone?.includes(search.value)
 
     const matchRole =

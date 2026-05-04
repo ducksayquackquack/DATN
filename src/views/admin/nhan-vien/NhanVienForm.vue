@@ -253,10 +253,18 @@ const extractErrorMessage = (err) => String(
 
 const isScheduleFkConflict = (message) => /FK_LichLamViec_NhanVien|conflicted with the REFERENCE constraint/i.test(message)
 
-const normalizeRole = (role) => String(role || "").trim().toUpperCase().replace(/^ROLE_/, "")
+const normalizeRole = (role) => String(role || "")
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .replace(/đ/g, "d")
+  .replace(/Đ/g, "D")
+  .trim()
+  .toUpperCase()
+  .replace(/^ROLE_/, "")
+  .replace(/\s+/g, "_")
 const isEmployeeRole = (role) => {
   const normalized = normalizeRole(role)
-  return normalized === "EMPLOYEE" || normalized === "NHAN_VIEN" || normalized === "NHANVIEN"
+  return normalized === "EMPLOYEE" || normalized === "NHAN_VIEN" || normalized === "NHANVIEN" || normalized === "STAFF"
 }
 
 async function resolveTaiKhoanIdForDelete() {
@@ -564,7 +572,8 @@ onMounted(async () => {
     form.phone = data.soDienThoai || ""
     form.email = data.email || data.taiKhoan?.email || ""
     originalTaiKhoanEmail.value = String(form.email || "").trim().toLowerCase()
-    form.role = data.chucVu?.tenChucVu === "ADMIN" ? "ADMIN" : "NHAN_VIEN"
+    const resolvedRole = normalizeRole(data.chucVu?.maChucVu || data.chucVu?.tenChucVu || data.taiKhoan?.vaiTro)
+    form.role = resolvedRole === "ADMIN" ? "ADMIN" : "NHAN_VIEN"
     form.taiKhoanId = data.taiKhoan?.id || null
     form.chucVuId = data.chucVu?.id || null
     form.note = data.ghiChu || ""
@@ -738,7 +747,6 @@ async function save() {
           <div class="field">
             <label>Mã nhân viên</label>
             <input class="auto-code-input" readonly :value="id ? form.code : 'Mã tự sinh'" />
-            <small class="hint">Mã được hệ thống tự động sinh khi tạo mới</small>
           </div>
 
           <!-- Họ tên (bắt buộc) -->
@@ -746,7 +754,6 @@ async function save() {
             <label>Họ tên <span class="req">*</span></label>
             <input v-model="form.name" placeholder="VD: Nguyễn Văn C" @blur="validate" />
             <small v-if="errors.name" class="err-msg">{{ errors.name }}</small>
-            <small v-else class="hint">Tối thiểu 2 ký tự, không để trống</small>
           </div>
 
           <!-- Vai trò -->
@@ -756,7 +763,6 @@ async function save() {
               <option value="ADMIN">Quản trị viên</option>
               <option value="NHAN_VIEN">Nhân viên bán hàng</option>
             </select>
-            <small class="hint">Phân quyền truy cập vào hệ thống quản trị</small>
           </div>
 
           <!-- Email -->
@@ -767,9 +773,6 @@ async function save() {
                    maxlength="100"
                    @blur="validate" />
             <small v-if="errors.email" class="err-msg">{{ errors.email }}</small>
-            <small v-else class="hint">
-              {{ id ? 'Dùng để đăng nhập. Cập nhật cẩn thận.' : 'Bắt buộc – dùng để đăng nhập hệ thống' }}
-            </small>
           </div>
 
           <!-- SĐT (bắt buộc) -->
@@ -777,7 +780,6 @@ async function save() {
             <label>Số điện thoại <span class="req">*</span></label>
             <input type="tel" v-model="form.phone" placeholder="VD: 0912345678" maxlength="11" @blur="validate" />
             <small v-if="errors.phone" class="err-msg">{{ errors.phone }}</small>
-            <small v-else class="hint">10–11 chữ số, không có dấu cách hoặc dấu gạch</small>
           </div>
 
           <!-- Trạng thái (chỉ sửa khi đã có nhân viên) -->
@@ -787,7 +789,6 @@ async function save() {
               <option>Hoạt động</option>
               <option>Ngừng hoạt động</option>
             </select>
-            <small class="hint">Nhân viên ngừng hoạt động không thể đăng nhập</small>
           </div>
 
           <!-- Mật khẩu -->
@@ -795,18 +796,12 @@ async function save() {
             <label>Mật khẩu</label>
             <input type="text" v-model="form.password"
                    :placeholder="id ? 'Để trống để giữ nguyên mật khẩu hiện tại' : 'Để trống để hệ thống tự tạo mật khẩu tạm (VD: DW@123456)'"/>
-            <small class="hint">
-              {{ id
-                  ? 'Điền để đặt lại mật khẩu khi cần. Dùng nút Gửi email tài khoản để gửi thủ công.'
-                  : 'Nếu để trống, hệ thống tự sinh mật khẩu tạm. Email không gửi tự động nữa.' }}
-            </small>
           </div>
 
           <!-- Ghi chú -->
           <div class="field" style="grid-column:1/-1">
             <label>Ghi chú nội bộ</label>
             <textarea v-model="form.note" placeholder="VD: Nhân viên ca sáng, phụ trách khu vực bán hàng 1..."></textarea>
-            <small class="hint">Ghi chú chỉ admin thấy, không hiển thị cho nhân viên</small>
           </div>
 
         </div>

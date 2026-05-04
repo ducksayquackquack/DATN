@@ -37,6 +37,7 @@ import {
 import { resolveApiOrigin } from "../../utils/apiOrigin"
 import { getProductImageOverride, getProductImageConfig } from "../../utils/productImageOverrides"
 import { fallbackImageForVariant } from "../../utils/productImageFallback"
+import { shouldDisplayPublicProduct } from "../../utils/publicProductVisibility"
 import SiteNav from "../../components/SiteNav.vue"
 import logo from "../../assets/img/logo/new logo.png?url"
 import img1 from "../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
@@ -128,12 +129,23 @@ const galleryMotionVars = {
 }
 
 const staticQuickImagesByCode = {
+  SP001: [img1],
   SP002: [img2],
-  SP009: [img9, img10],
+  SP003: [img3],
+  SP004: [img4],
+  SP005: [img5],
+  SP006: [img6],
+  SP007: [img7],
+  SP008: [img8],
+  SP009: [img9],
+  SP010: [img10],
+  SP011: [img11],
   SP012: [img12, img12b],
   SP013: [img13, img13b, img13c, img13d, img13e],
   SP014: [img14, img14b, img14c],
+  SP015: [img15],
   SP016: [img16, img16b, img16c],
+  SP017: [img17],
   SP018: [img18, img18b],
   SP019: [img19, img19b],
   SP020: [img20, img20b, img20c]
@@ -526,6 +538,7 @@ const EMPTY_PRODUCT = {
 
 const productCatalog = computed(() => {
   return backendProducts.value
+    .filter((item) => shouldDisplayPublicProduct(item))
     .map(normalizeBackendProduct)
     .filter((item) => Number(item.id) > 0)
 })
@@ -787,20 +800,25 @@ const selectedBackendVariant = computed(() => {
   if (!backendVariants.value.length) return null
   const activeColor = String(selectedColor.value || highlightedColor.value || "").trim()
   const activeSize = String(selectedSize.value || "").trim()
+  const inStockVariants = backendVariants.value.filter((variant) => Number(variant?.soLuong || 0) > 0)
 
   if (activeColor && activeSize) {
     return backendVariants.value.find((variant) => variant.colorName === activeColor && variant.sizeName === activeSize) || null
   }
 
   if (activeColor) {
-    return backendVariants.value.find((variant) => variant.colorName === activeColor) || null
+    return inStockVariants.find((variant) => variant.colorName === activeColor)
+      || backendVariants.value.find((variant) => variant.colorName === activeColor)
+      || null
   }
 
   if (activeSize) {
-    return backendVariants.value.find((variant) => variant.sizeName === activeSize) || null
+    return inStockVariants.find((variant) => variant.sizeName === activeSize)
+      || backendVariants.value.find((variant) => variant.sizeName === activeSize)
+      || null
   }
 
-  return backendVariants.value[0] || null
+  return inStockVariants[0] || backendVariants.value[0] || null
 })
 
 const exactSelectedBackendVariant = computed(() => {
@@ -917,14 +935,30 @@ const effectiveSizes = computed(() => {
 
 const availableSizesForActiveColor = computed(() => {
   const activeColor = String(selectedColor.value || highlightedColor.value || "").trim()
-  if (!activeColor) return new Set(effectiveSizes.value)
+  if (!activeColor) {
+    return new Set(
+      backendVariants.value
+        .filter((variant) => Number(variant?.soLuong || 0) > 0)
+        .map((variant) => variant.sizeName)
+        .filter(Boolean)
+    )
+  }
 
   return new Set(
     backendVariants.value
-      .filter((variant) => variant.colorName === activeColor)
+      .filter((variant) => variant.colorName === activeColor && Number(variant?.soLuong || 0) > 0)
       .map((variant) => variant.sizeName)
       .filter(Boolean)
   )
+})
+
+const visibleSizes = computed(() => {
+  const available = availableSizesForActiveColor.value
+  const filtered = effectiveSizes.value.filter((size) => available.has(size))
+  if (filtered.length) return filtered
+  return effectiveSizes.value.filter((size) => {
+    return backendVariants.value.some((variant) => variant.sizeName === size && Number(variant?.soLuong || 0) > 0)
+  })
 })
 
 const isSizeAvailableForActiveColor = (size) => {
@@ -1591,6 +1625,9 @@ const addToCart = () => {
     image: cartImage,
     price: currentProduct.value.salePrice || currentProduct.value.price,
     productId: currentProduct.value.id,
+    cartToastKey: key,
+    addedQty: quantity.value,
+    inCartQty: newTotal,
     actionLabel: "Xem giỏ hàng",
   })
 }
@@ -1961,6 +1998,22 @@ watch(selectedColor, (colorName) => {
   }
 })
 
+watch([selectedColor, availableSizesForActiveColor], () => {
+  const currentSize = String(selectedSize.value || "").trim()
+  const availableSizes = [...availableSizesForActiveColor.value]
+  if (!availableSizes.length) {
+    selectedSize.value = ""
+    return
+  }
+
+  if (currentSize && availableSizes.includes(currentSize)) {
+    return
+  }
+
+  const sortedAvailableSizes = [...availableSizes].sort(compareSizeLabel)
+  selectedSize.value = sortedAvailableSizes[0] || ""
+}, { immediate: true })
+
 watch(activeImage, (image) => {
   if (!image) return
 
@@ -2151,27 +2204,32 @@ onUnmounted(() => {
               </div>
               <div class="pd-sizes">
                 <button
-                  v-for="size in effectiveSizes"
+                  v-for="size in visibleSizes"
                   :key="size"
                   type="button"
                   class="pd-size"
                   :class="{ 'is-active': selectedSize === size }"
-                  :disabled="!isSizeAvailableForActiveColor(size) && selectedSize !== size"
                   @click="selectedSize = size"
                 >
                   {{ size }}
                 </button>
               </div>
+              <p v-if="selectedColor && visibleSizes.length === 0" class="pd-size-note pd-size-note--warning">
+                Màu hiện tại đã hết hàng. Vui lòng chọn màu khác.
+              </p>
               <p v-if="selectedSizeUnavailableForColor" class="pd-size-note pd-size-note--warning">
                 Size này không khả dụng cho màu hiện tại. Vui lòng chọn lại size.
               </p>
             </div>
 
             <div class="pd-buy-row">
-              <div class="pd-qty">
-                <button type="button" @click="quantity = Math.max(1, quantity - 1)">-</button>
-                <input type="number" v-model.number="quantity" min="1" :max="currentStock || undefined" class="pd-qty-input" @change="clampQuantity" />
-                <button type="button" @click="increaseQuantity">+</button>
+              <div class="pd-qty-block">
+                <span class="pd-label pd-qty-label">Số lượng</span>
+                <div class="pd-qty">
+                  <button type="button" @click="quantity = Math.max(1, quantity - 1)">-</button>
+                  <input type="number" v-model.number="quantity" min="1" :max="currentStock || undefined" class="pd-qty-input" @change="clampQuantity" />
+                  <button type="button" @click="increaseQuantity">+</button>
+                </div>
               </div>
               <button type="button" class="pd-cart-button" @click="addToCart">THÊM VÀO GIỎ</button>
             </div>
@@ -2591,6 +2649,17 @@ onUnmounted(() => {
 .pd-pill-button {
   border: 0;
   background: transparent;
+
+.pd-qty-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pd-qty-label {
+  font-size: 13px;
+  color: #5b6472;
+}
   cursor: pointer;
   font: inherit;
 }

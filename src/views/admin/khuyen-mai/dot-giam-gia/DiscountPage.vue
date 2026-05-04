@@ -103,7 +103,9 @@
               <td>{{ item.tenDotGiamGia }}</td>
               <td class="text-center highlight-text">{{ item.giaTriGiamGia + "%" }}</td>
               <td class="text-center"><span class="ss-tag ss-tag-percent">%</span></td>
-              <td class="text-center"><span class="applied-badge">{{ appliedLabel(item) }}</span></td>
+              <td class="text-center">
+                <span class="applied-badge">{{ appliedLabel(item) }}</span>
+              </td>
               <td class="text-center">{{ formatDate(item.ngayBatDau) }}</td>
               <td class="text-center">{{ formatDate(item.ngayKetThuc) }}</td>
               <td class="text-center">
@@ -559,6 +561,8 @@ onMounted(fetchDiscounts)
   color: #b42324;
   border: 1px solid rgba(255, 77, 79, 0.24);
 }
+
+
 
 .ss-badge {
   display: inline-flex;

@@ -446,9 +446,20 @@ export async function createBackendCheckoutOrder({ cartItems, delivery, shipping
   }
 
   const invalidStockItems = resolvedItems.filter((item) => {
-    const inStock = Number(item?.variant?.raw?.soLuong || 0)
+    const variantRaw = item?.variant?.raw || {}
+    const stockCandidates = [
+      variantRaw?.soLuong,
+      variantRaw?.soLuongTon,
+      variantRaw?.tonKho,
+      variantRaw?.available,
+    ]
+    const inStock = stockCandidates
+      .map((value) => Number(value))
+      .find((value) => Number.isFinite(value) && value >= 0)
+    if (!Number.isFinite(inStock)) return false
+
     const quantity = Number(item?.quantity || 0)
-    return inStock > 0 && quantity > inStock
+    return quantity > inStock
   })
   if (invalidStockItems.length) {
     throw new Error(`Số lượng vượt tồn kho: ${invalidStockItems.map((item) => item.name).join(", ")}`)
@@ -485,6 +496,8 @@ export async function createBackendCheckoutOrder({ cartItems, delivery, shipping
     diaChiNhanHang: finalDelivery.address,
     phiShip: Number(shipping || 0),
     giaSauGiamGia: normalizedDiscount,
+    giamGia: normalizedDiscount,
+    discountAmount: normalizedDiscount,
     thanhTien: normalizedTotal,
     phuongThucThanhToan: normalizedPaymentMethod,
     orderStatusCode: resolvedOrderStatusCode,

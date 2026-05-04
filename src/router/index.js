@@ -318,6 +318,43 @@ const router = createRouter({
   routes
 })
 
+const CHUNK_RELOAD_FLAG = 'dw:chunk-reload-once'
+const CHUNK_RELOAD_WINDOW_MS = 15000
+
+const isChunkLoadError = (error) => {
+  const text = String(error?.message || error || '').toLowerCase()
+  return text.includes('failed to fetch dynamically imported module')
+    || text.includes('importing a module script failed')
+    || text.includes('error loading dynamically imported module')
+    || text.includes('dynamically imported module')
+}
+
+const hasRecentChunkReload = () => {
+  try {
+    const timestamp = Number(sessionStorage.getItem(CHUNK_RELOAD_FLAG) || 0)
+    return Number.isFinite(timestamp) && timestamp > 0 && (Date.now() - timestamp) < CHUNK_RELOAD_WINDOW_MS
+  } catch {
+    return false
+  }
+}
+
+const markChunkReload = () => {
+  try {
+    sessionStorage.setItem(CHUNK_RELOAD_FLAG, String(Date.now()))
+  } catch {
+    // Ignore storage errors, reload still works.
+  }
+}
+
+router.onError((error, to) => {
+  if (!isChunkLoadError(error) || hasRecentChunkReload()) return
+  markChunkReload()
+  const targetPath = typeof to?.fullPath === 'string' && to.fullPath.trim()
+    ? to.fullPath
+    : window.location.pathname + window.location.search + window.location.hash
+  window.location.assign(targetPath)
+})
+
 router.beforeEach((to) => {
   const role = localStorage.getItem("role")
   const isAdminArea = to.path === "/admin" || to.path.startsWith("/admin/")

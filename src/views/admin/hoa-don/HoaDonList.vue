@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue"
 import { useRouter, useRoute } from "vue-router"
 import { getAllHoaDon, updateHoaDon, updateHoaDonBySystemEvent, cancelHoaDon, getHoaDonById, sendOrderLookupMail } from "../../../services/hoaDonService"
-import { getAllKhachHang } from "../../../services/KhachHangService"
+import { getAllKhachHang, getKhachHangById } from "../../../services/KhachHangService"
 import { getAllNhanVien } from "../../../services/nhanVienService"
 import { getAllLichLamViecFull } from "../../../services/lichLamViecService"
 import { getAllSanPham } from "../../../services/sanPhamService"
@@ -45,8 +45,11 @@ const NOTIFICATION_STORAGE_KEY = "notifications:seen"
 const realtimeConnectionLabel = ref("Polling")
 const realtimeConnectionTone = ref("neutral")
 const queuedReload = ref(false)
+const correctedRowTotalsById = ref({})
+const hydratingRowTotalsById = ref({})
 let realtimeStop = null
 let realtimeDebounceTimer = null
+const loadFailStreak = ref(0)
 
 const readPageFromQuery = (value) => {
   const page = Number(value)
@@ -62,6 +65,8 @@ const loadData = async () => {
   loading.value = true
   apiWarning.value = ""
   try {
+    correctedRowTotalsById.value = {}
+    hydratingRowTotalsById.value = {}
     const [invoiceRes, nhanVienRes, lichRes] = await Promise.all([
       getAllHoaDon(),
       getAllNhanVien(),
@@ -80,12 +85,21 @@ const loadData = async () => {
       nvList,
       extractList(lichRes?.data)
     )
+    loadFailStreak.value = 0
   } catch (error) {
     console.error("Error loading invoices:", error)
     hoaDons.value = []
     allNhanVien.value = []
     activeShiftEmployees.value = []
     apiWarning.value = error.message || "Không thể tải danh sách hoá đơn"
+    loadFailStreak.value += 1
+    // Prevent endless polling storms while backend is unavailable.
+    if (loadFailStreak.value >= 3 && realtimeStop) {
+      realtimeStop()
+      realtimeStop = null
+      realtimeConnectionLabel.value = "Tạm dừng polling"
+      realtimeConnectionTone.value = "neutral"
+    }
   } finally {
     loading.value = false
     if (queuedReload.value) {
@@ -114,6 +128,7 @@ const updateRealtimeBadge = (state = {}) => {
 }
 
 const startRealtimeOrders = () => {
+  if (realtimeStop) return
   const channel = createHoaDonRealtimeChannel({
     pollIntervalMs: 15000,
     reconnectDelayMs: 3500,
@@ -127,6 +142,14 @@ const startRealtimeOrders = () => {
 
   channel.start()
   realtimeStop = () => channel.stop()
+}
+
+const handleWindowFocus = () => {
+  // Try to recover realtime once user returns and backend may be up again.
+  if (!realtimeStop) {
+    startRealtimeOrders()
+  }
+  loadData()
 }
 
 onMounted(() => {
@@ -251,6 +274,7 @@ const normalizeEmailValue = (value) => {
   if (!normalized) return ""
   const lowered = normalized.toLowerCase()
   if (["null", "undefined", "nan", "n/a"].includes(lowered)) return ""
+  if ((/^pos\.guest.*@dirtywave\.local$/i).test(normalized) || (/^guest.*@dirtywave\.local$/i).test(normalized)) return ""
   return normalized
 }
 
@@ -476,16 +500,34 @@ const paginatedData = computed(() => {
   return filteredData.value.slice(start, start + pageSize.value)
 })
 
+const getRowDisplayTotal = (hd) => {
+  const corrected = Number(correctedRowTotalsById.value?.[Number(hd?.id || 0)] || 0)
+  if (Number.isFinite(corrected) && corrected > 0) return corrected
+
+  const savedTotal = Number(hd?.thanhTien || hd?.tongTienSauGiam || hd?.tongThanhToan || 0)
+  const subtotal = Number(hd?.tongTien || hd?.tamTinh || 0)
+  const shipping = Number(hd?.phiShip || hd?.phiVanChuyen || hd?.shippingFee || 0)
+  const discount = Number(hd?.giamGia || hd?.giaSauGiamGia || hd?.discountAmount || 0)
+
+  const likelySwappedLegacyTotals = (
+    savedTotal > 0
+    && discount > 0
+    && subtotal > discount
+    && Math.abs(savedTotal - discount) <= 1
+  )
+
+  if (Number.isFinite(savedTotal) && savedTotal > 0 && !likelySwappedLegacyTotals) return savedTotal
+
+  const computed = subtotal + shipping - discount
+  return computed > 0 ? computed : 0
+}
+
 const viewDetail = (id) => {
   openMoreMenuId.value = null
   router.push({
     path: `${panelBasePath.value}/hoa-don/detail/${id}`,
     query: currentPage.value > 1 ? { page: String(currentPage.value) } : {}
   })
-}
-
-const handleWindowFocus = () => {
-  loadData()
 }
 
 const handleDocumentClick = (event) => {
@@ -1086,6 +1128,17 @@ const enrichItems = (items) => {
       item?.dotGiamGia?.maDotGiamGia,
       item?.khuyenMai?.maKhuyenMai,
     ])
+    const rawQty = Number(item.soLuong || item.quantity || 0)
+    const resolvedQty = Number.isFinite(rawQty) && rawQty > 0 ? rawQty : 0
+    const discountedUnitPrice = Number(item.giaSauGiam || item.giaBanSauDotGiamGia || 0)
+    const fallbackUnitPrice = Number(item.donGia || item.giaBan || cat?.giaBan || 0)
+    const resolvedUnitPrice = discountedUnitPrice > 0 ? discountedUnitPrice : fallbackUnitPrice
+    const rawLineTotal = Number(item.thanhTien || item.lineTotal || 0)
+    const computedLineTotal = resolvedUnitPrice * resolvedQty
+    const resolvedLineTotal = discountedUnitPrice > 0
+      ? computedLineTotal
+      : (rawLineTotal > 0 ? rawLineTotal : computedLineTotal)
+
     return {
       ...item,
       _tenHienThi: baseName.trim(),
@@ -1112,8 +1165,8 @@ const enrichItems = (items) => {
           tenMauSac: mauSac,
           maChiTietSanPham: maSanPhamChiTiet,
         }) || fallbackImageFor(spctId, maSanPham || maSanPhamChiTiet, baseName.trim()),
-      _giaBan: Number(item.donGia || item.giaBan || cat?.giaBan || 0),
-      _thanhTien: Number(item.thanhTien || (item.soLuong || 0) * Number(item.donGia || item.giaBan || cat?.giaBan || 0)),
+      _giaBan: resolvedUnitPrice,
+      _thanhTien: resolvedLineTotal,
       _itemVoucherLabels: itemVoucherLabels,
       _itemCampaignLabels: itemCampaignLabels,
     }
@@ -1217,6 +1270,125 @@ const collectSummaryAppliedCampaigns = (items = []) => {
   return Array.from(labels)
 }
 
+const resolveSummaryDiscountAmount = ({ detail = {}, hd = {}, items = [] } = {}) => {
+  const explicitDiscountCandidates = [
+    detail?.giamGia,
+    detail?.discountAmount,
+    detail?.giaSauGiamGia,
+    detail?.tongGiamGia,
+    hd?.giamGia,
+    hd?.discountAmount,
+    hd?.giaSauGiamGia,
+    hd?.tongGiamGia,
+  ]
+
+  const explicitDiscount = explicitDiscountCandidates
+    .map((value) => Number(value || 0))
+    .find((value) => Number.isFinite(value) && value > 0) || 0
+
+  const orderTypeRaw = String(detail?.orderType || hd?.orderType || "").toUpperCase()
+  const orderType = orderTypeRaw || (String(detail?.statusNote || hd?.statusNote || "").toUpperCase().includes("[POS]") ? "POS" : "ONLINE")
+  const itemsSubtotal = items.reduce((sum, item) => sum + Number(item?._thanhTien || 0), 0)
+  const shipFee = orderType === "POS" ? 0 : Number(detail?.phiVanChuyen || detail?.shippingFee || hd?.phiVanChuyen || hd?.shippingFee || 0)
+  const finalTotal = Number(detail?.thanhTien || hd?.thanhTien || detail?.tongTienSauGiam || detail?.tongThanhToan || 0)
+  const inferredDiscount = itemsSubtotal + shipFee - finalTotal
+
+  const likelySwappedLegacyTotals = (
+    explicitDiscount > 0
+    && finalTotal > 0
+    && itemsSubtotal > explicitDiscount
+    && Math.abs(finalTotal - explicitDiscount) <= 1
+  )
+
+  const likelyReverseSwappedLegacyTotals = (
+    explicitDiscount > 0
+    && finalTotal > 0
+    && itemsSubtotal > 0
+    && explicitDiscount > finalTotal
+    && (explicitDiscount / Math.max(itemsSubtotal, 1)) >= 0.6
+    && (finalTotal / Math.max(itemsSubtotal, 1)) <= 0.5
+    && Math.abs((explicitDiscount + finalTotal) - (itemsSubtotal + shipFee)) <= 2
+  )
+
+  if (likelySwappedLegacyTotals) return explicitDiscount
+  if (likelyReverseSwappedLegacyTotals) return finalTotal
+
+  if (finalTotal > 0 && itemsSubtotal > 0 && inferredDiscount >= 0) {
+    if (explicitDiscount <= 0) return inferredDiscount
+
+    const explicitFinalTotal = itemsSubtotal + shipFee - explicitDiscount
+    const explicitMismatchesSavedTotal = Math.abs(explicitFinalTotal - finalTotal) > 1
+    if (explicitMismatchesSavedTotal) return inferredDiscount
+  }
+
+  if (explicitDiscount > 0) return explicitDiscount
+  return inferredDiscount > 0 ? inferredDiscount : 0
+}
+
+const computeCorrectedTotalsFromDetail = (detail = {}, hd = {}) => {
+  const rawItems = Array.isArray(detail?.items) ? detail.items
+    : Array.isArray(detail?.hoaDonChiTiets) ? detail.hoaDonChiTiets
+    : Array.isArray(detail?.chiTietHoaDons) ? detail.chiTietHoaDons
+    : []
+
+  const items = enrichItems(rawItems)
+  const itemsSubtotal = items.reduce((sum, item) => sum + Number(item?._thanhTien || 0), 0)
+  const orderTypeRaw = String(detail?.orderType || hd?.orderType || '').toUpperCase()
+  const orderType = orderTypeRaw || (String(detail?.statusNote || hd?.statusNote || '').toUpperCase().includes('[POS]') ? 'POS' : 'ONLINE')
+  const shippingFee = orderType === 'POS'
+    ? 0
+    : Number(detail?.phiVanChuyen || detail?.shippingFee || detail?.phiShip || hd?.phiShip || 0)
+
+  const fallbackDiscount = resolveSummaryDiscountAmount({ detail, hd, items })
+  const savedFinalCandidates = [
+    detail?.thanhTien,
+    hd?.thanhTien,
+    detail?.tongTienSauGiam,
+    detail?.tongThanhToan,
+  ]
+  const savedFinalTotal = savedFinalCandidates
+    .map((value) => Number(value || 0))
+    .find((value) => Number.isFinite(value) && value > 0) || 0
+
+  const likelySwappedLegacyTotals = (
+    fallbackDiscount > 0
+    && savedFinalTotal > 0
+    && itemsSubtotal > fallbackDiscount
+    && Math.abs(savedFinalTotal - fallbackDiscount) <= 1
+  )
+
+  const likelyReverseSwappedLegacyTotals = (
+    fallbackDiscount > 0
+    && savedFinalTotal > 0
+    && itemsSubtotal > 0
+    && fallbackDiscount > savedFinalTotal
+    && (fallbackDiscount / Math.max(itemsSubtotal, 1)) >= 0.6
+    && (savedFinalTotal / Math.max(itemsSubtotal, 1)) <= 0.5
+    && Math.abs((fallbackDiscount + savedFinalTotal) - (itemsSubtotal + shippingFee)) <= 2
+  )
+
+  const finalTotal = savedFinalTotal > 0 && !likelySwappedLegacyTotals && !likelyReverseSwappedLegacyTotals
+    ? savedFinalTotal
+    : (likelyReverseSwappedLegacyTotals
+      ? fallbackDiscount
+      : Math.max(itemsSubtotal + shippingFee - fallbackDiscount, 0))
+
+  const inferredDiscount = itemsSubtotal + shippingFee - finalTotal
+  const discountAmount = inferredDiscount >= 0
+    ? inferredDiscount
+    : Math.max(fallbackDiscount, 0)
+
+  return {
+    items,
+    itemsSubtotal,
+    shippingFee,
+    discountAmount,
+    finalTotal,
+  }
+}
+
+// Keep list row totals stable and avoid post-click value jumps.
+
 const openSummary = async (hd) => {
   openMoreMenuId.value = null
   summaryLoading.value = true
@@ -1234,31 +1406,16 @@ const openSummary = async (hd) => {
   try {
     const [res] = await Promise.all([getHoaDonById(hd.id), loadVariantCatalog(), loadCustomerCatalog()])
     const detail = res?.data || {}
+    const { items, itemsSubtotal, shippingFee, discountAmount, finalTotal } = computeCorrectedTotalsFromDetail(detail, hd)
     const rawItems = Array.isArray(detail?.items) ? detail.items
       : Array.isArray(detail?.hoaDonChiTiets) ? detail.hoaDonChiTiets
       : Array.isArray(detail?.chiTietHoaDons) ? detail.chiTietHoaDons
       : []
-    const items = enrichItems(rawItems)
-    const tongTien = Number(detail?.tongTien || detail?.totalAmount || 0)
-    const itemsTotal = items.reduce((s, i) => s + (i._thanhTien || 0), 0)
-    const shippingFee = Number(detail?.phiVanChuyen || detail?.shippingFee || 0)
-    const finalTotal = Number(
-      detail?.thanhTien
-      || detail?.tongTienSauGiam
-      || detail?.tongThanhToan
-      || hd?.thanhTien
-      || tongTien
-      || itemsTotal
-    )
-    const discountAmountRaw = Number(detail?.giamGia || detail?.discountAmount || detail?.giaSauGiamGia || detail?.tongGiamGia || 0)
-    const discountAmount = discountAmountRaw > 0
-      ? discountAmountRaw
-      : Math.max(0, itemsTotal + shippingFee - finalTotal)
     const voucherLabels = collectSummaryAppliedVouchers(detail, hd, rawItems)
     const campaignLabels = collectSummaryAppliedCampaigns(rawItems)
     const customerId = Number(detail?.khachHangId || detail?.customerId || hd?.khachHangId || 0)
     const customer = customerCatalog.value.get(customerId)
-    const resolvedEmail = firstNonEmptyValue(
+    let resolvedEmail = firstValidEmailValue(
       detail?.emailNhanHang,
       detail?.email,
       detail?.customerEmail,
@@ -1273,13 +1430,29 @@ const openSummary = async (hd) => {
       customer?.tenDangNhap,
       customer?.taiKhoan?.tenDangNhap,
     )
+
+    if (!resolvedEmail && customerId > 0) {
+      try {
+        const customerRes = await getKhachHangById(customerId)
+        const customerDetail = customerRes?.data || {}
+        resolvedEmail = firstValidEmailValue(
+          customerDetail?.email,
+          customerDetail?.taiKhoan?.email,
+          customerDetail?.taiKhoanEmail,
+          customerDetail?.tenDangNhap,
+          customerDetail?.taiKhoan?.tenDangNhap,
+        )
+      } catch {
+        // Keep summary usable even if customer detail API fails.
+      }
+    }
     summaryModal.value = {
       ...hd,
       ...detail,
       items,
       resolvedEmail,
       phiVanChuyen: shippingFee,
-      tongTien: tongTien > 0 ? tongTien : itemsTotal,
+      tongTien: itemsSubtotal,
       finalTotal,
       giamGia: discountAmount,
       voucherLabels,
@@ -1293,6 +1466,42 @@ const openSummary = async (hd) => {
 }
 
 const closeSummary = () => { summaryModal.value = null }
+
+const hydrateCorrectedTotalForRow = async (hd) => {
+  const id = Number(hd?.id || 0)
+  if (!id) return
+  if (Number(correctedRowTotalsById.value?.[id] || 0) > 0) return
+  if (hydratingRowTotalsById.value[id]) return
+
+  hydratingRowTotalsById.value = { ...hydratingRowTotalsById.value, [id]: true }
+  try {
+    const res = await getHoaDonById(id)
+    const detail = res?.data || {}
+    const { finalTotal } = computeCorrectedTotalsFromDetail(detail, hd)
+    if (Number(finalTotal || 0) > 0) {
+      correctedRowTotalsById.value = {
+        ...correctedRowTotalsById.value,
+        [id]: Number(finalTotal)
+      }
+    }
+  } catch {
+    // ignore per-row correction errors
+  } finally {
+    const next = { ...hydratingRowTotalsById.value }
+    delete next[id]
+    hydratingRowTotalsById.value = next
+  }
+}
+
+watch(
+  paginatedData,
+  (rows) => {
+    ;(rows || []).forEach((row) => {
+      hydrateCorrectedTotalForRow(row)
+    })
+  },
+  { immediate: true }
+)
 
 const goToFullDetail = (id) => {
   summaryModal.value = null
@@ -1528,7 +1737,7 @@ const sendLookupMailFromList = async (hd) => {
                 </td>
                 <td class="value-col">
                   <div class="money-cell">
-                    <div class="money-total">{{ formatCurrency(hd.thanhTien) }}</div>
+                    <div class="money-total">{{ formatCurrency(getRowDisplayTotal(hd)) }}</div>
                     <div class="money-sub">Ship: {{ formatCurrency(hd.phiShip) }}</div>
                   </div>
                 </td>

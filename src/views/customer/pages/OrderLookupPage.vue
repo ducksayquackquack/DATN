@@ -1,11 +1,12 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import CustomerPageLayout from '../../../components/customer/CustomerPageLayout.vue'
 import { lookupHoaDon } from '../../../services/hoaDonService'
-import { CheckCheck, ClipboardList, Truck, CircleCheckBig } from 'lucide-vue-next'
+import { CheckCheck, ClipboardList, Truck, CircleCheckBig, ChevronLeft } from 'lucide-vue-next'
 
 const route = useRoute()
+const router = useRouter()
 
 const maDonHang = ref('')
 const dangTraCuu = ref(false)
@@ -200,6 +201,14 @@ const progressPercent = computed(() => {
   return Math.round((idx / (MAIN_STEPS.length - 1)) * 100)
 })
 
+const goBack = () => {
+  if (window.history.length > 1) {
+    router.back()
+    return
+  }
+  router.push('/customer/profile?tab=lookup')
+}
+
 const traCuu = async () => {
   loi.value = ''
   ketQua.value = null
@@ -247,6 +256,10 @@ onMounted(() => {
     <section class="lookup-shell">
       <article class="lookup-card">
         <header class="lookup-header">
+          <button type="button" class="lookup-back-btn" @click="goBack" aria-label="Quay lại trang trước">
+            <ChevronLeft :size="16" />
+            Quay lại
+          </button>
           <h1>Tra cứu đơn hàng</h1>
           <p>Nhập mã đơn để theo dõi tiến trình giao hàng — hoặc mở từ link email để tra cứu tự động.</p>
         </header>
@@ -416,6 +429,31 @@ onMounted(() => {
   margin: 0;
   font-size: 22px;
   color: #111827;
+}
+
+.lookup-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(185, 28, 28, 0.12);
+  background: linear-gradient(135deg, #fff8f8 0%, #ffffff 100%);
+  color: #991b1b;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  margin-bottom: 12px;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(185, 28, 28, 0.08);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.lookup-back-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(185, 28, 28, 0.22);
+  background: #fff1f2;
+  box-shadow: 0 14px 28px rgba(185, 28, 28, 0.12);
 }
 
 .lookup-header p {

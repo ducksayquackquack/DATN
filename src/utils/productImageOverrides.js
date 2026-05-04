@@ -1,4 +1,69 @@
+import img14c from "@/assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-green.PNG?url"
+import img19 from "@/assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-blue.PNG?url"
+import img19b from "@/assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-white.PNG?url"
+import img20 from "@/assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-black.PNG?url"
+import img20b from "@/assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-gray.PNG?url"
+import img20c from "@/assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-red.PNG?url"
+
 const STORAGE_KEY = "dirtywave:product-image-overrides:v1"
+const SP022_PURPLE_IMAGE = "/uploads/products/sp022/1.webp"
+const SP022_PINK_IMAGE = "/uploads/products/sp022/2.webp"
+
+const BUILTIN_OVERRIDES = {
+  "code:SP022": {
+    images: [SP022_PURPLE_IMAGE, SP022_PINK_IMAGE],
+    colorImages: [
+      { colorId: 6, image: SP022_PURPLE_IMAGE, order: 0 },
+      { colorId: 7, image: SP022_PINK_IMAGE, order: 1 },
+    ],
+  },
+  "id:23": {
+    images: [img19],
+    colorImages: [
+      { colorId: 2, image: img19, order: 0 },
+      { colorId: 3, image: img19b, order: 1 },
+      { colorId: 1, image: img20, order: 2 },
+    ],
+  },
+  "code:SP023": {
+    images: [img19],
+    colorImages: [
+      { colorId: 2, image: img19, order: 0 },
+      { colorId: 3, image: img19b, order: 1 },
+      { colorId: 1, image: img20, order: 2 },
+    ],
+  },
+  "id:24": {
+    images: [img20b],
+    colorImages: [{ colorId: 8, image: img20b, order: 0 }],
+  },
+  "code:SP024": {
+    images: [img20b],
+    colorImages: [{ colorId: 8, image: img20b, order: 0 }],
+  },
+  "id:25": {
+    images: [img20c],
+    colorImages: [
+      { colorId: 7, image: img20c, order: 0 },
+      { colorId: 6, image: img20c, order: 1 },
+    ],
+  },
+  "code:SP025": {
+    images: [img20c],
+    colorImages: [
+      { colorId: 7, image: img20c, order: 0 },
+      { colorId: 6, image: img20c, order: 1 },
+    ],
+  },
+  "id:26": {
+    images: [img14c],
+    colorImages: [{ colorId: 11, image: img14c, order: 0 }],
+  },
+  "code:SP026": {
+    images: [img14c],
+    colorImages: [{ colorId: 11, image: img14c, order: 0 }],
+  },
+}
 
 function readStore() {
   try {
@@ -89,12 +154,13 @@ function buildLookupKeys(productLike) {
   const code = String(source?.maSanPham || source?.ma || source?.code || "").trim()
   const keys = []
 
-  if (Number.isFinite(numericId) && numericId > 0) {
-    keys.push(`id:${numericId}`)
-  }
-
   if (code) {
     keys.push(`code:${code.toUpperCase()}`)
+  }
+
+  // Prefer stable product code over DB id to avoid collisions when ids differ across environments.
+  if (Number.isFinite(numericId) && numericId > 0) {
+    keys.push(`id:${numericId}`)
   }
 
   return keys
@@ -103,7 +169,7 @@ function buildLookupKeys(productLike) {
 export function getProductImageOverride(productLike) {
   const store = readStore()
   for (const key of buildLookupKeys(productLike)) {
-    const entry = normalizeStoreEntry(store[key])
+    const entry = normalizeStoreEntry(store[key] ?? BUILTIN_OVERRIDES[key])
     if (entry.images.length) return entry.images
   }
   return []
@@ -112,7 +178,7 @@ export function getProductImageOverride(productLike) {
 export function getProductImageConfig(productLike) {
   const store = readStore()
   for (const key of buildLookupKeys(productLike)) {
-    const entry = normalizeStoreEntry(store[key])
+    const entry = normalizeStoreEntry(store[key] ?? BUILTIN_OVERRIDES[key])
     if (entry.images.length || entry.colorImages.length) return entry
   }
 

@@ -4,7 +4,8 @@ import { useRouter, useRoute } from "vue-router"
 import {
   createKhachHang,
   updateKhachHang,
-  getKhachHangById
+  getKhachHangById,
+  listAllKhachHang
 } from "../../../services/KhachHangService"
 import {
   getHoaDonByKhachHang
@@ -100,6 +101,63 @@ const taoMatKhauTam = () => {
   return `DW@${part}`
 }
 
+const normalizeEmail = (value = "") => String(value || "").trim().toLowerCase()
+const normalizePhone = (value = "") => String(value || "").replace(/\s+/g, "").trim()
+
+const listAllTaiKhoan = async () => {
+  const size = 200
+  const collected = []
+  const visited = new Set()
+  let page = 0
+  let totalPages = 1
+
+  while (page < totalPages) {
+    const res = await taiKhoanService.getAll({ page, size })
+    const payload = res?.data
+    const accounts = Array.isArray(payload)
+      ? payload
+      : (Array.isArray(payload?.content) ? payload.content : [])
+
+    for (const item of accounts) {
+      const key = String(item?.id || "")
+      if (!key || visited.has(key)) continue
+      visited.add(key)
+      collected.push(item)
+    }
+
+    const detectedTotalPages = Number(payload?.totalPages)
+    if (Number.isFinite(detectedTotalPages) && detectedTotalPages > 0) {
+      totalPages = detectedTotalPages
+    } else if (accounts.length < size) {
+      break
+    } else {
+      totalPages = page + 2
+    }
+
+    page += 1
+  }
+
+  return collected
+}
+
+const findDuplicateCustomerPhone = async (phone, excludeId = null) => {
+  const normalizedPhone = normalizePhone(phone)
+  if (!normalizedPhone) return null
+
+  const customers = await listAllKhachHang(100)
+  return customers.find((item) => {
+    if (excludeId && Number(item?.id) === Number(excludeId)) return false
+    return normalizePhone(item?.soDienThoai) === normalizedPhone
+  }) || null
+}
+
+const checkEmailExists = async (email) => {
+  const normalized = normalizeEmail(email)
+  if (!normalized) return false
+  const accounts = await listAllTaiKhoan()
+  return accounts.some((item) => normalizeEmail(item?.email) === normalized)
+}
+
 const taoTaiKhoanKhachHang = async (email, matKhau) => {
   const normalizedEmail = String(email || "").trim().toLowerCase()
   const payloadCandidates = [
@@ -175,13 +233,16 @@ const save = async () => {
     return
   }
 
-  // Validate phone if provided
-  if (form.value.soDienThoai && form.value.soDienThoai.trim()) {
-    if (!isValidPhone(form.value.soDienThoai)) {
-      errors.value.soDienThoai = "Số điện thoại phải có 10 chữ số và bắt đầu bằng 0"
-      window.toast.error(errors.value.soDienThoai)
-      return
-    }
+  if (!normalizePhone(form.value.soDienThoai)) {
+    errors.value.soDienThoai = "Vui lòng nhập số điện thoại"
+    window.toast.error(errors.value.soDienThoai)
+    return
+  }
+
+  if (!isValidPhone(form.value.soDienThoai)) {
+    errors.value.soDienThoai = "Số điện thoại phải có 10 chữ số và bắt đầu bằng 0"
+    window.toast.error(errors.value.soDienThoai)
+    return
   }
 
   // Validate birth date if provided - must not be empty on create
@@ -200,7 +261,8 @@ const save = async () => {
 
   try {
     if (isCreateMode) {
-      const normalizedEmail = String(form.value.email || "").trim().toLowerCase()
+      const normalizedEmail = normalizeEmail(form.value.email)
+      const normalizedPhone = normalizePhone(form.value.soDienThoai)
       if (!normalizedEmail) {
         window.toast.error("Vui lòng nhập email để tạo tài khoản khách hàng")
         return
@@ -210,16 +272,37 @@ const save = async () => {
         return
       }
 
-      const matKhauTam = taoMatKhauTam()
-      const taiKhoanId = await taoTaiKhoanKhachHang(normalizedEmail, matKhauTam)
+      if (await checkEmailExists(normalizedEmail)) {
+        errors.value.email = "Email đã tồn tại trong hệ thống"
+        window.toast.error(errors.value.email)
+        return
+      }
 
-      await createKhachHang({
-        ...form.value,
-        email: normalizedEmail,
-        idTaiKhoan: taiKhoanId,
-        taiKhoan: { id: taiKhoanId },
-        trangThai: form.value.trangThai || "Hoạt động"
-      })
+      if (await findDuplicateCustomerPhone(normalizedPhone)) {
+        errors.value.soDienThoai = "Số điện thoại đã tồn tại trong hệ thống"
+        window.toast.error(errors.value.soDienThoai)
+        return
+      }
+
+      const matKhauTam = taoMatKhauTam()
+      let taiKhoanId = null
+      try {
+        taiKhoanId = await taoTaiKhoanKhachHang(normalizedEmail, matKhauTam)
+
+        await createKhachHang({
+          ...form.value,
+          email: normalizedEmail,
+          soDienThoai: normalizedPhone,
+          idTaiKhoan: taiKhoanId,
+          taiKhoan: { id: taiKhoanId },
+          trangThai: form.value.trangThai || "Hoạt động"
+        })
+      } catch (error) {
+        if (taiKhoanId) {
+          await taiKhoanService.delete(taiKhoanId).catch(() => {})
+        }
+        throw error
+      }
 
       generatedPassword.value = matKhauTam
       window.toast.success(`Tạo mới khách hàng thành công! Mật khẩu tạm: ${matKhauTam}`)

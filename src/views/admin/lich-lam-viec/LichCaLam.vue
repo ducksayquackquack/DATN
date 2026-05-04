@@ -156,6 +156,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useToast } from '../../../composables/useToast'
 import { createCaLam, getAllCaLam, deleteCaLam, updateCaLam } from '../../../services/caLamService'
+import { deleteLichLamViec, getAllLichLamViec } from '../../../services/lichLamViecService'
 
 const toast = useToast()
 
@@ -214,6 +215,14 @@ const mapApiShift = (item) => {
     type: visual.type,
     icon: visual.icon
   }
+}
+
+const extractList = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.content)) return payload.content
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.content)) return payload.data.content
+  return []
 }
 
 const filteredShifts = computed(() => {
@@ -388,16 +397,37 @@ const deleteShift = async (shift) => {
   const confirmed = await window.confirmDialog(`Bạn có chắc muốn xóa ca "${shift.name}"?`)
   if (!confirmed) return
 
-  deleteCaLam(shift.id)
-    .then(() => {
-      toast.success('Xóa thành công!')
-      loadShifts()
-    })
-    .catch((err) => {
-      console.error('Delete shift failed:', err)
-      toast.error('Xóa ca thất bại')
-    })
+  try {
+    const schedulesRes = await getAllLichLamViec()
+    const relatedSchedules = extractList(schedulesRes?.data)
+      .filter((item) => Number(item?.idCaLam || 0) === Number(shift.id))
+
+    if (relatedSchedules.length > 0) {
+      const removeRelated = await window.confirmDialog(
+        `Ca "${shift.name}" đang có ${relatedSchedules.length} lịch làm việc. Xóa ca sẽ xóa luôn các lịch liên quan. Tiếp tục?`
+      )
+      if (!removeRelated) return
+
+      const deleteResults = await Promise.allSettled(
+        relatedSchedules
+          .filter((item) => Number(item?.id))
+          .map((item) => deleteLichLamViec(item.id))
+      )
+      const failed = deleteResults.filter((result) => result.status === 'rejected').length
+      if (failed > 0) {
+        toast.error(`Không thể xóa ${failed} lịch liên quan. Vui lòng thử lại.`)
+        return
+      }
+    }
+
+    await deleteCaLam(shift.id)
+    toast.success('Xóa ca thành công')
+    await loadShifts()
+  } catch (err) {
+    console.error('Delete shift failed:', err)
+    toast.error(err?.response?.data?.message || 'Xóa ca thất bại')
   }
+}
 
 onMounted(loadShifts)
 </script>

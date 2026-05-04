@@ -1176,6 +1176,13 @@ body.ops-theme .wrap {
   border-radius: 0;
 }
 
+body.ops-theme .content > .wrap > .wrap {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
 body.ops-theme.ops-route-invoice .wrap {
   width: 100%;
   max-width: none;
@@ -1285,17 +1292,18 @@ select[style*="width: 220px"] {
   max-width: 100% !important;
 }
 
-/* ─ Table horizontal scroll wrapper ─ */
-.table {
-  overflow-x: auto;
-  display: block;
-  max-width: 100%;
+/* Keep native table layout and let the card body handle horizontal overflow. */
+body.ops-theme .card .body {
+  min-width: 0;
 }
 
-.table thead,
-.table tbody,
-.table th,
-.table td {
+body.ops-theme .card .body:has(> .table) {
+  overflow-x: auto;
+}
+
+.table {
+  display: table;
+  overflow: visible;
   max-width: 100%;
 }
 

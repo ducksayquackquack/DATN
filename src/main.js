@@ -6,6 +6,22 @@ import router from "./router";
 import { installScopedAuthStorage } from "./utils/installAuthStorageProxy";
 import "./assets/admin.css"
 
+const VITE_CHUNK_RELOAD_FLAG = "dw:vite-preload-reload";
+const VITE_CHUNK_RELOAD_WINDOW_MS = 15000;
+
+window.addEventListener("vite:preloadError", (event) => {
+  event.preventDefault();
+  try {
+    const lastReload = Number(sessionStorage.getItem(VITE_CHUNK_RELOAD_FLAG) || 0);
+    const isRecent = Number.isFinite(lastReload) && lastReload > 0 && (Date.now() - lastReload) < VITE_CHUNK_RELOAD_WINDOW_MS;
+    if (isRecent) return;
+    sessionStorage.setItem(VITE_CHUNK_RELOAD_FLAG, String(Date.now()));
+  } catch {
+    // Ignore storage errors; hard reload below still works.
+  }
+  window.location.reload();
+});
+
 installScopedAuthStorage();
 
 axios.interceptors.request.use((config) => {
@@ -24,8 +40,20 @@ axios.interceptors.request.use((config) => {
 axios.interceptors.response.use(
   (resp) => resp,
   (error) => {
+    if (error?.config?.__silentErrors) {
+      return Promise.reject(error)
+    }
     if (error?.response) {
-      console.error(`[AXIOS ERR] ${error.config?.method?.toUpperCase()} ${error.config?.url} → ${error.response.status}`, JSON.stringify(error.response.data), 'Headers:', JSON.stringify(Object.fromEntries(Object.entries(error.response.headers || {}))))
+      const rawBody = typeof error.response.data === 'string'
+        ? error.response.data
+        : JSON.stringify(error.response.data)
+      const compactBody = String(rawBody || '').slice(0, 320)
+      console.error(
+        `[AXIOS ERR] ${error.config?.method?.toUpperCase()} ${error.config?.url} → ${error.response.status}`,
+        compactBody,
+        'Headers:',
+        JSON.stringify(Object.fromEntries(Object.entries(error.response.headers || {})))
+      )
     }
     return Promise.reject(error)
   }

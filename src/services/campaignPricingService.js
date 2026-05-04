@@ -3,11 +3,12 @@ import { resolveApiOrigin } from "../utils/apiOrigin";
 
 const NODE_BACKEND = String(import.meta.env.VITE_NODE_BACKEND_URL || "").trim().replace(/\/$/, "");
 const SAME_ORIGIN_API_BASE = `${resolveApiOrigin()}/api`.replace(/\/$/, "");
-const SPRING_API_BASE = (import.meta.env.VITE_API_BASE_URL || SAME_ORIGIN_API_BASE).replace(/\/$/, "");
+const SPRING_API_BASE = SAME_ORIGIN_API_BASE;
 const SPRING_PRODUCTS_API = `${SPRING_API_BASE}/san-pham`;
 const SPRING_CAMPAIGNS_API = `${SPRING_API_BASE}/khuyen-mai`;
 const SAME_ORIGIN_PRODUCTS_API = `${SAME_ORIGIN_API_BASE}/san-pham`;
 const SAME_ORIGIN_CAMPAIGNS_API = `${SAME_ORIGIN_API_BASE}/khuyen-mai`;
+const LOCAL_CAMPAIGN_PRODUCTS_KEY = "dirtywave:campaign-products";
 
 let cacheAt = 0;
 let cacheProductMap = new Map(); // productId -> { giaTri, ngayBatDau, ngayKetThuc, tenKhuyenMai, ... }
@@ -40,6 +41,7 @@ const normalizeCampaignInfo = (row) => {
     ?? 0
   );
   return {
+    idKhuyenMai: Number(row?.id ?? row?.idKhuyenMai ?? row?.khuyenMaiId ?? 0) || null,
     giaTri: percent,
     tenKhuyenMai: row?.tenKhuyenMai ?? row?.ten ?? "",
     maKhuyenMai: row?.maKhuyenMai ?? row?.ma ?? "",
@@ -89,6 +91,59 @@ const isCampaignActiveNow = (row, now = new Date()) => {
     || statusText.includes("dang dien ra")
     || statusText.includes("active");
   return statusOk && now >= s && now <= e;
+};
+
+const readLocalCampaignProductsStore = () => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(LOCAL_CAMPAIGN_PRODUCTS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const normalizeIdArray = (values) => {
+  return [...new Set((Array.isArray(values) ? values : [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id > 0))]
+}
+
+const extractProductIdsFromEntry = (entry) => {
+  if (Array.isArray(entry)) return normalizeIdArray(entry)
+  if (!entry || typeof entry !== "object") return []
+  return normalizeIdArray(entry?.productIds ?? entry?.products ?? entry?.idSanPhams)
+}
+
+const extractVariantIdsFromEntry = (entry) => {
+  if (!entry || Array.isArray(entry) || typeof entry !== "object") return []
+  return normalizeIdArray(entry?.variantIds ?? entry?.variants ?? entry?.idChiTietSanPhams)
+}
+
+const getLocalCampaignSelection = (campaignId) => {
+  const kmId = Number(campaignId || 0)
+  if (!Number.isFinite(kmId) || kmId <= 0) return { productIds: [], variantIds: [] }
+
+  const store = readLocalCampaignProductsStore()
+  const entry = store[String(kmId)]
+  return {
+    productIds: extractProductIdsFromEntry(entry),
+    variantIds: extractVariantIdsFromEntry(entry)
+  }
+}
+
+const getLocalCampaignProductsMap = () => {
+  const store = readLocalCampaignProductsStore();
+  const map = new Map();
+  for (const [campaignIdRaw, productIdsRaw] of Object.entries(store || {})) {
+    const campaignId = Number(campaignIdRaw);
+    if (!Number.isFinite(campaignId) || campaignId <= 0) continue;
+    const productIds = extractProductIdsFromEntry(productIdsRaw)
+
+    if (productIds.length > 0) map.set(campaignId, productIds);
+  }
+  return map;
 };
 
 async function buildProductDiscountMap(force = false) {
@@ -154,6 +209,20 @@ async function buildProductDiscountMap(force = false) {
           nextMap.set(productId, activeCampaignMap.get(variantCampaignId));
         }
       }
+
+      // Final fallback: local client-side campaign-product mappings.
+      if (typeof window !== "undefined") {
+        const localMap = getLocalCampaignProductsMap();
+        for (const [campaignId, productIds] of localMap.entries()) {
+          const info = activeCampaignMap.get(Number(campaignId));
+          if (!info) continue;
+          for (const productId of productIds) {
+            if (!nextMap.has(productId)) {
+              nextMap.set(productId, info);
+            }
+          }
+        }
+      }
     }
 
     cacheProductMap = nextMap;
@@ -189,6 +258,13 @@ export async function applyCampaignPriceToVariants(variants = [], productId = 0)
     const pId = Number(productId || variant?.idSanPham || variant?.sanPham?.id || 0);
     const info = pId > 0 ? map.get(pId) : null;
     const mappedPercent = info ? clampPercent(info.giaTri) : 0;
+    const campaignId = Number(info?.idKhuyenMai || 0)
+    const variantId = Number(variant?.id || variant?.idChiTietSanPham || variant?.spctId || 0)
+    const localSelection = campaignId > 0 ? getLocalCampaignSelection(campaignId) : { variantIds: [] }
+    const hasVariantConstraint = Array.isArray(localSelection?.variantIds) && localSelection.variantIds.length > 0
+    const isVariantSelected = hasVariantConstraint
+      ? localSelection.variantIds.includes(variantId)
+      : true
 
     const rawPrice = Number(variant?.giaBan || variant?.price || 0);
     const listedBase = Number(variant?.giaBanGoc || variant?.giaNiemYet || 0);
@@ -202,9 +278,13 @@ export async function applyCampaignPriceToVariants(variants = [], productId = 0)
     );
     const variantFinal = Number(variant?.giaBanSauDotGiamGia ?? variant?.giaSauGiam ?? 0);
 
-    const percent = mappedPercent > 0 ? mappedPercent : variantPercent;
+    const percent = hasVariantConstraint
+      ? (isVariantSelected ? mappedPercent : 0)
+      : (mappedPercent > 0 ? mappedPercent : variantPercent);
     let finalPrice = rawPrice;
-    if (percent > 0 && basePrice > 0) {
+    if (hasVariantConstraint && !isVariantSelected && basePrice > 0) {
+      finalPrice = basePrice;
+    } else if (percent > 0 && basePrice > 0) {
       finalPrice = Math.max(0, Math.round(basePrice * (1 - percent / 100)));
     } else if (variantFinal > 0 && basePrice > 0 && variantFinal <= basePrice) {
       finalPrice = variantFinal;

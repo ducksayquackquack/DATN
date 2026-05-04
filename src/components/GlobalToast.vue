@@ -21,6 +21,7 @@
           <div class="toast-cart-head">
             <div class="toast-cart-success">✓</div>
             <strong>{{ toast.message || 'Thêm vào giỏ hàng thành công' }}</strong>
+            <span v-if="Number(toast.payload?.addCount || 1) > 1" class="toast-cart-count">x{{ toast.payload?.addCount }}</span>
             <button type="button" class="toast-cart-close" @click="dismissToast(toast.id)">×</button>
           </div>
 
@@ -34,6 +35,10 @@
               <h4 class="toast-cart-name">{{ toast.payload?.name || 'Sản phẩm' }}</h4>
               <p class="toast-cart-variant">
                 {{ formatVariant(toast.payload) }}
+              </p>
+              <p v-if="Number(toast.payload?.addedQtyTotal || 0) > 0" class="toast-cart-qty">
+                Đã chọn {{ toast.payload?.addedQtyTotal }} sản phẩm
+                <span v-if="Number(toast.payload?.inCartQty || 0) > 0"> • Trong giỏ: {{ toast.payload?.inCartQty }}</span>
               </p>
               <p class="toast-cart-price">{{ formatVnd(toast.payload?.price) }}</p>
             </div>
@@ -278,6 +283,20 @@ const openProductDetails = (toastId) => {
   cursor: pointer;
 }
 
+.toast-cart-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .toast-cart-body {
   display: flex;
   gap: 10px;
@@ -310,6 +329,13 @@ const openProductDetails = (toastId) => {
   margin: 3px 0 0;
   font-size: 13px;
   color: #4b5563;
+}
+
+.toast-cart-qty {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
 }
 
 .toast-cart-price {

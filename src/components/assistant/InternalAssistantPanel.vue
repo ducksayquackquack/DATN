@@ -237,12 +237,14 @@
 import { nextTick } from "vue";
 import { assistantService } from "@/services/assistantService";
 
+
 const PAGE_LABELS = {
   GENERAL_INTERNAL: "Trợ lý nội bộ",
   CUSTOMER_CHAT: "Hỗ trợ chat khách",
   REVENUE_DASHBOARD: "Dashboard doanh thu",
   POS: "Bán hàng tại quầy",
   ORDER_DETAIL: "Chi tiết đơn hàng",
+  PRODUCT_LIST: "Quản lý sản phẩm",
 };
 
 export default {
@@ -631,8 +633,13 @@ export default {
       );
       window.toast?.success?.("Đã chèn nội dung vào ô chat khách");
     },
-    async sendQuickAction(text) {
-      this.inputMessage = typeof text === "string" ? text : this.suggestedActionLabel(text);
+    async sendQuickAction(action) {
+      if (typeof action === "object" && action?.type) {
+        await this.useSuggestedAction(action);
+        return;
+      }
+
+      this.inputMessage = typeof action === "string" ? action : this.suggestedActionLabel(action);
       await this.handleSend();
     },
     suggestedActionLabel(action) {
@@ -657,8 +664,11 @@ export default {
     },
     formatSuggestedActionLabel(action) {
       if (typeof action === "string") return action;
+
       const map = {
         open_order_workflow: "Mở workflow tạo đơn",
+        open_product: "Mở màn hình sản phẩm",
+        suggest_alt_variant: "Gợi ý biến thể/sản phẩm còn hàng",
         cancel_draft: "Hủy đơn nháp",
         open_customer: "Mở hồ sơ khách",
         recent_orders: "Xem đơn gần đây",
@@ -669,6 +679,7 @@ export default {
         drill_down: "Xem chi tiết",
         export: "Xuất dữ liệu tổng hợp",
       };
+
       return map[action?.type] || action?.label || action?.type || "Gợi ý";
     },
     sanitizeSuggestedActions(actions, message = null) {
@@ -711,23 +722,136 @@ export default {
         sourceMessage: text,
       };
     },
-    useSuggestedAction(action, msg = null) {
+
+    getInternalBasePath() {
+      const normalizedRole = String(this.role || "")
+        .trim()
+        .toUpperCase()
+        .replace(/^ROLE_/, "");
+
+      const storedRole = String(localStorage.getItem("role") || "")
+        .trim()
+        .toUpperCase()
+        .replace(/^ROLE_/, "");
+
+      const currentPath = this.$route?.path || "";
+
+      if (
+        normalizedRole === "ADMIN" ||
+        storedRole === "ADMIN" ||
+        currentPath.startsWith("/admin")
+      ) {
+        return "/admin";
+      }
+
+      return "/employee";
+    },
+    extractLastProductCode(msg = null) {
+      const candidates = [];
+
+      if (msg?.text) {
+        candidates.push(msg.text);
+      }
+
+      if (msg?.data) {
+        try {
+          candidates.push(JSON.stringify(msg.data));
+        } catch (error) {
+          // ignore
+        }
+      }
+
+      [...this.messages].reverse().forEach((message) => {
+        if (message?.text) {
+          candidates.push(message.text);
+        }
+
+        if (message?.data) {
+          try {
+            candidates.push(JSON.stringify(message.data));
+          } catch (error) {
+            // ignore
+          }
+        }
+      });
+
+      for (const text of candidates) {
+        const normalized = String(text || "").toUpperCase();
+
+        const spctMatch = normalized.match(/\bSPCT[0-9A-Z]+\b/);
+        if (spctMatch) return spctMatch[0];
+
+        const spMatch = normalized.match(/\bSP[0-9A-Z]+\b/);
+        if (spMatch) return spMatch[0];
+      }
+
+      return "";
+    },
+    async useSuggestedAction(action, msg = null) {
       const type = typeof action === "string" ? "" : (action?.type || "");
+
       if (type === "open_order_workflow") {
-        const targetMsg = msg || [...this.messages].reverse().find((m) => m?.sender === "assistant" && this.extractDraftOrder(m));
+        const targetMsg =
+          msg ||
+          [...this.messages]
+            .reverse()
+            .find((m) => m?.sender === "assistant" && this.extractDraftOrder(m));
+
         const draftOrder = this.extractDraftOrder(targetMsg);
+
         if (!draftOrder) {
           window.toast?.warning?.("Chưa tìm thấy dữ liệu đơn nháp để mở workflow.");
           return;
         }
+
         localStorage.setItem("assistantDraftOrder", JSON.stringify(draftOrder));
-        const basePath = this.role === "ADMIN" ? "/admin" : "/employee";
+
+        const basePath = this.getInternalBasePath();
         this.$router.push(`${basePath}/hoa-don/pos`);
+
         window.toast?.success?.("Đã mở workflow tạo đơn và nạp dữ liệu nháp.");
         return;
       }
+
+      if (type === "open_product") {
+        const basePath = this.getInternalBasePath();
+
+        this.$router.push(`${basePath}/san-pham/bien-the`);
+
+        window.toast?.success?.("Đã mở màn hình sản phẩm.");
+        return;
+      }
+
+      if (type === "suggest_alt_variant") {
+        const lastProductCode = this.extractLastProductCode(msg);
+
+        this.inputMessage = lastProductCode
+          ? `${lastProductCode} còn hàng không? Gợi ý biến thể/sản phẩm còn hàng`
+          : "Gợi ý biến thể/sản phẩm còn hàng";
+
+        await this.handleSend();
+        return;
+      }
+
+      if (type === "cross_sell" || type === "upsell") {
+        this.inputMessage = "Gợi ý 3 sản phẩm áo khoác dễ chốt sale";
+        await this.handleSend();
+        return;
+      }
+
+      if (type === "stock_guard") {
+        const lastProductCode = this.extractLastProductCode(msg);
+
+        this.inputMessage = lastProductCode
+          ? `${lastProductCode} còn hàng không?`
+          : "Kiểm tra tồn kho sản phẩm đang xem";
+
+        await this.handleSend();
+        return;
+      }
+
       this.inputMessage = this.formatSuggestedActionLabel(action);
-      this.scrollToBottom();
+      await this.handleSend();
     },
     normalizeAssistantMessage(response) {
       const message = {

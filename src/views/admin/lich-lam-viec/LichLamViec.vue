@@ -161,6 +161,7 @@
           :key="day.key"
           class="calendar-cell"
           :class="{ muted: !day.isCurrentMonth, today: day.isToday }"
+          @click="handleCalendarDayClick(day.dateKey)"
         >
           <header class="cell-head">
             <strong>{{ day.day }}</strong>
@@ -182,7 +183,7 @@
               <button
                 v-if="getEntriesByDate(day.dateKey).length > 3"
                 class="more-btn"
-                @click="showDayDetail(day.dateKey)"
+                @click.stop="showDayDetail(day.dateKey)"
               >
                 +{{ getEntriesByDate(day.dateKey).length - 3 }} ca
               </button>
@@ -333,6 +334,7 @@ const calendarScope = ref('week')
 const cursorDate = ref(new Date())
 
 const weekLabels = ['CN', 'Th 2', 'Th 3', 'Th 4', 'Th 5', 'Th 6', 'Th 7']
+const MAX_SHIFTS_PER_DAY = 3
 
 const normalizeTime = (timeValue) => {
   if (!timeValue) return ''
@@ -589,6 +591,12 @@ const buildDayInfo = (date, isCurrentMonth) => {
   }
 }
 
+const getSchedulesByDate = (dateKey) => {
+  return filteredSchedules.value
+    .filter((schedule) => schedule.dateKey === dateKey)
+    .sort((a, b) => String(a.startTime || '').localeCompare(String(b.startTime || '')))
+}
+
 const getEntriesByDate = (dateKey) => {
   if (importedAssignments.value.length > 0) {
     return importedAssignments.value
@@ -599,14 +607,14 @@ const getEntriesByDate = (dateKey) => {
       .map((entry, index) => ({ ...entry, key: `${dateKey}-${entry.shiftName}-${index}` }))
   }
 
-  return filteredSchedules.value.map((schedule, index) => ({
+  return getSchedulesByDate(dateKey).map((schedule, index) => ({
     ...schedule,
     key: `${dateKey}-${schedule.id || index}`,
     shiftName: schedule.name,
     startTime: schedule.startTime,
     endTime: schedule.endTime,
     status: schedule.status
-  })).filter((entry) => entry.dateKey === dateKey)
+  }))
 }
 
 const goToday = () => {
@@ -698,100 +706,8 @@ const loadShiftsCatalog = async () => {
   }
 }
 
-const seedDailySchedules = async (dates) => {
-  if (!employees.value.length || !shiftsCatalog.value.length) return
-
-  // Use up to 3 distinct shifts (sáng/chiều/tối)
-  const shifts3 = shiftsCatalog.value.slice(0, 3)
-  let seeded = 0
-
-  for (const dateKey of dates) {
-    const existingForDate = schedules.value.filter((s) => s.dateKey === dateKey)
-    const needed = 3 - existingForDate.length
-    if (needed <= 0) continue
-
-    const alreadyAssignedIds = new Set(existingForDate.map((s) => Number(s.employeeId)).filter(Boolean))
-    const available = employees.value.filter((e) => !alreadyAssignedIds.has(Number(e.id)))
-
-    // Shuffle randomly and pick `needed` employees
-    const shuffled = [...available].sort(() => Math.random() - 0.5)
-    const selected = shuffled.slice(0, needed)
-
-    for (let i = 0; i < selected.length; i++) {
-      const employee = selected[i]
-      const shift = shifts3[i % shifts3.length]
-      if (!employee?.id || !shift?.id) continue
-
-      try {
-        await createLichLamViec({
-          idNhanVien: Number(employee.id),
-          idCaLam: Number(shift.id),
-          ngayLam: dateKey,
-          trangThai: 'Đã phân công'
-        })
-        seeded++
-      } catch {
-        // Skip duplicates / API errors silently
-      }
-    }
-  }
-
-  if (seeded > 0) {
-    toast.success(`Đã tự động tạo ${seeded} lịch làm việc cho hôm nay / ngày mai`)
-    await loadSchedules()
-  }
-}
-
 const loadAllData = async () => {
   await Promise.all([loadSchedules(), loadEmployees(), loadShiftsCatalog()])
-
-  if (!schedules.value.length && employees.value.length && shiftsCatalog.value.length) {
-    await seedSchedulesFromMasterData()
-    await loadSchedules()
-  }
-
-  // Auto-generate at least 3 shifts for today and tomorrow
-  if (employees.value.length && shiftsCatalog.value.length) {
-    const today = toDateKey(new Date())
-    const tomorrowDate = new Date()
-    tomorrowDate.setDate(tomorrowDate.getDate() + 1)
-    const tomorrow = toDateKey(tomorrowDate)
-    await seedDailySchedules([today, tomorrow])
-  }
-}
-
-const seedSchedulesFromMasterData = async () => {
-  const start = startOfWeek(new Date())
-  const maxEmployees = employees.value.slice(0, 10)
-  const daySlots = [0, 1, 2, 3, 4, 5, 6]
-  const maxSeedRows = 20
-  const payloads = []
-
-  maxEmployees.forEach((employee, employeeIndex) => {
-    daySlots.forEach((dayOffset) => {
-      const date = new Date(start)
-      date.setDate(start.getDate() + dayOffset)
-      const shift = shiftsCatalog.value[(employeeIndex + dayOffset) % shiftsCatalog.value.length]
-
-      if (!employee?.id || !shift?.id) return
-      payloads.push({
-        idNhanVien: Number(employee.id),
-        idCaLam: Number(shift.id),
-        ngayLam: toDateKey(date),
-        trangThai: 'Đã phân công'
-      })
-
-      if (payloads.length >= maxSeedRows) return
-    })
-
-    if (payloads.length >= maxSeedRows) return
-  })
-
-  const results = await Promise.allSettled(payloads.map((payload) => createLichLamViec(payload)))
-  const successCount = results.filter((result) => result.status === 'fulfilled').length
-  if (successCount > 0) {
-    toast.success(`Đã khởi tạo ${successCount} lịch làm việc từ dữ liệu nhân viên/ca`) 
-  }
 }
 
 const resetScheduleForm = () => {
@@ -849,6 +765,30 @@ const createScheduleFromInput = async () => {
   const ngayLam = String(scheduleForm.ngayLam || '').trim()
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ngayLam)) {
     toast.error('Ngày làm không hợp lệ, dùng định dạng yyyy-mm-dd')
+    return false
+  }
+
+  const editingId = Number(scheduleModal.editingId || 0)
+  const existingInDay = schedules.value.filter((item) => {
+    if (item.dateKey !== ngayLam) return false
+    if (editingId && Number(item.id) === editingId) return false
+    return true
+  })
+
+  if (existingInDay.length >= MAX_SHIFTS_PER_DAY) {
+    toast.error(`Mỗi ngày chỉ được tối đa ${MAX_SHIFTS_PER_DAY} ca làm`)
+    return false
+  }
+
+  const duplicateEmployeeInDay = existingInDay.some((item) => Number(item.employeeId || 0) === idNhanVien)
+  if (duplicateEmployeeInDay) {
+    toast.error('Nhân viên này đã có ca trong ngày được chọn')
+    return false
+  }
+
+  const duplicateShiftInDay = existingInDay.some((item) => Number(item.shiftId || 0) === idCaLam)
+  if (duplicateShiftInDay) {
+    toast.error('Ca này đã được phân công trong ngày được chọn')
     return false
   }
 
@@ -915,7 +855,7 @@ const deleteSchedule = async (schedule) => {
     })
     .catch((err) => {
       console.error('Delete schedule failed:', err)
-      toast.error('Xóa ca thất bại')
+      toast.error(err?.response?.data?.message || 'Xóa lịch thất bại')
     })
 }
 
@@ -1010,43 +950,29 @@ const showDayDetail = (dateKey) => {
   toast.info(`${dateKey}: ${count} ca làm việc`) 
 }
 
-const autoSeedTodayIfNeeded = async () => {
-  const todayKey = toDateKey(new Date())
-  const storageKey = `llv:auto:${todayKey}`
-  if (localStorage.getItem(storageKey)) return
-
-  if (!employees.value.length || !shiftsCatalog.value.length) return
-
-  // Shuffle employees and pick 3 at random
-  const shuffled = [...employees.value].sort(() => Math.random() - 0.5)
-  const selected = shuffled.slice(0, Math.min(3, shuffled.length))
-
-  // Assign each selected employee to a different shift (round-robin across catalog)
-  let seeded = 0
-  for (let i = 0; i < selected.length; i++) {
-    const shift = shiftsCatalog.value[i % shiftsCatalog.value.length]
-    try {
-      await createLichLamViec({
-        idNhanVien: selected[i].id,
-        idCaLam: shift.id,
-        ngayLam: todayKey,
-        trangThai: 'Đã phân công'
-      })
-      seeded++
-    } catch {
-      // silent per-entry failure
-    }
+const handleCalendarDayClick = (dateKey) => {
+  const entries = getEntriesByDate(dateKey)
+  if (!entries.length) {
+    scheduleForm.ngayLam = dateKey
+    openCreateScheduleModal()
+    return
   }
 
-  if (seeded > 0) {
-    localStorage.setItem(storageKey, '1')
-    await loadSchedules()
+  const editable = entries.find((item) => Number(item?.id))
+  if (!editable) {
+    showDayDetail(dateKey)
+    return
   }
+
+  if (entries.length > 1) {
+    toast.info(`Ngày ${dateKey} có ${entries.length} ca. Đang mở ca sớm nhất để chỉnh sửa.`)
+  }
+
+  openEditScheduleModal(editable)
 }
 
 onMounted(async () => {
   await loadAllData()
-  await autoSeedTodayIfNeeded()
 })
 </script>
 

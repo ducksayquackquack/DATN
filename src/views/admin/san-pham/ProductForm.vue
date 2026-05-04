@@ -1650,6 +1650,27 @@ function openBulkPanel(colorId) {
   bulkPanel.value = { colorId, soLuong: '', giaBan: '' }
 }
 
+const parseCurrencyInput = (value) => {
+  const digits = String(value ?? '').replace(/[^\d]/g, '')
+  if (!digits) return ''
+  return Number(digits)
+}
+
+const formatCurrencyInput = (value) => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < 0) return ''
+  return new Intl.NumberFormat('vi-VN').format(parsed)
+}
+
+const onBulkPriceInput = (event) => {
+  bulkPanel.value.giaBan = parseCurrencyInput(event?.target?.value)
+}
+
+const onVariantPriceInput = (variant, event) => {
+  if (!variant) return
+  variant.giaBan = parseCurrencyInput(event?.target?.value)
+}
+
 function closeBulkPanel() {
   bulkPanel.value.colorId = null
 }
@@ -2043,6 +2064,48 @@ async function generateProductCode() {
   } catch {
     return `SP${String(Date.now()).slice(-6)}`
   }
+}
+
+const normalizeErrorText = (value = "") => String(value || "")
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .replace(/đ/g, "d")
+  .replace(/Đ/g, "D")
+  .toLowerCase()
+  .trim()
+
+const isDuplicateProductCodeError = (error) => {
+  const message = normalizeErrorText(error?.response?.data?.message || error?.message || "")
+  if (!message) return false
+  return message.includes("ma san pham da ton tai")
+    || message.includes("duplicate")
+    || message.includes("already exists")
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function createSanPhamWithRetry(payload, maxAttempts = 3) {
+  let attempt = 0
+  let lastError = null
+
+  while (attempt < maxAttempts) {
+    try {
+      return await createSanPham(payload)
+    } catch (error) {
+      lastError = error
+      if (!isDuplicateProductCodeError(error)) throw error
+
+      attempt += 1
+      if (attempt >= maxAttempts) break
+
+      const refreshedCode = await generateProductCode()
+      form.sku = refreshedCode
+      payload.maSanPham = refreshedCode
+      await sleep(200)
+    }
+  }
+
+  throw lastError || new Error("Không thể tạo sản phẩm")
 }
 
 function extractSkuNumber(value = "") {
@@ -2554,7 +2617,7 @@ async function saveProduct() {
       originalVariantIds.value = currentVariantIds
       removedVariantRows.value = []
     } else {
-      const response = await createSanPham(payload)
+      const response = await createSanPhamWithRetry(payload)
       const savedId = response?.data?.id || response?.data?.data?.id || null
       if (hasImageConfig) {
         setProductImageConfig({ id: savedId, maSanPham: form.sku }, { images: overrideImages, colorImages: colorImagePayloads.value })
@@ -2562,6 +2625,15 @@ async function saveProduct() {
         clearProductImageOverride({ id: savedId, maSanPham: form.sku })
       }
       window.toast.success("Tạo sản phẩm thành công")
+
+      const numericSavedId = Number(savedId)
+      if (Number.isFinite(numericSavedId) && numericSavedId > 0) {
+        const queryString = new URLSearchParams(route.query || {}).toString()
+        const nextPath = `/admin/san-pham/form/${numericSavedId}${queryString ? `?${queryString}` : ""}`
+        // Force reload to initialize form in edit mode with new route param.
+        window.location.assign(nextPath)
+        return
+      }
     }
   } catch (err) {
     console.error("SAVE ERROR:", err)
@@ -2788,11 +2860,12 @@ async function saveProduct() {
                     class="bulk-input"
                   />
                   <input
-                    v-model.number="bulkPanel.giaBan"
-                    type="number"
+                    :value="formatCurrencyInput(bulkPanel.giaBan)"
+                    type="text"
+                    inputmode="numeric"
                     placeholder="Giá bán"
-                    min="0"
                     class="bulk-input"
+                    @input="onBulkPriceInput"
                   />
                   <button type="button" class="btn primary btn-small" @click="applyBulkToGroup">Áp dụng</button>
                   <button type="button" class="btn btn-small" @click="closeBulkPanel">Bỏ</button>
@@ -2865,7 +2938,15 @@ async function saveProduct() {
                         {{ variant.id ? getAvailableStock(variant) : variant.soLuong }}
                       </span>
                     </td>
-                    <td><input v-model.number="variant.giaBan" type="number" min="0" placeholder="0" /></td>
+                    <td>
+                      <input
+                        :value="formatCurrencyInput(variant.giaBan)"
+                        type="text"
+                        inputmode="numeric"
+                        placeholder="0"
+                        @input="onVariantPriceInput(variant, $event)"
+                      />
+                    </td>
                     <td class="col-act">
                       <button
                         type="button"

@@ -84,8 +84,140 @@ export const sendOrderLookupMail = ({ maHoaDon, soDienThoai = "", email, trackin
   return axios.post(`${API}/lookup/send-mail`, payload).catch(() => tryFallback())
 }
 
-export const createHoaDon = (data) => {
-  return axios.post(API, data)
+const PAYMENT_METHOD_ALIASES = {
+  CASH: ["CASH", "TIEN_MAT", "COD"],
+  // Keep BANK first, then transfer aliases; fallback to VNPAY/CASH for legacy backends.
+  BANK: ["BANK", "CHUYEN_KHOAN", "BANK_TRANSFER", "VNPAY", "CASH"],
+  VNPAY: ["VNPAY"]
+}
+
+const resolvePaymentCandidates = (method) => {
+  const normalized = String(method || "").trim().toUpperCase()
+  if (!normalized) return []
+
+  const fromAlias = PAYMENT_METHOD_ALIASES[normalized]
+  if (Array.isArray(fromAlias) && fromAlias.length) {
+    return fromAlias
+  }
+
+  for (const values of Object.values(PAYMENT_METHOD_ALIASES)) {
+    if (values.includes(normalized)) {
+      return [normalized, ...values.filter((v) => v !== normalized)]
+    }
+  }
+
+  return [normalized]
+}
+
+const withPaymentMethod = (payload, method) => ({
+  ...payload,
+  phuongThucThanhToan: method,
+  paymentMethod: method,
+  hinhThucThanhToan: method
+})
+
+const toPositiveNumber = (value) => {
+  const num = Number(value)
+  return Number.isFinite(num) && num > 0 ? num : 0
+}
+
+const normalizeAmountPayload = (payload, method = "") => {
+  const discountAmount = toPositiveNumber(
+    payload?.giamGia ??
+    payload?.discountAmount ??
+    payload?.voucherDiscount ??
+    payload?.giaSauGiamGia
+  )
+
+  const total = toPositiveNumber(
+    payload?.thanhTien ||
+    payload?.tongTienThanhToan ||
+    payload?.tongTien
+  )
+  const normalizedMethod = String(method || payload?.phuongThucThanhToan || payload?.paymentMethod || "").trim().toUpperCase()
+  const isBankLike = ["BANK", "CHUYEN_KHOAN", "BANK_TRANSFER", "VNPAY"].includes(normalizedMethod)
+
+  const inputCash = toPositiveNumber(
+    payload?.tienMat ||
+    payload?.tienKhachDua ||
+    payload?.tienKhachTra ||
+    payload?.cashAmount
+  )
+  const inputTransfer = toPositiveNumber(
+    payload?.tienChuyenKhoan ||
+    payload?.soTienChuyenKhoan ||
+    payload?.bankAmount ||
+    payload?.transferAmount
+  )
+
+  let resolvedCash = inputCash
+  let resolvedTransfer = inputTransfer
+
+  if (resolvedCash <= 0 && resolvedTransfer <= 0 && total > 0) {
+    if (isBankLike) {
+      resolvedTransfer = total
+    } else {
+      resolvedCash = total
+    }
+  }
+
+  const paid = toPositiveNumber(payload?.tienKhachDua || payload?.tienKhachTra || (resolvedCash + resolvedTransfer))
+  const change = Math.max(paid - total, 0)
+
+  return {
+    ...payload,
+    giaSauGiamGia: discountAmount,
+    giamGia: discountAmount,
+    discountAmount: discountAmount,
+    thanhTien: total || Number(payload?.thanhTien || 0),
+    tongTien: total || Number(payload?.tongTien || 0),
+    tongTienThanhToan: total || Number(payload?.tongTienThanhToan || 0),
+    soTienThanhToan: total || Number(payload?.soTienThanhToan || 0),
+    tienMat: resolvedCash,
+    cashAmount: resolvedCash,
+    tienChuyenKhoan: resolvedTransfer,
+    soTienChuyenKhoan: resolvedTransfer,
+    transferAmount: resolvedTransfer,
+    tienKhachDua: paid,
+    tienKhachTra: paid,
+    tienThua: change,
+    tienTraLai: change
+  }
+}
+
+export const createHoaDon = async (data) => {
+  const basePayload = { ...(data || {}) }
+  const initialMethod = String(
+    basePayload?.phuongThucThanhToan ||
+    basePayload?.paymentMethod ||
+    basePayload?.hinhThucThanhToan ||
+    ""
+  ).trim().toUpperCase()
+  const candidates = resolvePaymentCandidates(initialMethod)
+
+  try {
+    if (candidates.length) {
+      const methodPayload = withPaymentMethod(basePayload, candidates[0])
+      return await axios.post(API, normalizeAmountPayload(methodPayload, candidates[0]))
+    }
+    return await axios.post(API, normalizeAmountPayload(basePayload))
+  } catch (error) {
+    const status = Number(error?.response?.status || 0)
+    if (status !== 400 || candidates.length <= 1) {
+      throw error
+    }
+
+    let lastError = error
+    for (const candidate of candidates.slice(1)) {
+      try {
+        const methodPayload = withPaymentMethod(basePayload, candidate)
+        return await axios.post(API, normalizeAmountPayload(methodPayload, candidate))
+      } catch (retryError) {
+        lastError = retryError
+      }
+    }
+    throw lastError
+  }
 }
 
 export const updateHoaDon = (id, data) => {

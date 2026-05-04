@@ -568,8 +568,41 @@ const normalizeCartItemQuantity = (item) => {
   item.quantity = Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 1
 }
 
+const getVariantStock = (variant = {}) => {
+  const candidates = [
+    variant?.soLuong,
+    variant?.soLuongTon,
+    variant?.tonKho,
+    variant?.available,
+  ]
+  for (const value of candidates) {
+    const n = Number(value)
+    if (Number.isFinite(n) && n >= 0) return n
+  }
+  return null
+}
+
+const getAvailableStockForItem = (item) => {
+  const variants = getVariantsForItem(item)
+  if (!variants.length) return null
+
+  const exact = variants.find((variant) => {
+    return String(variant?.spctId || "") === String(item?.spctId || "")
+      || (String(variant?.color || "") === String(item?.color || "")
+        && String(variant?.size || "") === String(item?.size || ""))
+  })
+
+  const fallback = exact || variants[0]
+  return getVariantStock(fallback)
+}
+
 const increaseItemQuantity = (item) => {
   normalizeCartItemQuantity(item)
+  const availableStock = getAvailableStockForItem(item)
+  if (Number.isFinite(availableStock) && item.quantity >= availableStock) {
+    toast.warning(`Sản phẩm ${item?.name || ""} chỉ còn ${availableStock} sản phẩm trong kho`)
+    return
+  }
   item.quantity += 1
   persistCheckoutCart()
 }
@@ -1045,6 +1078,16 @@ const validateCheckout = () => {
     return "Giỏ hàng có dữ liệu không hợp lệ, vui lòng quay lại trang chủ"
   }
 
+  const exceededItem = cart.value.find((item) => {
+    const availableStock = getAvailableStockForItem(item)
+    if (!Number.isFinite(availableStock)) return false
+    return Number(item?.quantity || 0) > availableStock
+  })
+  if (exceededItem) {
+    const availableStock = getAvailableStockForItem(exceededItem)
+    return `Sản phẩm ${exceededItem?.name || ""} chỉ còn ${availableStock} trong kho`
+  }
+
   if (!delivery.value.name.trim()) return "Vui lòng nhập họ tên người nhận"
   if (!isValidPhone(delivery.value.phone)) return "Số điện thoại không hợp lệ"
 
@@ -1304,32 +1347,7 @@ const submitOrder = async () => {
           })
         }
       } catch (backendError) {
-        console.warn("COD backend checkout fallback activated:", backendError)
-        const pendingKey = "pendingOfflineOrders"
-        const existing = JSON.parse(localStorage.getItem(pendingKey) || "[]")
-        existing.unshift({
-          id: orderId,
-          createdAt: new Date().toISOString(),
-          customerId: customerId.value,
-          delivery: {
-            name: delivery.value.name.trim(),
-            phone: delivery.value.phone.trim(),
-            province: String(delivery.value.province || "").trim(),
-            district: String(delivery.value.district || "").trim(),
-            ward: String(delivery.value.ward || "").trim(),
-            addressDetail: String(delivery.value.addressDetail || "").trim(),
-            address: deliveryAddress.value
-          },
-          shipping: shipping.value,
-          discount: voucherDiscount.value,
-          voucherCode: String(selectedOrderVoucher.value?.maPhieuGiamGia || ""),
-          itemVouchers: itemVoucherPayload,
-          items: cart.value,
-          total: total.value,
-          paymentMethod: "COD",
-          syncStatus: "pending"
-        })
-        localStorage.setItem(pendingKey, JSON.stringify(existing))
+        throw backendError
       }
 
       localStorage.removeItem("currentOrder")
@@ -1645,9 +1663,8 @@ watch(
 
               <div class="qty-price-row">
                 <div class="qty-chip">
-                  <button type="button" class="qty-btn" @click="decreaseItemQuantity(item)">−</button>
+                  <span class="qty-chip__label">Số lượng</span>
                   <b>{{ item.quantity }}</b>
-                  <button type="button" class="qty-btn" @click="increaseItemQuantity(item)">+</button>
                 </div>
                 <div class="cart-price-wrap">
                   <div class="cart-price">{{ VND(getLineSubtotal(item)) }}</div>
@@ -2622,6 +2639,20 @@ watch(
   gap: 10px;
   color: #475569;
   font-size: 14px;
+  flex-shrink: 0;
+}
+
+.qty-chip b {
+  min-width: 2.4ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.qty-chip__label {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .cart-price-wrap {

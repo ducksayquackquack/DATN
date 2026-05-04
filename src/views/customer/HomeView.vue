@@ -13,6 +13,7 @@ import { useToast } from '../../composables/useToast'
 import { resolveApiOrigin } from '../../utils/apiOrigin'
 import { getProductImageConfig } from '../../utils/productImageOverrides'
 import { fallbackImageForVariant } from '../../utils/productImageFallback'
+import { shouldDisplayPublicProduct } from '../../utils/publicProductVisibility'
 import img1 from "../../assets/img/Jackets/bomber/bomber-da-lon.jpg?url"
 import img2 from "../../assets/img/Jackets/bomber/bomber-dang-lung.jpg?url"
 import img3 from "../../assets/img/Jackets/bomber/bomber-gia-da.jpg?url"
@@ -47,6 +48,7 @@ import img18b from "../../assets/img/Jackets/hoodie/hoodie-camo/hoodie-camo-whit
 import img19b from "../../assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-white.PNG?url"
 import img20b from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-gray.PNG?url"
 import img20c from "../../assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-red.PNG?url"
+import logoFallback from "../../assets/img/logo/DirtyWaveLogo.png?url"
 import momo from "../../assets/img/payments/momo.png?url"
 import visa from "../../assets/img/payments/visa.png?url"
 import mastercard from "../../assets/img/payments/mastercard.png?url"
@@ -455,7 +457,7 @@ const fallbackImageFor = (id, code = "", name = "") => {
   return fallbackImages[0] || img1
 }
 
-const genericFallbackImage = () => fallbackImages[0] || img1
+const genericFallbackImage = () => logoFallback || fallbackImages[0] || img1
 
 const fallbackImageForCatalog = (id, code = "", name = "") => {
   return isCuratedQuickProductCode(code)
@@ -876,17 +878,29 @@ const notifyCartUpdated = () => {
 }
 
 const addToCart = (id, qty = 1, cartToastPayload = null) => {
+  const safeQty = Math.max(1, Number(qty || 1))
   if (!cart.value[id]) cart.value[id] = 0
-  cart.value[id] += Number(qty || 1)
+  cart.value[id] += safeQty
 
   cart.value = { ...cart.value }   // force Vue update
   notifyCartUpdated()
+  const nextInCartQty = Number(cart.value[id] || safeQty)
   if (cartToastPayload) {
     try {
       if (typeof toastCartAdded === 'function') {
-        toastCartAdded(cartToastPayload)
+        toastCartAdded({
+          ...cartToastPayload,
+          cartToastKey: String(cartToastPayload?.cartToastKey || id),
+          addedQty: safeQty,
+          inCartQty: nextInCartQty
+        })
       } else if (typeof window?.toast?.cartAdded === 'function') {
-        window.toast.cartAdded(cartToastPayload)
+        window.toast.cartAdded({
+          ...cartToastPayload,
+          cartToastKey: String(cartToastPayload?.cartToastKey || id),
+          addedQty: safeQty,
+          inCartQty: nextInCartQty
+        })
       } else {
         toastSuccess('Đã thêm vào giỏ hàng')
       }
@@ -1125,6 +1139,7 @@ const loadHomeBackendProducts = async () => {
     if (homeBackendProducts.value.length) {
       const backendProductsMapped = homeBackendProducts.value
         .filter((item) => isBackendProductActive(item))
+        .filter((item) => shouldDisplayPublicProduct(item))
         .map((item, index) => mapBackendProductToHomeCard(item, index))
         .filter((item) => Number.isFinite(item.id) && item.id > 0)
 
@@ -1576,6 +1591,7 @@ const quickAddToCart = () => {
     : String(selectedProduct.value.id)
 
   addToCart(cartKey, quickQty.value, {
+    cartToastKey: cartKey,
     image: variantImage,
     name: selectedProduct.value.name,
     color: selectedColorName,

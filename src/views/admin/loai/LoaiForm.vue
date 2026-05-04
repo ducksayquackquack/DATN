@@ -183,9 +183,6 @@ async function save() {
         <div class="card" style="border-radius:14px">
           <div class="head">
             <h2>Quy đổi size (tuỳ chọn)</h2>
-            <small class="muted">
-              Nếu anh muốn map size theo chiều cao/cân nặng
-            </small>
           </div>
 
           <div class="body">

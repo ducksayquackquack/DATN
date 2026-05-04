@@ -114,10 +114,6 @@ const props = defineProps({
   initialVoucherName: {
     type: String,
     default: ''
-  },
-  initialDiscount: {
-    type: Number,
-    default: null
   }
 })
 
@@ -136,28 +132,9 @@ const normalizedInitialCode = computed(() => normalizeCode(props.initialVoucherC
 
 const normalizedInitialName = computed(() => String(props.initialVoucherName || '').trim().toLowerCase())
 
-const resolvedInitialDiscount = computed(() => {
-  const value = Number(props.initialDiscount)
-  return Number.isFinite(value) && value > 0 ? value : null
-})
-
-const isSelectedFromPersistedOrder = computed(() => Boolean(selectedVoucher.value?._fromPersistedOrder))
-
-const isMatchingPersistedVoucher = computed(() => {
-  if (!selectedVoucher.value) return false
-  if (isSelectedFromPersistedOrder.value) return true
-  if (!normalizedInitialCode.value) return false
-  return normalizeCode(selectedVoucher.value?.maPhieuGiamGia) === normalizedInitialCode.value
-})
-
 // Computed
 const currentDiscount = computed(() => {
   if (!selectedVoucher.value) return 0
-
-  if (resolvedInitialDiscount.value && isMatchingPersistedVoucher.value) {
-    return resolvedInitialDiscount.value
-  }
-
   return calculateVoucherDiscount(selectedVoucher.value, props.subtotal)
 })
 
@@ -166,8 +143,7 @@ const emitCurrentDiscount = () => {
 }
 
 const applyPersistedVoucherSelection = () => {
-  const targetDiscount = resolvedInitialDiscount.value
-  if (!normalizedInitialCode.value && !normalizedInitialName.value && !targetDiscount) return false
+  if (!normalizedInitialCode.value && !normalizedInitialName.value) return false
 
   const matched = modalVouchers.value.find((voucher) => {
     const codeMatches = normalizedInitialCode.value
@@ -178,11 +154,7 @@ const applyPersistedVoucherSelection = () => {
       ? String(voucher?.tenPhieuGiamGia || '').trim().toLowerCase() === normalizedInitialName.value
       : false
 
-    const discountMatches = targetDiscount
-      ? Number(voucher?.discountAmount || 0) === Number(targetDiscount)
-      : false
-
-    return codeMatches || nameMatches || discountMatches
+    return codeMatches || nameMatches
   })
 
   if (matched) {
@@ -361,9 +333,10 @@ watch(() => props.subtotal, (newSubtotal) => {
     && !isVoucherApplicable(selectedVoucher.value, newSubtotal, props.customerId)
   ) {
     removeVoucher()
+    return
   }
 
-  if (isMatchingPersistedVoucher.value) {
+  if (selectedVoucher.value) {
     emitCurrentDiscount()
     return
   }
@@ -372,7 +345,7 @@ watch(() => props.subtotal, (newSubtotal) => {
 })
 
 watch(() => props.customerId, () => {
-  if (isMatchingPersistedVoucher.value) {
+  if (selectedVoucher.value) {
     emitCurrentDiscount()
     return
   }

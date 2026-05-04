@@ -328,13 +328,25 @@ const businessClosureLabel = computed(() => {
 const discountDisplayLabel = computed(() => {
   const discountAmount = Number(hoaDon.value.giaSauGiamGia || 0)
   if (!discountAmount) return formatCurrency(0)
-  const voucherCode = persistedVoucherCode.value || selectedVoucher.value?.maPhieuGiamGia || ''
-  const sub = subtotal.value
-  const pct = sub > 0 ? Math.round((discountAmount / sub) * 100) : 0
-  if (voucherCode && pct > 0) return `${voucherCode} - Giảm ${pct}%`
-  if (voucherCode) return `${voucherCode} - Đã áp dụng`
-  if (pct > 0) return `Giảm ${pct}%`
-  return 'Đã áp dụng giảm giá'
+
+  const sub = Number(subtotal.value || 0)
+  if (sub > 0) {
+    const pct = Math.round((discountAmount / sub) * 100)
+    if (pct > 0) return `Giảm giá ${pct}%`
+  }
+
+  return "Giảm giá"
+})
+
+const discountSummaryLabel = computed(() => {
+  const discountAmount = Number(hoaDon.value.giaSauGiamGia || 0)
+  if (discountAmount <= 0) return "Tổng giảm"
+  const sub = Number(subtotal.value || 0)
+  if (sub > 0) {
+    const pct = Math.round((discountAmount / sub) * 100)
+    if (pct > 0) return `Tổng giảm từ ${pct}%`
+  }
+  return "Tổng giảm"
 })
 
 const selectedCustomer = computed(() => {
@@ -369,8 +381,19 @@ const firstValidEmailValue = (...values) => {
   return ""
 }
 
+const isSyntheticGuestEmail = (value) => {
+  const normalized = String(value || "").trim().toLowerCase()
+  if (!normalized) return false
+  return normalized.endsWith("@dirtywave.local") || normalized.startsWith("pos.guest.")
+}
+
+const isGuestCustomerLike = computed(() => {
+  const customerName = String(selectedCustomer.value?.tenKhachHang || selectedCustomerLabel.value || "").trim().toLowerCase()
+  return customerName.includes("khách lẻ") || customerName.includes("khach le")
+})
+
 const selectedCustomerEmail = computed(() => {
-  return firstNonEmptyValue(
+  const email = firstNonEmptyValue(
     hoaDon.value.customerEmail,
     selectedCustomer.value?.email,
     selectedCustomer.value?.taiKhoan?.email,
@@ -378,10 +401,12 @@ const selectedCustomerEmail = computed(() => {
     selectedCustomer.value?.tenDangNhap,
     selectedCustomer.value?.taiKhoan?.tenDangNhap
   )
+  if (isGuestCustomerLike.value && isSyntheticGuestEmail(email)) return ""
+  return email
 })
 
 const selectedCustomerEmailForMail = computed(() => {
-  return firstValidEmailValue(
+  const email = firstValidEmailValue(
     hoaDon.value.customerEmail,
     selectedCustomer.value?.email,
     selectedCustomer.value?.taiKhoan?.email,
@@ -391,6 +416,8 @@ const selectedCustomerEmailForMail = computed(() => {
     hoaDon.value.emailNhanHang,
     hoaDon.value.email,
   )
+  if (isGuestCustomerLike.value && isSyntheticGuestEmail(email)) return ""
+  return email
 })
 
 const selectedCustomerLabel = computed(() => {
@@ -554,15 +581,48 @@ function extractVoucherSnapshotFromNote(note = "") {
   }
 
   const cleanPhrase = phrase.replace(/[\s:;,.-]+$/, "").trim()
-  const codeMatch = cleanPhrase.match(/\b[A-Z0-9_-]{4,}\b/i)
+  const codeMatch = cleanPhrase.match(/\b([A-Z]+[A-Z0-9_-]*\d+[A-Z0-9_-]*)\b/i)
 
   if (codeMatch?.[0]) {
     const code = String(codeMatch[0]).toUpperCase()
-    const name = cleanPhrase.toUpperCase() === code ? "" : cleanPhrase
+    const phraseUpper = cleanPhrase.toUpperCase()
+    const codeIndex = phraseUpper.indexOf(code)
+    const tailName = codeIndex >= 0
+      ? cleanPhrase.slice(codeIndex + code.length).replace(/^[\s\-:|,]+/, "").trim()
+      : ""
+    const name = tailName || (cleanPhrase.toUpperCase() === code ? "" : cleanPhrase)
     return { code, name }
   }
 
   return { code: "", name: cleanPhrase }
+}
+
+function resolvePersistedVoucherSnapshot(row, latestHistoryNote = "") {
+  const fromNote = extractVoucherSnapshotFromNote(row?.statusNote || latestHistoryNote)
+  const directCode = String(
+    firstNonEmptyValue(
+      row?.maPhieuGiamGia,
+      row?.voucherCode,
+      row?.maVoucher,
+      row?.phieuGiamGia,
+      row?.couponCode,
+    ) || ""
+  ).trim().toUpperCase()
+
+  const directName = String(
+    firstNonEmptyValue(
+      row?.tenPhieuGiamGia,
+      row?.voucherName,
+      row?.tenVoucher,
+      row?.phieuGiamGiaName,
+      row?.couponName,
+    ) || ""
+  ).trim()
+
+  return {
+    code: directCode || fromNote.code || "",
+    name: directName || fromNote.name || "",
+  }
 }
 
 function getOrderItemPricingSnapshot(orderLike) {
@@ -1351,9 +1411,17 @@ function normalizeLoadedItems(loadedItems) {
   })
 }
 
-function resolvePersistedDiscount(row, normalizedItems, orderTypeCode) {
-  const explicitDiscount = Number(row?.giaSauGiamGia || 0)
-  if (explicitDiscount > 0) return explicitDiscount
+function resolvePersistedDiscount(row, normalizedItems, orderTypeCode, latestHistoryNote = "") {
+  const explicitDiscountCandidates = [
+    row?.giamGia,
+    row?.discountAmount,
+    row?.tongTienGiam,
+    row?.voucherDiscount,
+    row?.giaSauGiamGia
+  ]
+  const explicitDiscount = explicitDiscountCandidates
+    .map((value) => Number(value || 0))
+    .find((value) => Number.isFinite(value) && value > 0) || 0
 
   const subtotalFromItems = normalizedItems.reduce((sum, item) => sum + Number(item?.thanhTien || 0), 0)
   const shipFee = String(orderTypeCode || "").toUpperCase() === "POS"
@@ -1362,7 +1430,74 @@ function resolvePersistedDiscount(row, normalizedItems, orderTypeCode) {
   const savedGrandTotal = Number(row?.thanhTien || 0)
   const inferredDiscount = subtotalFromItems + shipFee - savedGrandTotal
 
+  const likelySwappedLegacyTotals = (
+    explicitDiscount > 0
+    && savedGrandTotal > 0
+    && subtotalFromItems > explicitDiscount
+    && Math.abs(savedGrandTotal - explicitDiscount) <= 1
+  )
+
+  const likelyReverseSwappedLegacyTotals = (
+    explicitDiscount > 0
+    && savedGrandTotal > 0
+    && subtotalFromItems > 0
+    && explicitDiscount > savedGrandTotal
+    && (explicitDiscount / Math.max(subtotalFromItems, 1)) >= 0.6
+    && (savedGrandTotal / Math.max(subtotalFromItems, 1)) <= 0.5
+    && Math.abs((explicitDiscount + savedGrandTotal) - (subtotalFromItems + shipFee)) <= 2
+  )
+
+  // Legacy bug stored discount amount in `thanhTien`; preserve explicit discount in this case.
+  if (likelySwappedLegacyTotals) return explicitDiscount
+  // Reverse legacy case: `giaSauGiamGia` stored final total while `thanhTien` stored discount.
+  if (likelyReverseSwappedLegacyTotals) return savedGrandTotal
+
+  if (savedGrandTotal > 0 && subtotalFromItems > 0 && inferredDiscount >= 0) {
+    if (explicitDiscount <= 0) return inferredDiscount
+
+    const explicitFinalTotal = subtotalFromItems + shipFee - explicitDiscount
+    const explicitMismatchesSavedTotal = Math.abs(explicitFinalTotal - savedGrandTotal) > 1
+    if (explicitMismatchesSavedTotal) return inferredDiscount
+  }
+
+  if (explicitDiscount > 0) return explicitDiscount
   return inferredDiscount > 0 ? inferredDiscount : 0
+}
+
+function resolvePersistedFinalTotal(row, normalizedItems, orderTypeCode, persistedDiscount) {
+  const subtotalFromItems = normalizedItems.reduce((sum, item) => sum + Number(item?.thanhTien || 0), 0)
+  const shipFee = String(orderTypeCode || "").toUpperCase() === "POS"
+    ? 0
+    : Number(row?.phiShip || 0)
+  const savedGrandTotal = Number(row?.thanhTien || 0)
+
+  const likelySwappedLegacyTotals = (
+    persistedDiscount > 0
+    && savedGrandTotal > 0
+    && subtotalFromItems > persistedDiscount
+    && Math.abs(savedGrandTotal - persistedDiscount) <= 1
+  )
+
+  const likelyReverseSwappedLegacyTotals = (
+    persistedDiscount > 0
+    && savedGrandTotal > 0
+    && subtotalFromItems > 0
+    && persistedDiscount > savedGrandTotal
+    && (persistedDiscount / Math.max(subtotalFromItems, 1)) >= 0.6
+    && (savedGrandTotal / Math.max(subtotalFromItems, 1)) <= 0.5
+    && Math.abs((persistedDiscount + savedGrandTotal) - (subtotalFromItems + shipFee)) <= 2
+  )
+
+  if (likelySwappedLegacyTotals) {
+    return Math.max(subtotalFromItems + shipFee - persistedDiscount, 0)
+  }
+
+  if (likelyReverseSwappedLegacyTotals) {
+    return persistedDiscount
+  }
+
+  if (savedGrandTotal > 0) return savedGrandTotal
+  return Math.max(subtotalFromItems + shipFee - Number(persistedDiscount || 0), 0)
 }
 
 function resolvePersistedShipping(row, safeDetail, normalizedItems, orderTypeCode) {
@@ -1409,13 +1544,11 @@ function applyInvoiceDetail(detail) {
       : "ONLINE")
   ).toUpperCase()
 
-  const normalizedItems = applyPricingSnapshotToItems(
-    normalizeLoadedItems(extractLoadedItems(safeDetail)),
-    row
-  )
+  const normalizedItems = normalizeLoadedItems(extractLoadedItems(safeDetail))
   const persistedShipping = resolvePersistedShipping(row, safeDetail, normalizedItems, normalizedOrderType)
-  const persistedDiscount = resolvePersistedDiscount(row, normalizedItems, normalizedOrderType)
-  const voucherSnapshot = extractVoucherSnapshotFromNote(row.statusNote || latestHistoryNote)
+  const persistedDiscount = resolvePersistedDiscount(row, normalizedItems, normalizedOrderType, latestHistoryNote)
+  const persistedFinalTotal = resolvePersistedFinalTotal(row, normalizedItems, normalizedOrderType, persistedDiscount)
+  const voucherSnapshot = resolvePersistedVoucherSnapshot(row, latestHistoryNote)
 
   hoaDon.value = {
     id: row.id,
@@ -1428,7 +1561,7 @@ function applyInvoiceDetail(detail) {
     ngayNhanHangMongMuon: formatDateInput(row.ngayNhanHangMongMuon),
     phiShip: persistedShipping,
     giaSauGiamGia: persistedDiscount,
-    thanhTien: Number(row.thanhTien || 0),
+    thanhTien: persistedFinalTotal,
     orderStatusCode: normalizeOrderStatusCode(row.orderStatusCode, row.orderStatusName, row.statusNote),
     orderStatusName: row.orderStatusName || "Chờ xác nhận",
     orderType: normalizedOrderType,
@@ -1873,7 +2006,7 @@ watch(
             <div class="metric-icon gold"><Ticket :size="18" /></div>
             <div>
               <p class="metric-label">Tổng giảm từ voucher sản phẩm</p>
-              <strong>{{ discountDisplayLabel }}</strong>
+              <strong>{{ Number(hoaDon.giaSauGiamGia || 0) > 0 ? discountDisplayLabel : 'Không áp dụng' }}</strong>
             </div>
           </article>
 
@@ -2126,8 +2259,8 @@ watch(
                 <span>Phí ship</span>
                 <strong>{{ formatCurrency(hoaDon.phiShip) }}</strong>
               </div>
-              <div class="summary-row danger-text">
-                <span>Tổng giảm từ voucher sản phẩm {{ persistedVoucherCode || '' }}</span>
+              <div class="summary-row danger-text" v-if="Number(hoaDon.giaSauGiamGia || 0) > 0">
+                <span>{{ discountSummaryLabel }}</span>
                 <strong>-{{ formatCurrency(hoaDon.giaSauGiamGia) }}</strong>
               </div>
               <div class="summary-row total">
@@ -2214,9 +2347,6 @@ watch(
               <div class="product-card-actions" :class="{ 'is-readonly': !canEdit }">
                 <div v-if="canEdit" class="product-card-qty">
                   <label class="qty-label">Số lượng:</label>
-                  <button class="qty-btn qty-btn-dec" type="button" @click="decrementItemQty(index)" :disabled="item.soLuong <= 1" aria-label="Giảm số lượng">
-                    <Minus :size="16" />
-                  </button>
                   <input
                     type="number"
                     class="qty-input"
@@ -2225,9 +2355,6 @@ watch(
                     @change="(e) => changeItemQuantity(index, parseInt(e.target.value) || item.soLuong)"
                     @blur="(e) => { if (!e.target.value) e.target.value = item.soLuong }"
                   />
-                  <button class="qty-btn qty-btn-inc" type="button" @click="incrementItemQty(index)" aria-label="Tăng số lượng">
-                    <Plus :size="16" />
-                  </button>
                 </div>
                 <div v-else class="product-card-qty-readonly">
                   <span class="qty-label">Số lượng:</span>
@@ -3454,10 +3581,11 @@ watch(
   background: #e5e7eb;
 }
 .product-card-total-wrapper {
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content 170px;
   align-items: center;
-  gap: 8px;
-  flex-wrap: nowrap;
+  column-gap: 12px;
+  justify-self: end;
 }
 .product-card-total-wrapper.is-readonly {
   display: grid;
@@ -3485,11 +3613,15 @@ watch(
   font-size: 20px;
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
   height: 32px;
   line-height: 1;
-  min-width: 100px;
+  min-width: 170px;
+  width: 170px;
   text-align: right;
-  padding: 0 8px;
+  padding: 0;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
 }
 .product-card-total-wrapper.is-readonly .product-card-total {
   min-width: 170px;

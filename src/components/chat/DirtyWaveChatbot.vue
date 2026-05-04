@@ -1931,6 +1931,7 @@ onBeforeUnmount(() => {
   right: clamp(36px, 6vw, 96px);
   bottom: 28px;
   z-index: 120;
+  pointer-events: none;
 }
 
 .dw-chatbox {
@@ -1948,6 +1949,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(197, 22, 45, 0.16);
   box-shadow: 0 32px 72px rgba(88, 14, 28, 0.22);
   backdrop-filter: blur(12px);
+  pointer-events: auto;
 }
 
 .dw-resize-handle {
@@ -2315,6 +2317,12 @@ onBeforeUnmount(() => {
   align-items: flex-end;
   padding-top: 280px;
   cursor: pointer;
+  pointer-events: none;
+}
+
+.dw-launcher-wrap .dw-launcher-btn,
+.dw-launcher-wrap .dw-contact-pill {
+  pointer-events: auto;
 }
 
 .dw-launcher-wrap.is-open {

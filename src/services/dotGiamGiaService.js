@@ -88,7 +88,7 @@ const readId = (obj = {}) => Number(obj?.id ?? obj?.dotGiamGiaId ?? obj?.khuyenM
 
 const safeRequest = async (method, url, config = {}) => {
   try {
-    return await axios({ method, url, ...config })
+    return await axios({ method, url, __silentErrors: true, ...config })
   } catch (error) {
     const status = Number(error?.response?.status || 0)
     const isGet = String(method || "get").toLowerCase() === "get"
@@ -324,6 +324,182 @@ const mapAssociatedProductsFromVariants = (variants = [], khuyenMaiId = 0) => {
   return Array.from(byProduct.values())
 }
 
+const LOCAL_CAMPAIGN_PRODUCTS_KEY = "dirtywave:campaign-products"
+
+const normalizeIdArray = (values = []) => [...new Set((Array.isArray(values) ? values : [])
+  .map((id) => Number(id))
+  .filter((id) => Number.isFinite(id) && id > 0))]
+
+const normalizeLocalCampaignEntry = (entry) => {
+  if (Array.isArray(entry)) {
+    return {
+      productIds: normalizeIdArray(entry),
+      variantIds: []
+    }
+  }
+
+  if (!entry || typeof entry !== "object") {
+    return { productIds: [], variantIds: [] }
+  }
+
+  return {
+    productIds: normalizeIdArray(entry?.productIds ?? entry?.products ?? entry?.idSanPhams),
+    variantIds: normalizeIdArray(entry?.variantIds ?? entry?.variants ?? entry?.idChiTietSanPhams)
+  }
+}
+
+const readLocalCampaignProductsStore = () => {
+  if (typeof window === "undefined") return {}
+  try {
+    const raw = localStorage.getItem(LOCAL_CAMPAIGN_PRODUCTS_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === "object" ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+const writeLocalCampaignProductsStore = (store) => {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.setItem(LOCAL_CAMPAIGN_PRODUCTS_KEY, JSON.stringify(store || {}))
+  } catch {
+    // ignore localStorage errors
+  }
+}
+
+const getLocalCampaignProductIds = (khuyenMaiId) => {
+  const kmId = Number(khuyenMaiId || 0)
+  if (!Number.isFinite(kmId) || kmId <= 0) return []
+  const store = readLocalCampaignProductsStore()
+  const normalized = normalizeLocalCampaignEntry(store[String(kmId)])
+  return normalized.productIds
+}
+
+const getLocalCampaignVariantIds = (khuyenMaiId) => {
+  const kmId = Number(khuyenMaiId || 0)
+  if (!Number.isFinite(kmId) || kmId <= 0) return []
+  const store = readLocalCampaignProductsStore()
+  const normalized = normalizeLocalCampaignEntry(store[String(kmId)])
+  return normalized.variantIds
+}
+
+const setLocalCampaignSelection = (khuyenMaiId, { productIds = [], variantIds = [] } = {}) => {
+  const kmId = Number(khuyenMaiId || 0)
+  if (!Number.isFinite(kmId) || kmId <= 0) return
+
+  const store = readLocalCampaignProductsStore()
+  store[String(kmId)] = {
+    productIds: normalizeIdArray(productIds),
+    variantIds: normalizeIdArray(variantIds)
+  }
+  writeLocalCampaignProductsStore(store)
+}
+
+const setLocalCampaignProductIds = (khuyenMaiId, productIds = []) => {
+  setLocalCampaignSelection(khuyenMaiId, { productIds })
+}
+
+const normalizeProductIds = (values = []) => {
+  return [...new Set((Array.isArray(values) ? values : [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0))]
+}
+
+const readSanPhamList = async () => {
+  const sanPhamBase = await pickEndpoint("sanPham")
+  const paged = await fetchAllPages(sanPhamBase)
+  if (Array.isArray(paged) && paged.length) {
+    return { sanPhamBase, products: paged }
+  }
+
+  const fallbackRes = await safeRequest("get", sanPhamBase, { params: { page: 0, size: 9999 } })
+  return { sanPhamBase, products: unwrapList(fallbackRes) }
+}
+
+const updateProductCampaignViaSpring = async (sanPhamBase, product, nextCampaignId) => {
+  const productId = Number(product?.id || 0)
+  if (!Number.isFinite(productId) || productId <= 0) return false
+
+  const normalizedCampaignId = Number(nextCampaignId || 0)
+  const targetCampaign = Number.isFinite(normalizedCampaignId) && normalizedCampaignId > 0
+    ? normalizedCampaignId
+    : null
+
+  const fullPayload = {
+    ...(product && typeof product === "object" ? product : {}),
+    id: productId,
+    idKhuyenMai: targetCampaign
+  }
+
+  const payloads = [
+    fullPayload,
+    { idKhuyenMai: targetCampaign },
+    { id: productId, idKhuyenMai: targetCampaign }
+  ]
+
+  let lastError = null
+  for (const payload of payloads) {
+    try {
+      await axios.put(`${sanPhamBase}/${productId}`, payload)
+      return true
+    } catch (error) {
+      lastError = error
+      const status = Number(error?.response?.status || 0)
+      if (status === 404 || status === 405) {
+        try {
+          await axios.patch(`${sanPhamBase}/${productId}`, payload)
+          return true
+        } catch (patchError) {
+          lastError = patchError
+        }
+      }
+    }
+  }
+
+  console.warn("[syncProductAssociationsFallback] Không thể cập nhật sản phẩm:", {
+    productId,
+    nextCampaignId: targetCampaign,
+    message: lastError?.message || "unknown"
+  })
+  return false
+}
+
+const syncProductAssociationsFallback = async (khuyenMaiId, productIds = []) => {
+  const kmId = Number(khuyenMaiId || 0)
+  if (!Number.isFinite(kmId) || kmId <= 0) return false
+
+  const desiredIds = new Set(normalizeProductIds(productIds))
+  const { sanPhamBase, products } = await readSanPhamList()
+  if (!Array.isArray(products) || !products.length) return false
+
+  const targets = []
+  for (const product of products) {
+    const productId = Number(product?.id || 0)
+    if (!Number.isFinite(productId) || productId <= 0) continue
+
+    const currentCampaignId = Number(product?.idKhuyenMai ?? product?.id_khuyen_mai ?? 0)
+    const shouldAssign = desiredIds.has(productId) && currentCampaignId !== kmId
+    const shouldClear = !desiredIds.has(productId) && currentCampaignId === kmId
+
+    if (shouldAssign) {
+      targets.push({ product, nextCampaignId: kmId })
+    } else if (shouldClear) {
+      targets.push({ product, nextCampaignId: null })
+    }
+  }
+
+  if (!targets.length) return true
+
+  let successCount = 0
+  for (const target of targets) {
+    const ok = await updateProductCampaignViaSpring(sanPhamBase, target.product, target.nextCampaignId)
+    if (ok) successCount += 1
+  }
+
+  return successCount === targets.length
+}
+
 export const discountService = {
   async getAll() {
     const base = await pickEndpoint("dotGiamGia")
@@ -346,6 +522,8 @@ export const discountService = {
   async update(id, payload) {
     const base = await pickEndpoint("dotGiamGia")
     const { idChiTietSanPhams, idSanPhams, ...discountData } = payload || {}
+    const intendedVariantIds = normalizeIdArray(idChiTietSanPhams)
+    const intendedProductIds = normalizeProductIds(idSanPhams)
 
     const boolStatus = toBoolean(discountData?.trangThai, true)
     const baseFields = {
@@ -385,12 +563,27 @@ export const discountService = {
 
     // Sync product associations via Node backend SQL endpoint
     let syncOk = false
+    let resolvedProductIds = []
     const doSync = async (productIds) => {
+      const normalizedProductIds = normalizeProductIds(productIds)
+      resolvedProductIds = normalizedProductIds
       const syncBase = NODE_BACKEND || API_ORIGIN
-      await axios.post(`${syncBase}/api/khuyen-mai-products/sync`, {
-        khuyenMaiId: Number(id),
-        sanPhamIds: (productIds || []).map(Number).filter(n => Number.isFinite(n) && n > 0)
-      })
+
+      try {
+        await axios.post(`${syncBase}/api/khuyen-mai-products/sync`, {
+          khuyenMaiId: Number(id),
+          sanPhamIds: normalizedProductIds
+        })
+        syncOk = true
+        return
+      } catch (syncErr) {
+        console.warn('[updateDiscount] Node sync endpoint failed, fallback to Spring update:', syncErr?.message)
+      }
+
+      const fallbackOk = await syncProductAssociationsFallback(Number(id), normalizedProductIds)
+      if (!fallbackOk) {
+        throw new Error('SYNC_FALLBACK_FAILED')
+      }
       syncOk = true
     }
 
@@ -400,16 +593,35 @@ export const discountService = {
       } catch (syncErr) {
         console.warn('[updateDiscount] Sync idSanPhams failed:', syncErr?.message)
         if (Array.isArray(idChiTietSanPhams) && idChiTietSanPhams.length > 0) {
-          try { await this.syncProductAssociations(id, idChiTietSanPhams); syncOk = true } catch { /* */ }
+          try {
+            const syncResult = await this.syncProductAssociations(id, idChiTietSanPhams)
+            resolvedProductIds = normalizeProductIds(syncResult?.productIds || [])
+            syncOk = true
+          } catch { /* */ }
         }
       }
     } else if (Array.isArray(idChiTietSanPhams) && idChiTietSanPhams.length > 0) {
-      try { await this.syncProductAssociations(id, idChiTietSanPhams); syncOk = true } catch { /* */ }
+      try {
+        const syncResult = await this.syncProductAssociations(id, idChiTietSanPhams)
+        resolvedProductIds = normalizeProductIds(syncResult?.productIds || [])
+        syncOk = true
+      } catch { /* */ }
     } else if ((Array.isArray(idChiTietSanPhams) && idChiTietSanPhams.length === 0) ||
                (Array.isArray(idSanPhams) && idSanPhams.length === 0)) {
-      try { await doSync([]); syncOk = true } catch { /* */ }
+      try {
+        await doSync([])
+        resolvedProductIds = []
+        syncOk = true
+      } catch { /* */ }
     } else {
       syncOk = true // no sync needed
+    }
+
+    if ((Array.isArray(idChiTietSanPhams) || Array.isArray(idSanPhams))) {
+      setLocalCampaignSelection(Number(id), {
+        productIds: resolvedProductIds.length > 0 ? resolvedProductIds : intendedProductIds,
+        variantIds: intendedVariantIds
+      })
     }
 
     const result = res?.data ?? res
@@ -437,10 +649,16 @@ export const discountService = {
     }
 
     const syncBase = NODE_BACKEND || API_ORIGIN
-    await axios.post(`${syncBase}/api/khuyen-mai-products/sync`, {
-      khuyenMaiId: Number(khuyenMaiId),
-      sanPhamIds: productIds
-    })
+    try {
+      await axios.post(`${syncBase}/api/khuyen-mai-products/sync`, {
+        khuyenMaiId: Number(khuyenMaiId),
+        sanPhamIds: productIds
+      })
+    } catch (syncErr) {
+      console.warn('[syncProductAssociations] Node sync endpoint failed, fallback to Spring update:', syncErr?.message)
+      const fallbackOk = await syncProductAssociationsFallback(Number(khuyenMaiId), productIds)
+      if (!fallbackOk) throw syncErr
+    }
 
     return { khuyenMaiId, productIds }
   },
@@ -461,10 +679,36 @@ export const discountService = {
 
     try {
       const allVariants = await this.getAllProductDetails()
-      return mapAssociatedProductsFromVariants(allVariants, kmId)
+      const mapped = mapAssociatedProductsFromVariants(allVariants, kmId)
+      if (mapped.length > 0) return mapped
     } catch {
-      return []
+      // fallback below
     }
+
+    const localProductIds = getLocalCampaignProductIds(kmId)
+    if (localProductIds.length > 0) {
+      return localProductIds.map((id) => ({ id, idSanPham: id, idKhuyenMai: kmId }))
+    }
+
+    const localVariantIds = getLocalCampaignVariantIds(kmId)
+    if (localVariantIds.length > 0) {
+      try {
+        const allVariants = await this.getAllProductDetails()
+        const variantSet = new Set(localVariantIds)
+        const productIds = [...new Set(allVariants
+          .filter((v) => variantSet.has(Number(v?.id)))
+          .map((v) => Number(v?.idSanPham))
+          .filter((id) => Number.isFinite(id) && id > 0))]
+
+        if (productIds.length > 0) {
+          return productIds.map((id) => ({ id, idSanPham: id, idKhuyenMai: kmId }))
+        }
+      } catch {
+        // ignore and fallback to empty
+      }
+    }
+
+    return []
   },
 
   async getDiscountDetails(idDotGiamGia) {
@@ -711,20 +955,30 @@ export const discountService = {
       throw new Error("Khong tao duoc dot giam gia")
     }
 
-    const ctspIds = [...new Set((Array.isArray(idChiTietSanPhams) ? idChiTietSanPhams : [])
-      .map((value) => Number(value))
-      .filter((value) => Number.isFinite(value) && value > 0))]
+    const ctspIds = normalizeIdArray(idChiTietSanPhams)
+
+    let resolvedProductIds = []
 
     if (ctspIds.length) {
       try {
-        await this.syncProductAssociations(discountId, ctspIds)
+        const syncResult = await this.syncProductAssociations(discountId, ctspIds)
+        resolvedProductIds = normalizeProductIds(syncResult?.productIds || [])
       } catch (syncErr) {
-        console.error('[createDiscountComposite] Lỗi đồng bộ sản phẩm:', syncErr)
-        throw new Error('Tạo đợt giảm giá thành công nhưng không thể gắn sản phẩm. Vui lòng thử lại.')
+        console.warn('[createDiscountComposite] Đồng bộ sản phẩm thất bại (không chặn tạo mới):', syncErr)
+        created._syncFailed = true
       }
     }
 
+    setLocalCampaignSelection(discountId, {
+      productIds: resolvedProductIds,
+      variantIds: ctspIds
+    })
+
     return created
+  },
+
+  getLocalAssociatedVariantIds(khuyenMaiId) {
+    return getLocalCampaignVariantIds(khuyenMaiId)
   }
 }
 

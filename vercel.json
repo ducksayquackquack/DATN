@@ -1,0 +1,23 @@
+{
+  "framework": "vite",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "routes": [
+    {
+      "src": "^/api/(.*)$",
+      "dest": "https://dakota-ceramic-minister-version.trycloudflare.com/api/$1"
+    },
+    {
+      "src": "^/uploads/(.*)$",
+      "dest": "https://dakota-ceramic-minister-version.trycloudflare.com/uploads/$1"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/.*",
+      "dest": "/index.html"
+    }
+  ]
+}

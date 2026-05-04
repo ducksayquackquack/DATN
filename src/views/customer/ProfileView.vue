@@ -1224,7 +1224,7 @@ watch(orders, async (list) => {
           </div>
         </section>
 
-        <div class="page-bottom-actions">
+        <div class="page-bottom-actions" v-if="activeTab === 'profile'">
           <button class="btn danger" @click="logout">Đăng xuất</button>
         </div>
       </template>
