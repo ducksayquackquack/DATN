@@ -1,0 +1,41 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Dev (Auto Cloudflare + Vite)",
+      "type": "shell",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cloudflare-frontend.ps1",
+      "options": { "cwd": "${workspaceFolder}\\DATNDIRTYWAVE-merged" },
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Start Dev (Cloudflare Named Tunnel + Vite)",
+      "type": "shell",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cloudflare-named-frontend.ps1",
+      "options": { "cwd": "${workspaceFolder}\\DATNDIRTYWAVE-merged" },
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Frontend (Vite only)",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": { "cwd": "${workspaceFolder}\\DATNDIRTYWAVE-merged" },
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Backend (Spring DATN-API)",
+      "type": "shell",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$apiPath = Join-Path '${workspaceFolder}' 'DATN-API'; if (-not (Test-Path $apiPath)) { Write-Error ('Missing DATN-API at ' + $apiPath); exit 1 }; Set-Location $apiPath; .\\mvnw.cmd spring-boot:run\"",
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    }
+  ]
+}

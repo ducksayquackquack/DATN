@@ -1,0 +1,9 @@
+{
+  "task.allowAutomaticTasks": "on",
+  "task.autoDetect": "on",
+  "npm.autoDetect": "on",
+  "typescript.tsc.autoDetect": "on",
+  "grunt.autoDetect": "on",
+  "gulp.autoDetect": "on",
+  "jake.autoDetect": "on"
+}
