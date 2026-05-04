@@ -743,11 +743,6 @@ const hidePieTooltip = () => {
   pieTooltip.value.visible = false
 }
 
-/* ── Net cash received ── */
-const netCash = computed(() => {
-  return paymentBreakdown.value.cash
-})
-
 const revenueByPeriod = computed(() => {
   const period = appliedFilters.value.period || 'month'
   const bucket = new Map()
@@ -767,6 +762,7 @@ const revenueByPeriod = computed(() => {
   }
 
   inRangeInvoices.value.forEach((item) => {
+    if (!isRevenueCountableOrder(item)) return
     const d = parseDate(item.ngayTao)
     if (!d) return
     const key = toKey(d)
@@ -855,6 +851,7 @@ const monthOverMonth = computed(() => {
   // Bucket orders + revenue by month key
   const monthBucket = new Map()
   inRangeInvoices.value.forEach((item) => {
+    if (!isRevenueCountableOrder(item)) return
     const d = parseDate(item.ngayTao)
     if (!d) return
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -1238,13 +1235,12 @@ const exportReport = async () => {
       ['THANH TOÁN', 'GIÁ TRỊ'],
       ['Tiền mặt (COD + POS)', paymentBreakdown.value.cash],
       ['Chuyển khoản (VNPay/Bank)', paymentBreakdown.value.transfer],
-      ['Tiền mặt nhận thực tế', netCash.value],
     ]
     const ws1 = XLSX.utils.aoa_to_sheet(overviewData)
     ws1['!cols'] = [{ wch: 36 }, { wch: 24 }]
     ws1['!merges'] = [XLSX.utils.decode_range('A1:B1')]
     applyCurrencyFormat(ws1, ['B'], 8, 10)
-    applyCurrencyFormat(ws1, ['B'], 16, 18)
+    applyCurrencyFormat(ws1, ['B'], 16, 17)
     XLSX.utils.book_append_sheet(wb, ws1, 'Tổng quan')
 
     // --- Sheet 2: Doanh thu theo kỳ ---
@@ -1701,11 +1697,6 @@ onMounted(() => {
             <div class="breakdown-value">{{ formatCurrency(paymentBreakdown.transfer) }}</div>
           </div>
         </div>
-      </div>
-      <div class="net-cash-bar">
-        <span class="net-cash-label">Tiền mặt nhận thực tế</span>
-        <span class="net-cash-value" :class="netCash >= 0 ? 'positive' : 'negative'">{{ formatCurrency(netCash) }}</span>
-        <span class="net-cash-hint">= Tiền mặt bán hàng (COD + POS)</span>
       </div>
     </div>
 

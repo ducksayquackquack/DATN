@@ -4,7 +4,8 @@ import { useRouter, useRoute } from "vue-router"
 import {
   createKichThuoc,
   updateKichThuoc,
-  getKichThuocById
+  getKichThuocById,
+  getAllKichThuoc
 } from "../../../services/kichThuocService"
 
 const router = useRouter()
@@ -35,6 +36,36 @@ const form = reactive({
   ghiChu: ""
 })
 
+const extractList = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.content)) return payload.content
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.content)) return payload.data.content
+  return []
+}
+
+const parseCodeNumber = (value = '', prefix = '') => {
+  const raw = String(value || '').trim().toUpperCase()
+  if (!raw.startsWith(prefix)) return null
+  const suffix = raw.slice(prefix.length)
+  if (!/^\d+$/.test(suffix)) return null
+  return Number(suffix)
+}
+
+const generateNextKichThuocCode = async () => {
+  try {
+    const res = await getAllKichThuoc()
+    const list = extractList(res?.data)
+    const maxNumber = list.reduce((acc, item) => {
+      const parsed = parseCodeNumber(item?.maKichThuoc, 'KT')
+      return parsed && parsed > acc ? parsed : acc
+    }, 0)
+    form.maKichThuoc = `KT${String(maxNumber + 1).padStart(3, '0')}`
+  } catch {
+    form.maKichThuoc = 'KT001'
+  }
+}
+
 onMounted(async () => {
   if (id) {
     const res = await getKichThuocById(id)
@@ -43,27 +74,41 @@ onMounted(async () => {
     form.tenKichThuoc = res.data.tenKichThuoc || ""
     form.trangThai = normalizeTrangThai(res.data.trangThai)
     form.ghiChu = res.data.ghiChu || res.data.moTa || ""
+  } else {
+    await generateNextKichThuocCode()
   }
 })
 
 async function save() {
+  const trimmedSizeName = String(form.tenKichThuoc || '').trim()
+  if (!trimmedSizeName) {
+    window.toast?.error?.('Vui lòng nhập giá trị size')
+    return
+  }
+
   const confirmed = await window.confirmDialog?.(id ? "Bạn có chắc muốn cập nhật kích thước này?" : "Bạn có chắc muốn tạo kích thước mới?") ?? confirm(id ? "Cập nhật kích thước?" : "Tạo kích thước mới?")
   if (!confirmed) return
 
   const payload = {
     maKichThuoc: form.maKichThuoc,
-    tenKichThuoc: form.tenKichThuoc,
+    tenKichThuoc: trimmedSizeName,
     trangThai: mapToBE(form.trangThai),
     ghiChu: form.ghiChu
   }
 
-  if (id) {
-    await updateKichThuoc(id, payload)
-  } else {
-    await createKichThuoc(payload)
-  }
+  try {
+    if (id) {
+      await updateKichThuoc(id, payload)
+      window.toast?.success?.('Cập nhật kích thước thành công')
+    } else {
+      await createKichThuoc(payload)
+      window.toast?.success?.('Thêm kích thước thành công')
+    }
 
-  router.push("/admin/kich-thuoc/list")
+    router.push("/admin/kich-thuoc/list")
+  } catch (error) {
+    window.toast?.error?.(error?.response?.data?.message || error?.message || 'Lưu kích thước thất bại')
+  }
 }
 </script>
 
@@ -98,7 +143,7 @@ async function save() {
             <input
               class="input auto-code-input"
               readonly
-              value="Mã tự sinh"
+              :value="form.maKichThuoc || 'Mã tự sinh'"
             />
           </div>
 

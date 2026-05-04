@@ -137,10 +137,18 @@ const formatDateTime = (value) => {
   return date.toLocaleString("vi-VN")
 }
 
+const extractList = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.content)) return payload.content
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.content)) return payload.data.content
+  return []
+}
+
 async function loadData() {
   const res = await getAllMauSac()
-
-  list.value = res.data.map(item => ({
+  const items = extractList(res?.data)
+  list.value = items.map(item => ({
     id: item.id,
     code: item.maMau,
     name: item.tenMau,

@@ -624,8 +624,11 @@ export const discountService = {
       })
     }
 
+    const hasLocalSelection =
+      resolvedProductIds.length > 0 || intendedProductIds.length > 0 || intendedVariantIds.length > 0
+
     const result = res?.data ?? res
-    if (!syncOk) {
+    if (!syncOk && !hasLocalSelection) {
       result._syncFailed = true
     }
     return result
@@ -934,7 +937,7 @@ export const discountService = {
   async createDiscountComposite(payload) {
     const base = await pickEndpoint("dotGiamGia")
 
-    const { idChiTietSanPhams, ...discountData } = payload || {}
+    const { idChiTietSanPhams, idSanPhams, ...discountData } = payload || {}
 
     const normalizedPayload = {
       maKhuyenMai: readName(discountData, "maKhuyenMai", "maDotGiamGia"),
@@ -956,21 +959,61 @@ export const discountService = {
     }
 
     const ctspIds = normalizeIdArray(idChiTietSanPhams)
+    const productIdsFromPayload = normalizeProductIds(idSanPhams)
 
     let resolvedProductIds = []
+    let syncOk = true
 
-    if (ctspIds.length) {
+    const doSync = async (productIds) => {
+      const normalizedProductIds = normalizeProductIds(productIds)
+      const syncBase = NODE_BACKEND || API_ORIGIN
+
+      try {
+        await axios.post(`${syncBase}/api/khuyen-mai-products/sync`, {
+          khuyenMaiId: Number(discountId),
+          sanPhamIds: normalizedProductIds
+        })
+        return normalizedProductIds
+      } catch (syncErr) {
+        console.warn('[createDiscountComposite] Node sync endpoint failed, fallback to Spring update:', syncErr?.message)
+      }
+
+      const fallbackOk = await syncProductAssociationsFallback(Number(discountId), normalizedProductIds)
+      if (!fallbackOk) {
+        throw new Error('SYNC_FALLBACK_FAILED')
+      }
+
+      return normalizedProductIds
+    }
+
+    if (productIdsFromPayload.length) {
+      try {
+        resolvedProductIds = await doSync(productIdsFromPayload)
+      } catch (syncErr) {
+        console.warn('[createDiscountComposite] Đồng bộ sản phẩm từ product IDs thất bại:', syncErr)
+        syncOk = false
+      }
+    }
+
+    if (!resolvedProductIds.length && ctspIds.length) {
       try {
         const syncResult = await this.syncProductAssociations(discountId, ctspIds)
         resolvedProductIds = normalizeProductIds(syncResult?.productIds || [])
       } catch (syncErr) {
-        console.warn('[createDiscountComposite] Đồng bộ sản phẩm thất bại (không chặn tạo mới):', syncErr)
-        created._syncFailed = true
+        console.warn('[createDiscountComposite] Đồng bộ sản phẩm từ variant IDs thất bại:', syncErr)
+        syncOk = false
       }
     }
 
+    const hasLocalSelection =
+      resolvedProductIds.length > 0 || productIdsFromPayload.length > 0 || ctspIds.length > 0
+
+    if (!syncOk && !hasLocalSelection) {
+      created._syncFailed = true
+    }
+
     setLocalCampaignSelection(discountId, {
-      productIds: resolvedProductIds,
+      productIds: resolvedProductIds.length > 0 ? resolvedProductIds : productIdsFromPayload,
       variantIds: ctspIds
     })
 

@@ -34,7 +34,7 @@
             <input
               type="text"
               readonly
-              value="Mã tự sinh"
+              :value="form.code || 'Mã tự sinh'"
               class="auto-code-input"
             />
           </div>
@@ -79,7 +79,8 @@ import { useRouter, useRoute } from "vue-router"
 import {
   createMauSac,
   updateMauSac,
-  getMauSacById
+  getMauSacById,
+  getAllMauSac
 } from "../../../services/mauSacService"
 
 const router = useRouter()
@@ -92,6 +93,36 @@ const form = reactive({
   status: "Hoạt động",
   note: ""
 })
+
+const extractList = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.content)) return payload.content
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.content)) return payload.data.content
+  return []
+}
+
+const parseCodeNumber = (value = '', prefix = '') => {
+  const raw = String(value || '').trim().toUpperCase()
+  if (!raw.startsWith(prefix)) return null
+  const suffix = raw.slice(prefix.length)
+  if (!/^\d+$/.test(suffix)) return null
+  return Number(suffix)
+}
+
+const generateNextMauCode = async () => {
+  try {
+    const res = await getAllMauSac()
+    const list = extractList(res?.data)
+    const maxNumber = list.reduce((acc, item) => {
+      const parsed = parseCodeNumber(item?.maMau, 'MS')
+      return parsed && parsed > acc ? parsed : acc
+    }, 0)
+    form.code = `MS${String(maxNumber + 1).padStart(3, '0')}`
+  } catch {
+    form.code = 'MS001'
+  }
+}
 
 onMounted(async () => {
   if (id) {
@@ -106,16 +137,24 @@ onMounted(async () => {
           ? "Ngừng hoạt động"
           : "Hoạt động"
     }
+  } else {
+    await generateNextMauCode()
   }
 })
 
 async function save() {
+  const trimmedName = String(form.name || '').trim()
+  if (!trimmedName) {
+    window.toast?.error?.('Vui lòng nhập tên màu')
+    return
+  }
+
   const confirmed = await window.confirmDialog?.(id ? "Bạn có chắc muốn cập nhật màu sắc này?" : "Bạn có chắc muốn tạo màu sắc mới?") ?? confirm(id ? "Cập nhật màu sắc?" : "Tạo màu sắc mới?")
   if (!confirmed) return
 
   const payload = {
     maMau: form.code,
-    tenMau: form.name,
+    tenMau: trimmedName,
     moTa: form.note,
     trangThai:
       form.status === "Ngừng hoạt động"
@@ -123,13 +162,19 @@ async function save() {
         : "Hoạt động"
   }
 
-  if (id) {
-    await updateMauSac(id, payload)
-  } else {
-    await createMauSac(payload)
-  }
+  try {
+    if (id) {
+      await updateMauSac(id, payload)
+      window.toast?.success?.('Cập nhật màu sắc thành công')
+    } else {
+      await createMauSac(payload)
+      window.toast?.success?.('Thêm màu sắc thành công')
+    }
 
-  router.push("/admin/mau-sac/list")
+    router.push("/admin/mau-sac/list")
+  } catch (error) {
+    window.toast?.error?.(error?.response?.data?.message || error?.message || 'Lưu màu sắc thất bại')
+  }
 }
 </script>
 

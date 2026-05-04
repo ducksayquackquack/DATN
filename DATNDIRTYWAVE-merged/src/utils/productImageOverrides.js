@@ -1,8 +1,4 @@
 import img14c from "@/assets/img/Jackets/bomber/bomber-windbreaker/bomer-windbreaker-green.PNG?url"
-import img19 from "@/assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-blue.PNG?url"
-import img19b from "@/assets/img/Jackets/hoodie/hoodie-zip-boxy/hoodie-zip-boxy-white.PNG?url"
-import img20 from "@/assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-black.PNG?url"
-import img20b from "@/assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-gray.PNG?url"
 import img20c from "@/assets/img/Jackets/hoodie/hoodie-zip-silk/hoodie-zip-silk-red.PNG?url"
 
 const STORAGE_KEY = "dirtywave:product-image-overrides:v1"
@@ -18,16 +14,10 @@ const BUILTIN_OVERRIDES = {
     ],
   },
   "code:SP023": {
-    images: [img19],
+    images: [img14c],
     colorImages: [
-      { colorId: 2, image: img19, order: 0 },
-      { colorId: 3, image: img19b, order: 1 },
-      { colorId: 1, image: img20, order: 2 },
+      { colorId: 11, image: img14c, order: 0 },
     ],
-  },
-  "code:SP024": {
-    images: [img20b],
-    colorImages: [{ colorId: 8, image: img20b, order: 0 }],
   },
   "code:SP025": {
     images: [img20c],
@@ -41,6 +31,9 @@ const BUILTIN_OVERRIDES = {
     colorImages: [{ colorId: 11, image: img14c, order: 0 }],
   },
 }
+
+const LEGACY_SP023_BAD_IMAGE_TOKENS = ["hoodie-zip-boxy", "hoodie-zip-silk"]
+const LEGACY_SP024_BAD_IMAGE_TOKENS = ["hoodie-zip-silk", "hoodie", "ao-khoac-hoodie"]
 
 function readStore() {
   try {
@@ -148,6 +141,45 @@ function resolveEntryForKey(store, key) {
   // SP022 had stale local overrides in some browsers; force canonical mapping.
   if (key === "code:SP022") {
     return normalizeStoreEntry(BUILTIN_OVERRIDES[key])
+  }
+
+  if (key === "code:SP023") {
+    const localEntry = normalizeStoreEntry(store[key])
+    const imageCandidates = [
+      ...(Array.isArray(localEntry.images) ? localEntry.images : []),
+      ...(Array.isArray(localEntry.colorImages) ? localEntry.colorImages.map((item) => item.image) : [])
+    ]
+      .map((value) => String(value || "").toLowerCase())
+      .filter(Boolean)
+
+    const hasLegacyBadImage = imageCandidates.some((src) => {
+      return LEGACY_SP023_BAD_IMAGE_TOKENS.some((token) => src.includes(token))
+    })
+
+    if (hasLegacyBadImage) {
+      return normalizeStoreEntry(BUILTIN_OVERRIDES[key])
+    }
+  }
+
+  if (key === "code:SP024") {
+    const localEntry = normalizeStoreEntry(store[key])
+    const imageCandidates = [
+      ...(Array.isArray(localEntry.images) ? localEntry.images : []),
+      ...(Array.isArray(localEntry.colorImages) ? localEntry.colorImages.map((item) => item.image) : [])
+    ]
+      .map((value) => String(value || "").toLowerCase())
+      .filter(Boolean)
+
+    const hasLegacyBadImage = imageCandidates.some((src) => {
+      return LEGACY_SP024_BAD_IMAGE_TOKENS.some((token) => src.includes(token))
+    })
+
+    if (hasLegacyBadImage) {
+      return {
+        images: [],
+        colorImages: []
+      }
+    }
   }
 
   return normalizeStoreEntry(store[key] ?? BUILTIN_OVERRIDES[key])

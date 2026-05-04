@@ -6,23 +6,23 @@
   "routes": [
     {
       "src": "^/api/vnpay/(.*)$",
-      "dest": "https://ninety-bugs-flash.loca.lt/api/vnpay/$1"
+      "dest": "https://bond-regime-member-nights.trycloudflare.com/api/vnpay/$1"
     },
     {
       "src": "^/api/stock/(.*)$",
-      "dest": "https://ninety-bugs-flash.loca.lt/api/stock/$1"
+      "dest": "https://bond-regime-member-nights.trycloudflare.com/api/stock/$1"
     },
     {
       "src": "^/api/mail/(.*)$",
-      "dest": "https://ninety-bugs-flash.loca.lt/api/mail/$1"
+      "dest": "https://bond-regime-member-nights.trycloudflare.com/api/mail/$1"
     },
     {
       "src": "^/api/(.*)$",
-      "dest": "https://clocks-wanted-convergence-centres.trycloudflare.com/api/$1"
+      "dest": "https://sciences-copies-yukon-isbn.trycloudflare.com/api/$1"
     },
     {
       "src": "^/uploads/(.*)$",
-      "dest": "https://clocks-wanted-convergence-centres.trycloudflare.com/uploads/$1"
+      "dest": "https://sciences-copies-yukon-isbn.trycloudflare.com/uploads/$1"
     },
     {
       "handle": "filesystem"

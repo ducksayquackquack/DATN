@@ -6,8 +6,10 @@ const SAME_ORIGIN_API_BASE = `${resolveApiOrigin()}/api`.replace(/\/$/, "");
 const SPRING_API_BASE = SAME_ORIGIN_API_BASE;
 const SPRING_PRODUCTS_API = `${SPRING_API_BASE}/san-pham`;
 const SPRING_CAMPAIGNS_API = `${SPRING_API_BASE}/khuyen-mai`;
+const SPRING_DOT_GIAM_GIA_API = `${SPRING_API_BASE}/dot-giam-gia`;
 const SAME_ORIGIN_PRODUCTS_API = `${SAME_ORIGIN_API_BASE}/san-pham`;
 const SAME_ORIGIN_CAMPAIGNS_API = `${SAME_ORIGIN_API_BASE}/khuyen-mai`;
+const SAME_ORIGIN_DOT_GIAM_GIA_API = `${SAME_ORIGIN_API_BASE}/dot-giam-gia`;
 const LOCAL_CAMPAIGN_PRODUCTS_KEY = "dirtywave:campaign-products";
 
 let cacheAt = 0;
@@ -22,6 +24,27 @@ const unwrapList = (payload) => {
   if (Array.isArray(payload?.data)) return payload.data;
   if (Array.isArray(payload?.items)) return payload.items;
   if (Array.isArray(payload?.results)) return payload.results;
+  return [];
+};
+
+const fetchCampaignListWithFallback = async () => {
+  const campaignEndpoints = [
+    SPRING_CAMPAIGNS_API,
+    SPRING_DOT_GIAM_GIA_API,
+    SAME_ORIGIN_CAMPAIGNS_API,
+    SAME_ORIGIN_DOT_GIAM_GIA_API,
+  ];
+
+  for (const endpoint of campaignEndpoints) {
+    try {
+      const response = await axios.get(endpoint);
+      const rows = unwrapList(response?.data);
+      if (rows.length > 0) return rows;
+    } catch {
+      // Try next endpoint variant.
+    }
+  }
+
   return [];
 };
 
@@ -171,14 +194,12 @@ async function buildProductDiscountMap(force = false) {
     }
 
     if (!nextMap.size) {
-      let campaignRes = await axios.get(SPRING_CAMPAIGNS_API).catch(() => null);
+      const campaigns = await fetchCampaignListWithFallback();
       let productsRes = await axios.get(SPRING_PRODUCTS_API, { params: { page: 0, size: 2000 } }).catch(() => null);
-      if (!campaignRes || !productsRes) {
-        campaignRes = campaignRes || await axios.get(SAME_ORIGIN_CAMPAIGNS_API).catch(() => null);
-        productsRes = productsRes || await axios.get(SAME_ORIGIN_PRODUCTS_API, { params: { page: 0, size: 2000 } }).catch(() => null);
+      if (!productsRes) {
+        productsRes = await axios.get(SAME_ORIGIN_PRODUCTS_API, { params: { page: 0, size: 2000 } }).catch(() => null);
       }
 
-      const campaigns = unwrapList(campaignRes?.data);
       const products = unwrapList(productsRes?.data);
       const activeCampaignMap = new Map();
 

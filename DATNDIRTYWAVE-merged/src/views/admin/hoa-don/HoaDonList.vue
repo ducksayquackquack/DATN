@@ -1592,28 +1592,7 @@ const sendLookupMailFromList = async (hd) => {
         <strong>API cảnh báo:</strong> {{ apiWarning }}
       </div>
 
-      <div v-if="pendingPaymentConfirmations.length" class="payment-warning">
-        <div class="payment-warning-header">
-          <span class="payment-warning-icon">⚠</span>
-          <strong>Cần kiểm tra VNPay ({{ pendingPaymentConfirmations.length }} đơn chờ xác nhận tiền vào tài khoản shop):</strong>
-        </div>
-        <ul class="payment-warning-list">
-          <li v-for="item in pendingPaymentConfirmations" :key="item.id" class="payment-warning-item">
-            <router-link :to="`${panelBasePath}/hoa-don/detail/${item.id}`" class="payment-warning-link">
-              <span class="payment-warning-code">{{ item.maHoaDon }}</span>
-              <span class="payment-warning-sep">·</span>
-              <span class="payment-warning-customer">{{ item.tenKhachHang || 'Khách lẻ' }}</span>
-              <template v-if="item.soDienThoaiNhanHang">
-                <span class="payment-warning-sep">·</span>
-                <span class="payment-warning-phone">{{ item.soDienThoaiNhanHang }}</span>
-              </template>
-              <span class="payment-warning-sep">·</span>
-              <span class="payment-warning-amount">{{ formatCurrency(item.thanhTien) }}</span>
-              <span class="payment-warning-arrow">→ Xem đơn</span>
-            </router-link>
-          </li>
-        </ul>
-      </div>
+      <!-- VNPay table removed per user request -->
 
       <!-- HEADER -->
       <div class="head" style="display: flex; align-items: center; justify-content: space-between;">
@@ -1637,7 +1616,7 @@ const sendLookupMailFromList = async (hd) => {
                 v-model="searchText"
                 type="text"
                 placeholder="Tìm theo mã hóa đơn, khách hàng, SĐT, nhân viên..."
-                style="flex: 1; border: none; outline: none; background: transparent;"
+                style="flex: 1; border: none; outline: none; background: transparent; color: #111827;"
               />
             </div>
 

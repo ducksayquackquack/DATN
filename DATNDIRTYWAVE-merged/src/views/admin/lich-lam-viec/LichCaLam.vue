@@ -53,6 +53,73 @@
       </button>
     </div>
 
+    <div class="table-section" style="margin-bottom: 14px">
+      <div class="table-header-row">
+        <h3 class="table-title">Yêu cầu đổi ca từ nhân viên</h3>
+        <button class="btn-refresh" @click="loadSwapRequests" title="Tải lại yêu cầu đổi ca">
+          <span class="material-icons-outlined">refresh</span>
+        </button>
+      </div>
+
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Mã YC</th>
+              <th>Nhân viên gửi</th>
+              <th>Nhân viên nhận</th>
+              <th>Ngày làm</th>
+              <th>Ca</th>
+              <th>Lý do</th>
+              <th>Trạng thái</th>
+              <th class="text-center">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="swapRequests.length === 0">
+              <td colspan="8" class="empty-state">
+                <span class="material-icons-outlined">inbox</span>
+                <p>Chưa có yêu cầu đổi ca</p>
+              </td>
+            </tr>
+            <tr v-for="request in swapRequests" :key="request.id">
+              <td>{{ request.id }}</td>
+              <td>{{ request.requesterName || `NV #${request.requesterId}` }}</td>
+              <td>{{ request.targetEmployeeName || `NV #${request.targetEmployeeId}` }}</td>
+              <td>{{ request.ngayLam }}</td>
+              <td>{{ request.tenCa || `Ca #${request.idCaLam}` }}</td>
+              <td>{{ request.reason || '-' }}</td>
+              <td>
+                <span class="status-badge" :class="swapStatusClass(request.status)">
+                  {{ request.status || 'Cho duyet' }}
+                </span>
+              </td>
+              <td class="text-center">
+                <div class="action-buttons">
+                  <button
+                    class="btn-icon"
+                    :disabled="request.status !== 'Cho duyet' || approvingSwapRequestId === request.id"
+                    @click="approveSwapRequest(request)"
+                    title="Duyệt đổi ca"
+                  >
+                    <span class="material-icons-outlined">check_circle</span>
+                  </button>
+                  <button
+                    class="btn-icon danger"
+                    :disabled="request.status !== 'Cho duyet' || approvingSwapRequestId === request.id"
+                    @click="rejectSwapRequest(request)"
+                    title="Từ chối đổi ca"
+                  >
+                    <span class="material-icons-outlined">cancel</span>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="table-section">
       <div class="table-wrapper">
         <table class="data-table">
@@ -156,7 +223,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useToast } from '../../../composables/useToast'
 import { createCaLam, getAllCaLam, deleteCaLam, updateCaLam } from '../../../services/caLamService'
-import { deleteLichLamViec, getAllLichLamViec } from '../../../services/lichLamViecService'
+import { createLichLamViec, deleteLichLamViec, getAllLichLamViec } from '../../../services/lichLamViecService'
 
 const toast = useToast()
 
@@ -168,6 +235,8 @@ const filters = reactive({
 })
 
 const shifts = ref([])
+const swapRequests = ref([])
+const approvingSwapRequestId = ref(null)
 const formModal = reactive({
   open: false,
   mode: 'create',
@@ -181,6 +250,8 @@ const formModel = reactive({
   gioKetThuc: '12:00',
   trangThai: 'Hoạt động'
 })
+
+const SWAP_REQUEST_STORAGE_KEY = 'doi-ca-requests'
 
 const normalizeTime = (timeValue) => {
   if (!timeValue) return ''
@@ -255,6 +326,106 @@ const filteredShifts = computed(() => {
 
 const getStatusText = (status) => {
   return status === 'active' ? 'Hoạt động' : 'Ngưng'
+}
+
+const swapStatusClass = (status) => {
+  const normalized = String(status || '').trim().toLowerCase()
+  if (normalized.includes('duyet')) return 'active'
+  if (normalized.includes('tu choi')) return 'inactive'
+  return 'pending'
+}
+
+const readSwapRequestStore = () => {
+  try {
+    const raw = localStorage.getItem(SWAP_REQUEST_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+const writeSwapRequestStore = (rows = []) => {
+  try {
+    localStorage.setItem(SWAP_REQUEST_STORAGE_KEY, JSON.stringify(Array.isArray(rows) ? rows : []))
+  } catch {
+    // Ignore storage failures in admin view.
+  }
+}
+
+const loadSwapRequests = () => {
+  const rows = readSwapRequestStore()
+  swapRequests.value = rows
+    .sort((a, b) => String(b?.createdAt || '').localeCompare(String(a?.createdAt || '')))
+}
+
+const updateSwapRequest = (requestId, patch = {}) => {
+  const rows = readSwapRequestStore()
+  const nextRows = rows.map((row) => {
+    if (String(row?.id) !== String(requestId)) return row
+    return {
+      ...row,
+      ...patch,
+      updatedAt: new Date().toISOString()
+    }
+  })
+
+  writeSwapRequestStore(nextRows)
+  loadSwapRequests()
+}
+
+const approveSwapRequest = async (request) => {
+  if (!request || request.status !== 'Cho duyet') return
+
+  const confirmed = await (window.confirmDialog?.(`Duyệt yêu cầu ${request.id} và chuyển ca cho ${request.targetEmployeeName || `NV #${request.targetEmployeeId}`}?`) ??
+    confirm(`Duyệt yêu cầu ${request.id} và chuyển ca cho ${request.targetEmployeeName || `NV #${request.targetEmployeeId}`}?`))
+  if (!confirmed) return
+
+  approvingSwapRequestId.value = request.id
+  try {
+    const scheduleRes = await getAllLichLamViec()
+    const schedules = extractList(scheduleRes?.data)
+    const sourceSchedule = schedules.find((item) => Number(item?.id || 0) === Number(request.scheduleId || 0))
+
+    if (!sourceSchedule?.id) {
+      throw new Error('Không tìm thấy lịch làm việc gốc để duyệt đổi ca')
+    }
+
+    await deleteLichLamViec(sourceSchedule.id)
+    await createLichLamViec({
+      idNhanVien: Number(request.targetEmployeeId),
+      idCaLam: Number(sourceSchedule?.idCaLam || request.idCaLam),
+      ngayLam: sourceSchedule?.ngayLam || request.ngayLam,
+      trangThai: sourceSchedule?.trangThai || 'Hoạt động'
+    })
+
+    updateSwapRequest(request.id, {
+      status: 'Da duyet',
+      approvedAt: new Date().toISOString(),
+      approvedBy: 'ADMIN'
+    })
+
+    toast.success('Đã duyệt yêu cầu đổi ca và cập nhật lịch làm việc')
+  } catch (error) {
+    console.error('Approve swap request failed:', error)
+    toast.error(error?.response?.data?.message || error?.message || 'Duyệt đổi ca thất bại')
+  } finally {
+    approvingSwapRequestId.value = null
+  }
+}
+
+const rejectSwapRequest = async (request) => {
+  if (!request || request.status !== 'Cho duyet') return
+
+  const confirmed = await (window.confirmDialog?.(`Từ chối yêu cầu ${request.id}?`) ?? confirm(`Từ chối yêu cầu ${request.id}?`))
+  if (!confirmed) return
+
+  updateSwapRequest(request.id, {
+    status: 'Tu choi',
+    rejectedAt: new Date().toISOString(),
+    approvedBy: 'ADMIN'
+  })
+  toast.success('Đã từ chối yêu cầu đổi ca')
 }
 
 const loadShifts = async () => {
@@ -430,6 +601,7 @@ const deleteShift = async (shift) => {
 }
 
 onMounted(loadShifts)
+onMounted(loadSwapRequests)
 </script>
 
 <style scoped>
@@ -561,6 +733,20 @@ onMounted(loadShifts)
   overflow-x: auto;
 }
 
+.table-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.table-title {
+  margin: 0;
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 700;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -649,6 +835,11 @@ onMounted(loadShifts)
 .status-badge.inactive {
   background: #fee2e2;
   color: #b91c1c;
+}
+
+.status-badge.pending {
+  background: #fef3c7;
+  color: #b45309;
 }
 
 .action-buttons {

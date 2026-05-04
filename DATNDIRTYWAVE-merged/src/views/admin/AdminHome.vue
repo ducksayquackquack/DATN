@@ -311,6 +311,12 @@ import visaLogo from '../../assets/img/payments/visa.png?url'
 import momoLogo from '../../assets/img/payments/momo.png?url'
 import masterLogo from '../../assets/img/payments/mastercard.png?url'
 
+const adminHeroImages = [
+  'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=1920&q=90&fit=crop&auto=format',
+  'https://images.unsplash.com/photo-1542272604-787c3835535d?w=1920&q=90&fit=crop&auto=format',
+  'https://images.unsplash.com/photo-1548126032-079a0fb0099d?w=1920&q=90&fit=crop&auto=format'
+]
+
 const router = useRouter()
 const go = (path) => router.push(path)
 
@@ -823,7 +829,7 @@ const slides = computed(() => {
         kicker: 'Bộ sưu tập',
         title: 'DirtyWave',
         desc: 'Dữ liệu sản phẩm sẽ hiển thị sau khi đồng bộ.',
-        img: img1
+        img: adminHeroImages[0]
       }
     ]
   }
@@ -832,7 +838,7 @@ const slides = computed(() => {
     kicker: index === 0 ? 'Bộ sưu tập' : index === 1 ? 'Vận hành' : 'Hiệu suất',
     title: item.name,
     desc: item.meta,
-    img: item.image
+    img: adminHeroImages[index % adminHeroImages.length]
   }))
 })
 

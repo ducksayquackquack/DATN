@@ -2333,16 +2333,29 @@ const submitPosOrder = async () => {
 
     // Remove current tab after successful order (skip for BANK — tab removed after QR confirms)
     if (!isBank) {
-      if (posTabs.value.length > 1) {
-        posTabs.value.splice(activeTabIndex.value, 1)
-        if (activeTabIndex.value >= posTabs.value.length) activeTabIndex.value = posTabs.value.length - 1
-      } else {
-        posTabs.value = [null]
-        activeTabIndex.value = 0
+      const maHoaDonCreated = createRes?.data?.hoaDon?.maHoaDon ?? createRes?.data?.maHoaDon ?? `HD${orderId}`
+      qrSummary.value = {
+        orderId,
+        maHoaDon: maHoaDonCreated,
+        amount: Number(grandTotal.value || 0),
+        customerName: selectedCustomerInfo.value?.tenKhachHang || "Khách lẻ",
+        phone: shippingPhone.value || selectedCustomerInfo.value?.soDienThoai || "—",
+        address: shippingAddressText.value || "Mua tại quầy",
+        items: lines.value.map((line) => ({
+          name: line.tenSanPham || line.tenSanPhamChiTiet || line.maSanPhamChiTiet || "Sản phẩm",
+          color: line.mauSac || "",
+          size: line.kichThuoc || "",
+          qty: Number(line.soLuong || 0),
+          price: Number(line.giaBan || 0),
+          total: Number(line.thanhTien ?? (Number(line.soLuong || 0) * Number(line.giaBan || 0))),
+          image: line.image || "",
+          maSanPham: line.maSanPham || "",
+          idSanPham: line.idSanPham || 0
+        }))
       }
-      applyTabState(posTabs.value[activeTabIndex.value] || null)
-      persistPosDraft()
-      router.push(`${panelBasePath.value}/hoa-don/detail/${orderId}`)
+      qrOrderId.value = orderId
+      clearPosTabAfterCheckout()
+      showQrPaidModal.value = true
     }
   } catch (error) {
     console.error('[POS] submitPosOrder error:', error?.response?.status, JSON.stringify(error?.response?.data), error.message)

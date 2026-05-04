@@ -61,22 +61,37 @@ const SMTP_FROM = String(
   ""
 ).trim()
 let mailTransporter = null
+let testMailInit = null
 
-function getMailTransporter() {
-  if (mailTransporter) return mailTransporter
-  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null
-
-  mailTransporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_PORT === 465,
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS,
-    },
-  })
-
-  return mailTransporter
+async function getAnyMailTransporter() {
+  if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
+    if (!mailTransporter) {
+      mailTransporter = nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        secure: SMTP_PORT === 465,
+        auth: { user: SMTP_USER, pass: SMTP_PASS },
+      })
+    }
+    return { transporter: mailTransporter, testMode: false, from: SMTP_FROM || SMTP_USER }
+  }
+  if (!testMailInit) {
+    testMailInit = nodemailer.createTestAccount().then((account) => {
+      const t = nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: { user: account.user, pass: account.pass },
+      })
+      console.log(`[SMTP] No real SMTP config — using Ethereal test account: ${account.user}`)
+      console.log(`[SMTP] View sent test emails at https://ethereal.email`)
+      return { transporter: t, testMode: true, from: `"DirtyWave" <${account.user}>` }
+    }).catch((err) => {
+      testMailInit = null
+      throw err
+    })
+  }
+  return testMailInit
 }
 
 let poolPromise = null
@@ -363,12 +378,11 @@ app.post("/api/mail/send-order-lookup", async (req, res) => {
     return res.status(400).json({ message: "email và maHoaDon là bắt buộc" })
   }
 
-  const transporter = getMailTransporter()
-  if (!transporter) {
-    return res.status(501).json({
-      message: "MailSender chưa được cấu hình SMTP. Hãy thiết lập SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM"
-    })
+  let tmInfo1
+  try { tmInfo1 = await getAnyMailTransporter() } catch {
+    return res.status(501).json({ message: "Không thể khởi tạo dịch vụ email. Thiết lập SMTP_HOST, SMTP_USER, SMTP_PASS trong .env" })
   }
+  const { transporter: transporter1, testMode: testMode1, from: mailFrom1 } = tmInfo1
 
   try {
     const html = `
@@ -382,14 +396,16 @@ app.post("/api/mail/send-order-lookup", async (req, res) => {
       </div>
     `
 
-    const info = await transporter.sendMail({
-      from: SMTP_FROM || SMTP_USER,
+    const info1 = await transporter1.sendMail({
+      from: mailFrom1,
       to: email,
       subject: `Tra cứu đơn hàng ${maHoaDon} - DirtyWave`,
       html,
     })
 
-    return res.json({ success: true, messageId: info?.messageId || null })
+    const previewUrl1 = testMode1 ? nodemailer.getTestMessageUrl(info1) : null
+    if (previewUrl1) console.log('[SMTP] Preview URL:', previewUrl1)
+    return res.json({ success: true, messageId: info1?.messageId || null, previewUrl: previewUrl1 })
   } catch (error) {
     console.error("POST /api/mail/send-order-lookup error:", error)
     return res.status(500).json({ message: "Gửi email thất bại" })
@@ -726,13 +742,11 @@ app.post("/api/mail/send-nhanvien-account", async (req, res) => {
     return res.status(400).json({ message: "email và matKhau là bắt buộc" })
   }
 
-  const transporter = getMailTransporter()
-  if (!transporter) {
-    return res.status(501).json({
-      message: "MailSender chưa được cấu hình SMTP. Hãy thiết lập SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS"
-    })
+  let tmInfo2
+  try { tmInfo2 = await getAnyMailTransporter() } catch {
+    return res.status(501).json({ message: "Không thể khởi tạo dịch vụ email. Thiết lập SMTP_HOST, SMTP_USER, SMTP_PASS trong .env" })
   }
-
+  const { transporter: transporter2, testMode: testMode2, from: mailFrom2 } = tmInfo2
   const vaiTroHienThi = vaiTro === "ADMIN" ? "Quản trị viên" : "Nhân viên"
   const year = new Date().getFullYear()
 
@@ -797,13 +811,15 @@ app.post("/api/mail/send-nhanvien-account", async (req, res) => {
 </html>`
 
   try {
-    await transporter.sendMail({
-      from: SMTP_FROM || SMTP_USER,
+    const info2 = await transporter2.sendMail({
+      from: mailFrom2,
       to: email,
       subject: `[DirtyWave] Chúc mừng, tài khoản nhân viên mới – ${tenNhanVien}`,
       html,
     })
-    return res.json({ success: true })
+    const previewUrl2 = testMode2 ? nodemailer.getTestMessageUrl(info2) : null
+    if (previewUrl2) console.log('[SMTP] Preview URL:', previewUrl2)
+    return res.json({ success: true, previewUrl: previewUrl2 })
   } catch (err) {
     console.error("POST /api/mail/send-nhanvien-account error:", err)
     return res.status(500).json({ message: "Gửi email thất bại" })
@@ -820,12 +836,11 @@ app.post("/api/mail/send-order-lookup", async (req, res) => {
     return res.status(400).json({ message: "maHoaDon và email là bắt buộc" })
   }
 
-  const transporter = getMailTransporter()
-  if (!transporter) {
-    return res.status(501).json({
-      message: "MailSender chưa được cấu hình SMTP. Hãy thiết lập SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS"
-    })
+  let tmInfo3
+  try { tmInfo3 = await getAnyMailTransporter() } catch {
+    return res.status(501).json({ message: "Không thể khởi tạo dịch vụ email. Thiết lập SMTP_HOST, SMTP_USER, SMTP_PASS trong .env" })
   }
+  const { transporter: transporter3, testMode: testMode3, from: mailFrom3 } = tmInfo3
 
   const safeTrackingUrl = trackingUrl || `http://localhost:5173/customer/order-lookup?maHoaDon=${encodeURIComponent(maHoaDon)}`
   const year = new Date().getFullYear()
@@ -860,13 +875,15 @@ app.post("/api/mail/send-order-lookup", async (req, res) => {
 </html>`
 
   try {
-    await transporter.sendMail({
-      from: SMTP_FROM || SMTP_USER,
+    const info3 = await transporter3.sendMail({
+      from: mailFrom3,
       to: email,
       subject: `[DirtyWave] Link tra cứu đơn hàng ${maHoaDon}`,
       html,
     })
-    return res.json({ success: true })
+    const previewUrl3 = testMode3 ? nodemailer.getTestMessageUrl(info3) : null
+    if (previewUrl3) console.log('[SMTP] Preview URL:', previewUrl3)
+    return res.json({ success: true, previewUrl: previewUrl3 })
   } catch (err) {
     console.error("POST /api/mail/send-order-lookup error:", err)
     return res.status(500).json({ message: "Gửi email tra cứu thất bại" })

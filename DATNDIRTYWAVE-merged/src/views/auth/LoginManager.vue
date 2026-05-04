@@ -26,7 +26,7 @@ const clearAuth = () => {
 
 const normalizeRole = (role) => {
   const normalized = String(role || '').trim().toUpperCase().replace(/^ROLE_/, '')
-  if (normalized === 'EMPLOYEE' || normalized === 'NHANVIEN' || normalized === 'NHAN_VIEN') return 'NHAN_VIEN'
+  if (normalized === 'EMPLOYEE' || normalized === 'NHANVIEN' || normalized === 'NHAN_VIEN' || normalized === 'STAFF') return 'NHAN_VIEN'
   if (normalized === 'ADMIN') return 'ADMIN'
   if (normalized === 'CUSTOMER' || normalized === 'KHACHHANG' || normalized === 'KHACH_HANG' || normalized === 'USER') return 'KHACH_HANG'
   return normalized

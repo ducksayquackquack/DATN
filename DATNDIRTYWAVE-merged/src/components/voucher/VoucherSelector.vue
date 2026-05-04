@@ -238,6 +238,36 @@ const extractVoucherList = (response) => {
   return []
 }
 
+const extractTotalPages = (response) => {
+  const totalPages = Number(response?.data?.totalPages)
+  return Number.isFinite(totalPages) && totalPages > 0 ? Math.floor(totalPages) : 0
+}
+
+const fetchVoucherPages = async (fetchPage) => {
+  const pageSize = 200
+  const visited = new Set()
+  const merged = []
+
+  for (let page = 0; page < 50; page += 1) {
+    const response = await fetchPage(page, pageSize)
+    const rows = extractVoucherList(response)
+
+    for (const row of rows) {
+      const key = String(row?.id || row?.maPhieuGiamGia || row?.maPhieu || row?.code || "")
+      if (!key || visited.has(key)) continue
+      visited.add(key)
+      merged.push(row)
+    }
+
+    const totalPages = extractTotalPages(response)
+    if (!rows.length) break
+    if (totalPages > 0 && page >= totalPages - 1) break
+    if (rows.length < pageSize && totalPages <= 0) break
+  }
+
+  return merged
+}
+
 const autoSelectBestVoucher = () => {
   if (!props.autoSelect) return
   const best = modalVouchers.value.find((voucher) => voucher.isApplicable)
@@ -263,17 +293,30 @@ const loadVouchers = async () => {
   try {
     loading.value = true
     let newVouchers = []
+    let fallbackVouchers = []
 
     try {
-      const activeRes = await getActiveVouchers()
-      newVouchers = extractVoucherList(activeRes)
+      newVouchers = await fetchVoucherPages((page, size) => getActiveVouchers(0, { page, size }))
     } catch (activeError) {
       console.warn('[VoucherSelector] Failed to load /active vouchers, falling back to /api/phieu-giam-gia', activeError)
     }
 
-    if (newVouchers.length === 0) {
-      const fallbackRes = await getAllVouchers()
-      newVouchers = extractVoucherList(fallbackRes)
+    try {
+      fallbackVouchers = await fetchVoucherPages((page, size) => getAllVouchers({ page, size }))
+    } catch (fallbackError) {
+      console.warn('[VoucherSelector] Failed to load full voucher list', fallbackError)
+    }
+
+    if (fallbackVouchers.length > 0) {
+      const merged = [...newVouchers]
+      const seen = new Set(merged.map((item) => String(item?.id || item?.maPhieuGiamGia || item?.maPhieu || '')))
+      for (const item of fallbackVouchers) {
+        const key = String(item?.id || item?.maPhieuGiamGia || item?.maPhieu || '')
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        merged.push(item)
+      }
+      newVouchers = merged
     }
 
     const normalizedVouchers = newVouchers.map((voucher) => normalizeVoucherData(voucher))

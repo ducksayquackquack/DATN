@@ -24,10 +24,18 @@ const formatDateTime = (value) => {
   return date.toLocaleString("vi-VN")
 }
 
+const extractList = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.content)) return payload.content
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.content)) return payload.data.content
+  return []
+}
+
 async function loadData() {
   const res = await getAllKichThuoc()
-
-  list.value = (res.data || []).map(item => ({
+  const items = extractList(res?.data)
+  list.value = items.map(item => ({
     ...item,
     trangThai: normalizeAdminStatusLabel(item.trangThai),
     ghiChu: item.ghiChu || item.moTa || ""

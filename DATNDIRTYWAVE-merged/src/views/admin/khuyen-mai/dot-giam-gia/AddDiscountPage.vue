@@ -1380,7 +1380,18 @@ const submitCreate = async () => {
     return;
   }
 
-  const payload = { ...formData, idChiTietSanPhams: selectedVariantIds.value };
+  const selectedProductIds = [...new Set(
+    rawVariants.value
+      .filter((v) => selectedVariantIds.value.includes(v.id))
+      .map((v) => Number(v.idSanPham))
+      .filter((id) => Number.isFinite(id) && id > 0)
+  )];
+
+  const payload = {
+    ...formData,
+    idChiTietSanPhams: selectedVariantIds.value,
+    idSanPhams: selectedProductIds
+  };
 
   try {
     isLoading.value = true;

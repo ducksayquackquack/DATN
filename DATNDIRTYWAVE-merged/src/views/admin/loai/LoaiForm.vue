@@ -21,6 +21,36 @@ const form = reactive({
   description: ''
 })
 
+const extractList = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.content)) return payload.content
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.content)) return payload.data.content
+  return []
+}
+
+const parseCodeNumber = (value = '', prefix = '') => {
+  const raw = String(value || '').trim().toUpperCase()
+  if (!raw.startsWith(prefix)) return null
+  const suffix = raw.slice(prefix.length)
+  if (!/^\d+$/.test(suffix)) return null
+  return Number(suffix)
+}
+
+const generateNextLoaiCode = async () => {
+  try {
+    const res = await getAllLoai()
+    const list = extractList(res?.data)
+    const maxNumber = list.reduce((acc, item) => {
+      const parsed = parseCodeNumber(item?.maLoai, 'LO')
+      return parsed && parsed > acc ? parsed : acc
+    }, 0)
+    form.code = `LO${String(maxNumber + 1).padStart(3, '0')}`
+  } catch {
+    form.code = 'LO001'
+  }
+}
+
 onMounted(async () => {
   if (id) {
     const res = await getLoaiById(id)
@@ -33,6 +63,8 @@ onMounted(async () => {
           : 'Hoạt động'
       form.description = res.data.moTa || ''
     }
+  } else {
+    await generateNextLoaiCode()
   }
 })
 
@@ -53,7 +85,7 @@ async function save() {
   // Kiểm tra trùng tên
   try {
     const res = await getAllLoai()
-    const list = res.data || []
+    const list = extractList(res?.data)
     const duplicate = list.find(
       (item) =>
         item.tenLoai?.trim().toLowerCase() === trimmedName.toLowerCase() &&
@@ -80,13 +112,19 @@ async function save() {
     moTa: form.description
   }
 
-  if (id) {
-    await updateLoai(id, payload)
-  } else {
-    await createLoai(payload)
-  }
+  try {
+    if (id) {
+      await updateLoai(id, payload)
+      window.toast?.success?.('Cập nhật loại thành công')
+    } else {
+      await createLoai(payload)
+      window.toast?.success?.('Thêm loại thành công')
+    }
 
-  router.push('/admin/loai/list')
+    router.push('/admin/loai/list')
+  } catch (error) {
+    window.toast?.error?.(error?.response?.data?.message || error?.message || 'Lưu loại thất bại')
+  }
 }
 </script>
 
@@ -132,7 +170,7 @@ async function save() {
             <input
               type="text"
               readonly
-              value="Mã tự sinh"
+              :value="form.code || 'Mã tự sinh'"
               class="auto-code-input"
             />
           </div>
@@ -154,9 +192,7 @@ async function save() {
               <option>Quần</option>
               <option>Phụ kiện</option>
             </select>
-            <small class="muted">
-              Tuỳ model BE, không cần thì bỏ.
-            </small>
+
           </div>
 
           <div class="field">

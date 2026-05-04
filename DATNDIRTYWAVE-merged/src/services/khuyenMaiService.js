@@ -126,8 +126,8 @@ export const deleteKhuyenMai = (id) =>
   axios.delete(`${API}/${id}`)
 
 // ============= VOUCHER (PHIEU GIAM GIA) =============
-export const getAllVouchers = () =>
-  axios.get(VOUCHER_API)
+export const getAllVouchers = (params = {}) =>
+  axios.get(VOUCHER_API, { params })
 
 export const getVoucherById = (id) =>
   axios.get(`${VOUCHER_API}/${id}`)
@@ -142,12 +142,15 @@ export const deleteVoucher = (id) =>
   axios.delete(`${VOUCHER_API}/${id}`)
 
 // Get active vouchers for POS
-export const getActiveVouchers = async (limit = 4) => {
+export const getActiveVouchers = async (limit = 0, params = {}) => {
   const parsedLimit = Number(limit)
+  const hasLimit = Number.isFinite(parsedLimit) && parsedLimit > 0
+  const mergedParams = {
+    ...(params || {}),
+    ...(hasLimit ? { limit: Math.floor(parsedLimit) } : {})
+  }
   const response = await axios.get(`${VOUCHER_API}/active`, {
-    params: {
-      limit: Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.floor(parsedLimit) : 4
-    },
+    params: mergedParams,
     headers: {
       Accept: 'application/json'
     }

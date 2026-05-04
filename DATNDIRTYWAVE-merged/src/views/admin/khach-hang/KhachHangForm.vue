@@ -26,7 +26,7 @@ const form = ref({
   soDienThoai: "",
   email: "",
   diaChiNhanHang: "",
-  trangThai: "Hoạt động"
+  trangThai: "Hoạt động" // Initialize with default value
 })
 
 const errors = ref({
@@ -407,12 +407,13 @@ const save = async () => {
             <small v-if="errors.soDienThoai" class="error-text">{{ errors.soDienThoai }}</small>
           </div>
 
-          <div class="field" v-if="isCreateMode">
-            <label>Email đăng nhập <span class="req">*</span></label>
+          <div class="field">
+            <label>Email <span v-if="isCreateMode" class="req">*</span></label>
             <input
               class="input"
               v-model="form.email"
-              placeholder="VD: khachhang@dirtywave.com"
+              :readonly="!isCreateMode"
+              :placeholder="isCreateMode ? 'VD: khachhang@dirtywave.com' : 'Email từ tài khoản'"
             />
           </div>
 

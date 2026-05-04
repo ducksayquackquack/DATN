@@ -12,6 +12,7 @@ import {
   getLichLamViecByNhanVien
 } from "../../../services/lichLamViecService"
 import taiKhoanService from "../../../services/taiKhoanService"
+import { resolveApiOrigin } from "../../../utils/apiOrigin"
 
 const router = useRouter()
 const route = useRoute()
@@ -19,6 +20,12 @@ const id = route.params.id
 const originalTaiKhoanEmail = ref("")
 const sendingMail = ref(false)
 const deletingEmployee = ref(false)
+const verifyingAccountLogin = ref(false)
+const quickResettingPassword = ref(false)
+const currentAccountPassword = ref("")
+const showCurrentPassword = ref(false)
+const accountPasswordUnavailable = ref(false)
+const EMPLOYEE_LAST_KNOWN_PASSWORDS_KEY = "employeeLastKnownPasswords"
 
 const form = reactive({
   code: "",
@@ -41,6 +48,20 @@ const errors = reactive({
 })
 
 const toBackendRole = (role) => role === "ADMIN" ? "ADMIN" : "EMPLOYEE"
+
+const buildNhanVienPayload = (taiKhoanId = form.taiKhoanId) => ({
+  maNhanVien: form.code,
+  tenNhanVien: form.name.trim(),
+  soDienThoai: form.phone.trim(),
+  ghiChu: form.note,
+  chucVu: form.chucVuId
+    ? { id: form.chucVuId }
+    : { maChucVu: toBackendRole(form.role) },
+  trangThaiHoatDong: form.status === "Ngừng hoạt động"
+    ? "Ngừng hoạt động"
+    : "Hoạt động",
+  taiKhoan: taiKhoanId ? { id: Number(taiKhoanId) } : null
+})
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim())
 
@@ -131,6 +152,215 @@ const taoMatKhauTam = () => {
   return `DW@${part}`
 }
 
+const buildPasswordCandidates = (explicitCurrent = "") => {
+  const candidates = [
+    String(explicitCurrent || "").trim(),
+    String(currentAccountPassword.value || "").trim(),
+    getLastKnownPassword(form.taiKhoanId, form.email)
+  ].filter(Boolean)
+
+  return Array.from(new Set(candidates))
+}
+
+const updateAccountPasswordCompat = async (taiKhoanId, nextPassword, currentPassword = "") => {
+  const accountId = Number(taiKhoanId || 0)
+  const safeNextPassword = String(nextPassword || "").trim()
+  if (!accountId || !safeNextPassword) return
+
+  const fallbackCurrentPasswords = buildPasswordCandidates(currentPassword)
+  const attempts = [
+    () => taiKhoanService.update(accountId, {
+      matKhau: safeNextPassword,
+      password: safeNextPassword,
+      newPassword: safeNextPassword,
+      currentPassword: fallbackCurrentPasswords[0] || undefined,
+    }),
+    ...fallbackCurrentPasswords.map((currentValue) => () => taiKhoanService.updatePassword(accountId, currentValue, safeNextPassword)),
+    () => taiKhoanService.update(accountId, {
+      newPassword: safeNextPassword,
+      matKhau: safeNextPassword,
+      password: safeNextPassword,
+    })
+  ]
+
+  let lastError = null
+  for (const execute of attempts) {
+    try {
+      await execute()
+      return
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError || new Error("Không cập nhật được mật khẩu tài khoản")
+}
+
+const loadLastKnownPasswords = () => {
+  try {
+    const raw = localStorage.getItem(EMPLOYEE_LAST_KNOWN_PASSWORDS_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === "object" ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+const saveLastKnownPasswords = (mapObj) => {
+  try {
+    localStorage.setItem(EMPLOYEE_LAST_KNOWN_PASSWORDS_KEY, JSON.stringify(mapObj || {}))
+  } catch {
+    // Ignore storage failures to avoid blocking employee operations.
+  }
+}
+
+const buildPasswordStoreKey = (taiKhoanId, email = "") => {
+  const idPart = Number(taiKhoanId || 0)
+  if (idPart > 0) return `id:${idPart}`
+  const normalizedEmail = normalizeEmail(email)
+  if (normalizedEmail) return `email:${normalizedEmail}`
+  return ""
+}
+
+const setLastKnownPassword = (taiKhoanId, email, password) => {
+  const safePassword = String(password || "").trim()
+  if (!safePassword) return
+
+  const store = loadLastKnownPasswords()
+  const keyById = buildPasswordStoreKey(taiKhoanId)
+  const keyByEmail = buildPasswordStoreKey(null, email)
+  const payload = {
+    password: safePassword,
+    updatedAt: Date.now()
+  }
+
+  if (keyById) store[keyById] = payload
+  if (keyByEmail) store[keyByEmail] = payload
+  saveLastKnownPasswords(store)
+}
+
+const getLastKnownPassword = (taiKhoanId, email = "") => {
+  const store = loadLastKnownPasswords()
+  const keyById = buildPasswordStoreKey(taiKhoanId)
+  const keyByEmail = buildPasswordStoreKey(null, email)
+  const byId = keyById ? store[keyById]?.password : ""
+  const byEmail = keyByEmail ? store[keyByEmail]?.password : ""
+  return String(byId || byEmail || "").trim()
+}
+
+const extractPasswordFromAccount = (account) => {
+  const raw = String(account?.matKhau || account?.password || "").trim()
+  if (!raw) return ""
+
+  // Ignore masked/hash values from backend because they are not usable login passwords.
+  const masked = /^([*•.]){6,}$/.test(raw)
+  const hashed = raw.startsWith("$2a$") || raw.startsWith("$2b$") || raw.startsWith("$2y$")
+  if (masked || hashed) return ""
+
+  return raw
+}
+
+const syncCurrentPasswordFromAccount = async (taiKhoanId, fallbackAccount = null, fallbackEmail = "") => {
+  const parsedId = Number(taiKhoanId || 0)
+  if (!parsedId) {
+    const localPassword = getLastKnownPassword(0, fallbackEmail || form.email)
+    currentAccountPassword.value = localPassword
+    accountPasswordUnavailable.value = !localPassword
+    return
+  }
+
+  const fromFallback = extractPasswordFromAccount(fallbackAccount)
+  if (fromFallback) {
+    currentAccountPassword.value = fromFallback
+    accountPasswordUnavailable.value = false
+    setLastKnownPassword(parsedId, fallbackAccount?.email || fallbackEmail || form.email, fromFallback)
+    return
+  }
+
+  try {
+    const detailRes = await taiKhoanService.getById(parsedId)
+    const detail = detailRes?.data
+    const password = extractPasswordFromAccount(detail)
+    const localPassword = getLastKnownPassword(parsedId, detail?.email || fallbackEmail || form.email)
+    const resolvedPassword = password || localPassword
+
+    currentAccountPassword.value = resolvedPassword
+    accountPasswordUnavailable.value = !resolvedPassword
+
+    if (password) {
+      setLastKnownPassword(parsedId, detail?.email || fallbackEmail || form.email, password)
+    }
+  } catch {
+    const localPassword = getLastKnownPassword(parsedId, fallbackEmail || fallbackAccount?.email || form.email)
+    currentAccountPassword.value = localPassword
+    accountPasswordUnavailable.value = !localPassword
+  }
+}
+
+const notifyMailSenderFailure = (email, password, reason = "") => {
+  const reasonText = String(reason || "").trim()
+  const fallbackMsg = `SMTP chưa cấu hình. Dùng thủ công: ${email} / ${password}`
+
+  window.toast?.warning?.(
+    reasonText
+      ? `Gửi email thất bại (${reasonText}). ${fallbackMsg}`
+      : `Gửi email thất bại. ${fallbackMsg}`
+  )
+
+  if (navigator?.clipboard?.writeText) {
+    navigator.clipboard.writeText(`Email: ${email}\nMật khẩu tạm: ${password}`).catch(() => {})
+  }
+}
+
+const taoTaiKhoanNhanVien = async (email, matKhau, role = form.role) => {
+  const normalizedEmail = normalizeEmail(email)
+  const backendRole = toBackendRole(role)
+  const roleCandidates = backendRole === "ADMIN"
+    ? ["ADMIN", "ROLE_ADMIN"]
+    : ["EMPLOYEE", "ROLE_EMPLOYEE", "NHAN_VIEN", "ROLE_NHAN_VIEN", "STAFF", "ROLE_STAFF"]
+
+  const payloadCandidates = roleCandidates.flatMap((vaiTro) => ([
+    {
+      email: normalizedEmail,
+      username: normalizedEmail,
+      matKhau,
+      vaiTro,
+      trangThaiHoatDong: "Hoạt động",
+      trangThaiTaiKhoan: "Kích hoạt"
+    },
+    {
+      email: normalizedEmail,
+      tenDangNhap: normalizedEmail,
+      matKhau,
+      vaiTro,
+      trangThaiHoatDong: "Hoạt động",
+      trangThaiTaiKhoan: "Kích hoạt"
+    },
+    {
+      email: normalizedEmail,
+      username: normalizedEmail,
+      password: matKhau,
+      vaiTro,
+      trangThaiHoatDong: "Hoạt động",
+      trangThaiTaiKhoan: "Kích hoạt"
+    }
+  ]))
+
+  let lastError = null
+  for (const payload of payloadCandidates) {
+    try {
+      const res = await taiKhoanService.create(payload)
+      const accountId = Number(res?.data?.id || res?.data?.data?.id)
+      if (accountId > 0) return accountId
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError || new Error("Không tạo được tài khoản nhân viên")
+}
+
 const guiMailThongTinTaiKhoan = async (email, password, role, tenNhanVien) => {
   if (!email || !password) {
     return { success: false, message: "Thiếu email hoặc mật khẩu tạm" }
@@ -162,7 +392,7 @@ const guiMailThongTinTaiKhoan = async (email, password, role, tenNhanVien) => {
       }
 
       if (response.ok) {
-        return { success: true, message: "Đã gửi email tài khoản", endpoint }
+        return { success: true, message: "Đã gửi email tài khoản", endpoint, previewUrl: payload?.previewUrl }
       }
 
       const httpMessage = payload?.message || `Gửi mail thất bại (${response.status})`
@@ -265,6 +495,59 @@ const normalizeRole = (role) => String(role || "")
 const isEmployeeRole = (role) => {
   const normalized = normalizeRole(role)
   return normalized === "EMPLOYEE" || normalized === "NHAN_VIEN" || normalized === "NHANVIEN" || normalized === "STAFF"
+}
+
+async function verifyDisplayedPasswordLogin() {
+  const accountEmail = normalizeEmail(form.email)
+  const shownPassword = String(currentAccountPassword.value || "").trim()
+
+  if (!accountEmail) {
+    window.toast?.warning?.("Nhân viên chưa có email tài khoản để kiểm tra đăng nhập")
+    return
+  }
+
+  if (!shownPassword) {
+    window.toast?.warning?.("Không có mật khẩu hiển thị để kiểm tra")
+    return
+  }
+
+  verifyingAccountLogin.value = true
+  try {
+    const authPayload = {
+      username: accountEmail,
+      email: accountEmail,
+      tenDangNhap: accountEmail,
+      password: shownPassword,
+      matKhau: shownPassword,
+    }
+
+    const response = await fetch(`${resolveApiOrigin()}/api/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      credentials: "include",
+      body: JSON.stringify(authPayload)
+    })
+
+    if (!response.ok) {
+      throw new Error(`AUTH_HTTP_${response.status}`)
+    }
+
+    const payload = await response.json().catch(() => ({}))
+    const loginRole = normalizeRole(payload?.role || payload?.vaiTro || payload?.authority)
+    const isAllowed = loginRole === "ADMIN" || isEmployeeRole(loginRole)
+
+    if (!isAllowed) {
+      throw new Error("AUTH_ROLE_NOT_ALLOWED")
+    }
+
+    window.toast?.success?.("Mật khẩu đang hiển thị đăng nhập được")
+  } catch {
+    window.toast?.error?.("Mật khẩu đang hiển thị KHÔNG đăng nhập được. Hãy nhập mật khẩu mới rồi bấm Lưu.")
+  } finally {
+    verifyingAccountLogin.value = false
+  }
 }
 
 async function resolveTaiKhoanIdForDelete() {
@@ -387,6 +670,34 @@ async function findConflictingAccountByEmail(targetEmail, currentTaiKhoanId = nu
   }
 }
 
+async function resolveReusableAccountByEmailForEmployee(targetEmail) {
+  const normalizedEmail = normalizeEmail(targetEmail)
+  if (!normalizedEmail) {
+    return { canReuse: false, account: null, reason: "EMAIL_EMPTY" }
+  }
+
+  const accounts = await listAllTaiKhoan()
+  const matched = accounts.find((acc) => normalizeEmail(acc?.email) === normalizedEmail)
+  if (!matched?.id) {
+    return { canReuse: false, account: null, reason: "NOT_FOUND" }
+  }
+
+  const employeeRes = await getAllNhanVien()
+  const employees = Array.isArray(employeeRes?.data) ? employeeRes.data : []
+  const isLinked = employees.some((emp) => Number(emp?.idTaiKhoan || emp?.taiKhoan?.id || 0) === Number(matched.id))
+
+  if (isLinked) {
+    return { canReuse: false, account: matched, reason: "LINKED_EMPLOYEE" }
+  }
+
+  const normalizedRole = normalizeRole(matched?.vaiTro)
+  if (normalizedRole === "ADMIN") {
+    return { canReuse: false, account: matched, reason: "ADMIN_ACCOUNT" }
+  }
+
+  return { canReuse: true, account: matched, reason: "OK" }
+}
+
 const normalizeDateKey = (value) => {
   const raw = String(value || "").trim()
   if (!raw) return ""
@@ -452,16 +763,17 @@ async function sendAccountMailManually() {
   try {
     const generatedPassword = form.password || taoMatKhauTam()
 
-    if (form.taiKhoanId) {
+    let ensuredTaiKhoanId = form.taiKhoanId ? Number(form.taiKhoanId) : null
+
+    if (ensuredTaiKhoanId) {
       const normalizedCurrentEmail = String(form.email || "").trim().toLowerCase()
       const emailChanged = normalizedCurrentEmail && normalizedCurrentEmail !== originalTaiKhoanEmail.value
 
       if (emailChanged) {
-        const usedByAnother = await isEmailUsedByAnotherAccount(normalizedCurrentEmail, form.taiKhoanId)
+        const usedByAnother = await isEmailUsedByAnotherAccount(normalizedCurrentEmail, ensuredTaiKhoanId)
         if (usedByAnother) {
-          const reclaimed = await reclaimOrphanEmployeeEmail(normalizedCurrentEmail, form.taiKhoanId)
+          const reclaimed = await reclaimOrphanEmployeeEmail(normalizedCurrentEmail, ensuredTaiKhoanId)
           if (!reclaimed) {
-            const conflict = await findConflictingAccountByEmail(normalizedCurrentEmail, form.taiKhoanId)
             errors.email = "Email đã tồn tại trong hệ thống tài khoản"
             window.toast?.error?.("Email đã tồn tại trong hệ thống tài khoản")
             return
@@ -471,8 +783,7 @@ async function sendAccountMailManually() {
 
       const accountUpdatePayload = {
         vaiTro: toBackendRole(form.role),
-        trangThaiHoatDong: form.status === "Ngừng hoạt động" ? "Ngừng hoạt động" : "Hoạt động",
-        matKhau: generatedPassword
+        trangThaiHoatDong: form.status === "Ngừng hoạt động" ? "Ngừng hoạt động" : "Hoạt động"
       }
 
       if (emailChanged) {
@@ -480,13 +791,13 @@ async function sendAccountMailManually() {
       }
 
       try {
-        await taiKhoanService.update(form.taiKhoanId, accountUpdatePayload)
+        await taiKhoanService.update(ensuredTaiKhoanId, accountUpdatePayload)
       } catch (error) {
         const message = extractErrorMessage(error)
         if (emailChanged && isDuplicateEmailError(message)) {
-          const reclaimed = await reclaimOrphanEmployeeEmail(normalizedCurrentEmail, form.taiKhoanId)
+          const reclaimed = await reclaimOrphanEmployeeEmail(normalizedCurrentEmail, ensuredTaiKhoanId)
           if (reclaimed) {
-            await taiKhoanService.update(form.taiKhoanId, accountUpdatePayload)
+            await taiKhoanService.update(ensuredTaiKhoanId, accountUpdatePayload)
           } else {
             window.toast?.error?.("Email đã tồn tại trong hệ thống tài khoản")
             throw error
@@ -495,23 +806,83 @@ async function sendAccountMailManually() {
           throw error
         }
       }
+
+      await updateAccountPasswordCompat(ensuredTaiKhoanId, generatedPassword)
+
       if (emailChanged) {
         originalTaiKhoanEmail.value = normalizedCurrentEmail
       }
+    } else {
+      const normalizedCurrentEmail = String(form.email || "").trim().toLowerCase()
+      ensuredTaiKhoanId = await taoTaiKhoanNhanVien(normalizedCurrentEmail, generatedPassword, form.role)
+      form.taiKhoanId = ensuredTaiKhoanId
+      await updateNhanVien(id, buildNhanVienPayload(ensuredTaiKhoanId))
+      originalTaiKhoanEmail.value = normalizedCurrentEmail
     }
 
     const mailResult = await guiMailThongTinTaiKhoan(normalizedEmail, generatedPassword, form.role, form.name.trim())
     if (!mailResult.success) {
-      window.toast?.warning?.(`Gửi email thất bại: ${mailResult.message}`)
+      setLastKnownPassword(ensuredTaiKhoanId, normalizedEmail, generatedPassword)
+      currentAccountPassword.value = generatedPassword
+      accountPasswordUnavailable.value = false
+      notifyMailSenderFailure(normalizedEmail, generatedPassword, mailResult.message)
       return
     }
 
+    setLastKnownPassword(ensuredTaiKhoanId, normalizedEmail, generatedPassword)
+    currentAccountPassword.value = generatedPassword
+    accountPasswordUnavailable.value = false
     form.password = ""
     window.toast?.success?.("Đã gửi email tài khoản cho nhân viên")
+    if (mailResult.previewUrl) {
+      window.toast?.info?.(`Xem email test tại: ${mailResult.previewUrl}`)
+    }
   } catch (err) {
     window.toast?.error?.("Không thể gửi email: " + (err?.response?.data?.message || err?.message || "Lỗi không xác định"))
   } finally {
     sendingMail.value = false
+  }
+}
+
+async function quickResetPasswordForNV015() {
+  if (!id || String(form.code || '').trim().toUpperCase() !== 'NV015') return
+
+  const accountId = Number(form.taiKhoanId || 0)
+  if (!accountId) {
+    window.toast?.error?.('Không tìm thấy tài khoản liên kết để đặt lại mật khẩu')
+    return
+  }
+
+  const accountEmail = normalizeEmail(form.email)
+  if (!accountEmail) {
+    window.toast?.error?.('NV015 chưa có email tài khoản hợp lệ')
+    return
+  }
+
+  const confirmed = await (window.confirmDialog?.('Đặt lại mật khẩu nhanh cho NV015? Hệ thống sẽ sinh mật khẩu mới và copy vào clipboard.')
+    ?? confirm('Đặt lại mật khẩu nhanh cho NV015?'))
+  if (!confirmed) return
+
+  quickResettingPassword.value = true
+  try {
+    const generatedPassword = taoMatKhauTam()
+    await updateAccountPasswordCompat(accountId, generatedPassword, currentAccountPassword.value)
+
+    setLastKnownPassword(accountId, accountEmail, generatedPassword)
+    currentAccountPassword.value = generatedPassword
+    accountPasswordUnavailable.value = false
+    showCurrentPassword.value = true
+    form.password = ''
+
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(`Email: ${accountEmail}\nMật khẩu mới: ${generatedPassword}`)
+    }
+
+    window.toast?.success?.('Đã đặt lại mật khẩu nhanh cho NV015 và copy thông tin đăng nhập')
+  } catch (error) {
+    window.toast?.error?.(error?.response?.data?.message || error?.message || 'Đặt lại mật khẩu nhanh thất bại')
+  } finally {
+    quickResettingPassword.value = false
   }
 }
 
@@ -580,6 +951,8 @@ onMounted(async () => {
     form.status = data.trangThaiHoatDong === "Ngừng hoạt động"
       ? "Ngừng hoạt động"
       : "Hoạt động"
+
+    await syncCurrentPasswordFromAccount(form.taiKhoanId, data.taiKhoan, form.email)
   }
 })
 
@@ -612,19 +985,7 @@ async function save() {
 
     const matKhauTam = form.password || taoMatKhauTam()
 
-    const nhanVienPayload = {
-      maNhanVien: form.code,
-      tenNhanVien: form.name.trim(),
-      soDienThoai: form.phone.trim(),
-      ghiChu: form.note,
-      chucVu: form.chucVuId
-        ? { id: form.chucVuId }
-        : { maChucVu: toBackendRole(form.role) },
-      trangThaiHoatDong: form.status === "Ngừng hoạt động"
-        ? "Ngừng hoạt động"
-        : "Hoạt động",
-      taiKhoan: form.taiKhoanId ? { id: form.taiKhoanId } : null
-    }
+    const nhanVienPayload = buildNhanVienPayload()
 
     if (id) {
       if (form.taiKhoanId) {
@@ -645,8 +1006,7 @@ async function save() {
 
         const accountUpdatePayload = {
           vaiTro: toBackendRole(form.role),
-          trangThaiHoatDong: form.status === "Ngừng hoạt động" ? "Ngừng hoạt động" : "Hoạt động",
-          matKhau: form.password || undefined
+          trangThaiHoatDong: form.status === "Ngừng hoạt động" ? "Ngừng hoạt động" : "Hoạt động"
         }
 
         // Backend currently validates duplicate email strictly on update.
@@ -674,37 +1034,43 @@ async function save() {
         if (emailChanged) {
           originalTaiKhoanEmail.value = normalizedCurrentEmail
         }
+
+        if (form.password) {
+          await updateAccountPasswordCompat(form.taiKhoanId, form.password)
+          setLastKnownPassword(form.taiKhoanId, form.email, form.password)
+          currentAccountPassword.value = form.password
+          accountPasswordUnavailable.value = false
+        }
       }
       await updateNhanVien(id, nhanVienPayload)
       window.toast?.success?.("Cập nhật nhân viên thành công!")
     } else {
-      try {
-        const accountRes = await taiKhoanService.create({
-          email: form.email.trim(),
-          matKhau: matKhauTam,
-          vaiTro: toBackendRole(form.role),
+      const reusable = await resolveReusableAccountByEmailForEmployee(form.email.trim())
+      let createdTaiKhoanId = null
+
+      if (reusable.canReuse && reusable.account?.id) {
+        const normalizedRole = toBackendRole(form.role)
+        await taiKhoanService.update(reusable.account.id, {
+          vaiTro: normalizedRole,
           trangThaiHoatDong: "Hoạt động",
           trangThaiTaiKhoan: "Kích hoạt"
         })
-
-        const createdTaiKhoanId = accountRes?.data?.id
-        if (!createdTaiKhoanId) {
-          throw new Error("Không tạo được tài khoản cho nhân viên")
-        }
-
-        await createNhanVien({
-          ...nhanVienPayload,
-          taiKhoan: { id: createdTaiKhoanId }
-        })
-      } catch {
-        await createNhanVien({
-          ...nhanVienPayload,
-          taiKhoan: null,
-          email: form.email,
-          matKhau: matKhauTam,
-          vaiTro: toBackendRole(form.role)
-        })
+        await updateAccountPasswordCompat(reusable.account.id, matKhauTam)
+        createdTaiKhoanId = Number(reusable.account.id)
+      } else if (reusable.reason === "LINKED_EMPLOYEE") {
+        errors.email = "Email đã được dùng cho nhân viên khác"
+        window.toast?.error?.("Email đã được dùng cho nhân viên khác")
+        return
+      } else if (reusable.reason === "ADMIN_ACCOUNT") {
+        errors.email = "Email đang thuộc tài khoản quản trị viên"
+        window.toast?.error?.("Email đang thuộc tài khoản quản trị viên, vui lòng dùng email khác")
+        return
+      } else {
+        createdTaiKhoanId = await taoTaiKhoanNhanVien(form.email.trim(), matKhauTam, form.role)
       }
+
+      await createNhanVien(buildNhanVienPayload(createdTaiKhoanId))
+      setLastKnownPassword(createdTaiKhoanId, form.email.trim(), matKhauTam)
       window.toast?.success?.("Thêm nhân viên thành công! Vào chi tiết nhân viên để gửi email tài khoản.")
     }
 
@@ -730,6 +1096,14 @@ async function save() {
 
         <div style="display:flex;gap:10px">
           <button class="btn" @click="goBack">← Quay lại</button>
+          <button
+            v-if="id && String(form.code || '').trim().toUpperCase() === 'NV015'"
+            class="btn"
+            :disabled="quickResettingPassword"
+            @click="quickResetPasswordForNV015"
+          >
+            {{ quickResettingPassword ? 'Đang reset...' : 'Reset mật khẩu nhanh NV015' }}
+          </button>
           <button v-if="id" class="btn" :disabled="sendingMail" @click="sendAccountMailManually">
             {{ sendingMail ? 'Đang gửi...' : 'Gửi email tài khoản' }}
           </button>
@@ -792,10 +1166,39 @@ async function save() {
           </div>
 
           <!-- Mật khẩu -->
-          <div class="field" style="grid-column:1/-1">
+          <div v-if="!id" class="field" style="grid-column:1/-1">
             <label>Mật khẩu</label>
             <input type="text" v-model="form.password"
-                   :placeholder="id ? 'Để trống để giữ nguyên mật khẩu hiện tại' : 'Để trống để hệ thống tự tạo mật khẩu tạm (VD: DW@123456)'"/>
+                   placeholder="Để trống để hệ thống tự tạo mật khẩu tạm (VD: DW@123456)"/>
+          </div>
+
+          <div v-if="id && !accountPasswordUnavailable" class="field" style="grid-column:1/-1">
+            <label>Mật khẩu hiện tại (đã biết)</label>
+            <div class="password-preview-row">
+              <input
+                :type="showCurrentPassword ? 'text' : 'password'"
+                :value="currentAccountPassword"
+                readonly
+              />
+              <button
+                type="button"
+                class="btn"
+                @click="showCurrentPassword = !showCurrentPassword"
+              >
+                {{ showCurrentPassword ? 'Ẩn' : 'Hiện' }}
+              </button>
+              <button
+                type="button"
+                class="btn"
+                :disabled="verifyingAccountLogin || !currentAccountPassword"
+                @click="verifyDisplayedPasswordLogin"
+              >
+                {{ verifyingAccountLogin ? 'Đang kiểm tra...' : 'Kiểm tra đăng nhập' }}
+              </button>
+            </div>
+            <small class="hint">
+              Nhấn "Kiểm tra đăng nhập" để xác thực mật khẩu này có dùng được thật trên hệ thống.
+            </small>
           </div>
 
           <!-- Ghi chú -->
@@ -844,6 +1247,15 @@ textarea { min-height: 90px; resize: vertical; }
 
 .btn.danger:hover {
   background: #ffe4e6;
+}
+
+.password-preview-row {
+  display: flex;
+  gap: 10px;
+}
+
+.password-preview-row .btn {
+  white-space: nowrap;
 }
 
 /* Required star */
