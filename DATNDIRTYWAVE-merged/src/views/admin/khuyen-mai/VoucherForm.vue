@@ -187,6 +187,14 @@ const form = reactive({
   trangThai: true
 })
 
+const extractList = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.content)) return payload.content
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.content)) return payload.data.content
+  return []
+}
+
 onMounted(async () => {
   if (isEdit.value) {
     try {
@@ -216,18 +224,22 @@ onMounted(async () => {
 })
 
 async function generateVoucherCode() {
+  const fallbackCode = `PGG${String(Date.now()).slice(-6)}`
   try {
     const res = await axios.get(API)
-    const rows = Array.isArray(res?.data) ? res.data : []
+    const rows = extractList(res?.data)
     const maxCode = rows.reduce((max, item) => {
       const code = String(item?.maPhieuGiamGia || "")
       const matched = code.match(/^PGG(\d+)$/i)
       if (!matched) return max
       return Math.max(max, Number(matched[1] || 0))
     }, 0)
-    return `PGG${String(maxCode + 1).padStart(3, "0")}`
+    if (maxCode > 0) {
+      return `PGG${String(maxCode + 1).padStart(3, "0")}`
+    }
+    return "PGG001"
   } catch {
-    return `PGG${String(Date.now()).slice(-6)}`
+    return fallbackCode
   }
 }
 

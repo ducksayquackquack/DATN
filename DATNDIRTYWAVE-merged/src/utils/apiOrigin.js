@@ -27,18 +27,21 @@ export const resolveApiOrigin = () => {
   const { protocol, hostname, origin } = window.location
   const openingFromPublicHost = !isLocalHost(hostname)
   const runningOnVercel = /\.vercel\.app$/i.test(String(hostname || '').trim())
+  const configured = trimTrailingSlash(import.meta.env.VITE_API_ORIGIN)
 
   // Local browser should always call local backend directly.
   if (isLocalHost(hostname)) return LOCAL_API_ORIGIN
 
-  // Vercel production should stay same-origin so auth cookies/session work reliably.
-  // Backend routing is handled by Vercel rewrites under /api.
+  // On Vercel, allow explicit API origin override (old behavior) when provided.
+  // If empty, keep same-origin so /api rewrites still work.
   if (runningOnVercel) {
+    if (isValidAbsoluteUrl(configured) && !isLocalOrigin(configured)) {
+      return configured
+    }
     localStorage.removeItem('dirtywave:api-origin')
     return trimTrailingSlash(origin)
   }
 
-  const configured = trimTrailingSlash(import.meta.env.VITE_API_ORIGIN)
   if (isValidAbsoluteUrl(configured) && (!openingFromPublicHost || !isLocalOrigin(configured))) {
     return configured
   }
