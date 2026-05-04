@@ -1,0 +1,19 @@
+import axios from "axios"
+import { resolveApiOrigin } from "../utils/apiOrigin"
+
+const API = `${resolveApiOrigin()}/api/mau-sac`
+
+export const getAllMauSac = () =>
+  axios.get(API)
+
+export const getMauSacById = (id) =>
+  axios.get(`${API}/${id}`)
+
+export const createMauSac = (data) =>
+  axios.post(API, data)
+
+export const updateMauSac = (id, data) =>
+  axios.put(`${API}/${id}`, data)
+
+export const deleteMauSac = (id) =>
+  axios.delete(`${API}/${id}`)

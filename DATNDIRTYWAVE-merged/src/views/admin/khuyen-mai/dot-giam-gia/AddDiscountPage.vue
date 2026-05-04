@@ -1,0 +1,1646 @@
+<!-- File: src/pages/khuyen_mai/dot_giam_gia/AddDiscountPage.vue -->
+<template>
+  <div class="discount-page">
+    <div class="header-section">
+      <h2 class="page-title">THÊM ĐỢT GIẢM GIÁ</h2>
+      <button class="btn-back" @click="router.push(`${basePath}/khuyen-mai/list`)">
+        <i class="fa-solid fa-arrow-left"></i> Quay lại
+      </button>
+    </div>
+
+    <div class="content-wrapper">
+      <!-- Cột trái: Form thông tin -->
+      <div class="left-column">
+        <div class="card info-card">
+          <h4 class="card-title">Thông tin đợt giảm giá</h4>
+
+          <div class="form-group">
+            <label class="label">Mã đợt (Tự động sinh):</label>
+            <input
+              type="text"
+              class="form-control"
+              disabled
+              placeholder="Mã tự sinh (DGG-...)"
+              style="background-color: #f1f5f9"
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="label">Tên đợt giảm giá: <span class="text-red">*</span></label>
+            <input
+              v-model="formData.tenDotGiamGia"
+              type="text"
+              class="form-control"
+              placeholder="Nhập tên đợt..."
+              :disabled="isLoading"
+            />
+          </div>
+
+          <!-- ✅ BỎ PHẦN CHỌN LOẠI GIẢM (mặc định giảm theo %) -->
+
+          <div class="form-group">
+            <label class="label">Giá trị giảm (%): <span class="text-red">*</span></label>
+            <input
+              v-model.number="formData.giaTriGiamGia"
+              type="number"
+              class="form-control"
+              placeholder="Mời nhập giảm theo %"
+              min="1"
+              max="99"
+              :disabled="isLoading"
+            />
+            <div
+              class="hint"
+              v-if="
+                formData.giaTriGiamGia !== null &&
+                (formData.giaTriGiamGia < 1 || formData.giaTriGiamGia >= 100)
+              "
+            >
+              Giá trị giảm phải nằm trong khoảng 1 - 99 (%).
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="label">Đối tượng áp dụng:</label>
+            <select v-model="formData.doiTuongApDung" class="form-control" :disabled="isLoading">
+              <option value="ALL">Tất cả sản phẩm</option>
+              <option value="HOODIE">Hoodie</option>
+              <option value="BOMBER">Bomber</option>
+              <option value="COACH">Coach</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="label">Ngày bắt đầu: <span class="text-red">*</span></label>
+            <div class="date-wrap">
+              <input
+                v-model="formData.ngayBatDau"
+                type="date"
+                class="form-control date-native"
+                @click="$event.target.showPicker()"
+                :disabled="isLoading"
+              />
+              <span class="date-overlay" v-if="formData.ngayBatDau">{{ fmtDateDisplay(formData.ngayBatDau) }}</span>
+              <span class="date-overlay date-placeholder" v-else>dd/mm/yyyy</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="label">Ngày kết thúc: <span class="text-red">*</span></label>
+            <div class="date-wrap">
+              <input
+                v-model="formData.ngayKetThuc"
+                type="date"
+                class="form-control date-native"
+                @click="$event.target.showPicker()"
+                :disabled="isLoading"
+              />
+              <span class="date-overlay" v-if="formData.ngayKetThuc">{{ fmtDateDisplay(formData.ngayKetThuc) }}</span>
+              <span class="date-overlay date-placeholder" v-else>dd/mm/yyyy</span>
+            </div>
+            <div class="hint" v-if="dateError">
+              {{ dateError }}
+            </div>
+          </div>
+
+          <div class="action-buttons mt-4">
+            <button
+              class="btn-update"
+              @click="submitCreate"
+              :disabled="isLoading || !canSubmit"
+              :title="!canSubmit ? 'Vui lòng nhập đúng dữ liệu bắt buộc' : ''"
+            >
+              <i class="fa-solid fa-plus me-1"></i>
+              {{ isLoading ? "Đang xử lý..." : "Tạo đợt giảm giá" }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cột phải: Chọn sản phẩm -->
+      <div class="right-column">
+        <div class="card product-select-card">
+          <h4 class="card-title">Chọn sản phẩm áp dụng</h4>
+
+          <div class="search-bar mb-3">
+            <div class="input-wrapper">
+              <i class="fa-solid fa-magnifying-glass search-icon"></i>
+              <input
+                v-model="searchKeyword"
+                type="text"
+                placeholder="Tìm theo tên hoặc mã sản phẩm..."
+                :disabled="isLoading"
+              />
+            </div>
+          </div>
+
+          <div class="mb-2"></div>
+
+          <div class="table-wrapper-mini">
+            <table class="custom-table">
+              <colgroup>
+                <col style="width: 40px" />
+                <col style="width: 50px" />
+                <col style="width: 64px" />
+                <col style="width: 150px" />
+                <col />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th></th>
+                  <th class="text-center">#</th>
+                  <th class="text-center">Ảnh</th>
+                  <th class="text-center">Mã SP</th>
+                  <th class="text-center">Tên sản phẩm</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                <tr v-if="filteredParentProducts.length === 0">
+                  <td colspan="5" class="text-center text-muted py-4">
+                    Không tìm thấy dữ liệu
+                  </td>
+                </tr>
+
+                <template v-for="group in paginatedParentProducts" :key="group.idSanPham">
+                  <tr class="parent-row">
+                    <td class="text-center">
+                      <button class="btn-expand" @click="toggleExpand(group.idSanPham)" type="button" :aria-label="expandedGroupIds.includes(group.idSanPham) ? 'Thu gọn' : 'Mở rộng'">
+                        <span class="btn-expand__symbol">{{ expandedGroupIds.includes(group.idSanPham) ? '-' : '+' }}</span>
+                      </button>
+                    </td>
+
+                    <td class="text-center" @click.stop>
+                      <input
+                        type="checkbox"
+                        class="custom-checkbox"
+                        :checked="isGroupSelected(group.idSanPham)"
+                        @change="handleParentCheck(group.idSanPham, $event.target.checked)"
+                      />
+                    </td>
+
+                    <td class="text-center td-click" @click="toggleExpand(group.idSanPham)">
+                      <img :src="getGroupThumb(group)" class="product-thumb-sm" @error="onImgError($event, group.variants?.[0])" alt="thumb" />
+                    </td>
+
+                    <td class="text-center td-click" @click="toggleExpand(group.idSanPham)">
+                      {{ group.maSanPham }}
+                    </td>
+
+                    <td class="text-center td-click" @click="toggleExpand(group.idSanPham)">
+                      {{ group.tenSanPham }}
+                    </td>
+                  </tr>
+
+                  <tr
+                    v-if="expandedGroupIds.includes(group.idSanPham)"
+                    v-for="v in group.variants"
+                    :key="v.id"
+                    class="child-row"
+                    style="cursor: pointer"
+                    title="Click để xem biến thể"
+                  >
+                    <td></td>
+
+                    <td class="text-center" @click.stop>
+                      <input
+                        type="checkbox"
+                        class="custom-checkbox"
+                        :value="v.id"
+                        v-model="selectedVariantIds"
+                        @change="onSourceCheckboxChange"
+                      />
+                    </td>
+
+                    <td class="text-center">
+                      <img :src="getVariantThumb(v)" class="product-thumb-sm" @error="onImgError($event, v)" alt="thumb" />
+                    </td>
+
+                    <td class="text-center text-muted small">{{ v.maChiTietSanPham }}</td>
+                    <td class="small">{{ v.tenMauSac }} - {{ v.tenKichThuoc }} - {{ v.tenLoaiSan }}</td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pagination" v-if="totalPages > 0">
+            <button class="page-btn" @click="changePage(currentPage - 1)" :disabled="currentPage === 1" aria-label="Trang trước">
+              <span class="page-btn__arrow">&lt;</span>
+            </button>
+            <button class="page-btn active">{{ currentPage }}</button>
+            <button class="page-btn" @click="changePage(currentPage + 1)" :disabled="currentPage === totalPages" aria-label="Trang sau">
+              <span class="page-btn__arrow">&gt;</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Danh sách chi tiết đã chọn -->
+    <div class="bottom-section">
+      <div class="card detail-card">
+        <div class="detail-header">
+          <h3 class="section-title">
+            Danh sách chi tiết sản phẩm được chọn
+            <span v-if="selectedVariantIds.length" class="count-tag">({{ selectedVariantIds.length }})</span>
+          </h3>
+          <button class="btn-danger-outline" @click="removeAll" v-if="selectedVariantIds.length > 0">
+            <i class="fa-solid fa-trash"></i> Xóa tất cả
+          </button>
+        </div>
+
+        <!-- ✅ combobox lọc -->
+        <div class="filter-grid mb-2" v-if="selectedVariantIds.length > 0">
+          <div class="ss-combo">
+            <input
+              v-model="detailFilterText.size"
+              class="ss-combo-input"
+              placeholder="-- Kích cỡ --"
+              @focus="openCombo('dSizeOpen')"
+              @blur="closeCombo('dSizeOpen')"
+              @input="onDetailInput('size')"
+            />
+            <span class="material-icons-outlined ss-combo-ic">expand_more</span>
+
+            <div v-if="combo.dSizeOpen" class="ss-combo-list" @mousedown.prevent>
+              <div
+                class="ss-combo-item"
+                :class="{ active: !detailFilters.size && !detailFilterText.size }"
+                @mousedown.prevent="selectDetail('size', null)"
+                title="Bỏ lọc kích cỡ"
+              >
+                Tất cả
+              </div>
+
+              <div
+                v-for="opt in detailSizeSuggest"
+                :key="`ds-${opt}`"
+                class="ss-combo-item"
+                :class="{ active: detailFilters.size === opt }"
+                @mousedown.prevent="selectDetail('size', opt)"
+                :title="opt"
+              >
+                {{ opt }}
+              </div>
+
+              <div v-if="!detailSizeSuggest.length" class="ss-combo-empty">
+                Không có gợi ý phù hợp
+              </div>
+            </div>
+          </div>
+
+          <div class="ss-combo">
+            <input
+              v-model="detailFilterText.color"
+              class="ss-combo-input"
+              placeholder="-- Màu sắc --"
+              @focus="openCombo('dColorOpen')"
+              @blur="closeCombo('dColorOpen')"
+              @input="onDetailInput('color')"
+            />
+            <span class="material-icons-outlined ss-combo-ic">expand_more</span>
+
+            <div v-if="combo.dColorOpen" class="ss-combo-list" @mousedown.prevent>
+              <div
+                class="ss-combo-item"
+                :class="{ active: !detailFilters.color && !detailFilterText.color }"
+                @mousedown.prevent="selectDetail('color', null)"
+                title="Bỏ lọc màu sắc"
+              >
+                Tất cả
+              </div>
+
+              <div
+                v-for="opt in detailColorSuggest"
+                :key="`dc-${opt}`"
+                class="ss-combo-item"
+                :class="{ active: detailFilters.color === opt }"
+                @mousedown.prevent="selectDetail('color', opt)"
+                :title="opt"
+              >
+                {{ opt }}
+              </div>
+
+              <div v-if="!detailColorSuggest.length" class="ss-combo-empty">
+                Không có gợi ý phù hợp
+              </div>
+            </div>
+          </div>
+
+          <button class="btn-clear-filter bg-white" type="button" @click="clearDetailFilters" title="Xóa bộ lọc">
+            <i class="fa-solid fa-filter-circle-xmark"></i>
+          </button>
+        </div>
+
+        <!-- ✅ Range lọc khoảng giá: min/max theo GIÁ THỰC TẾ của biến thể đã chọn -->
+        <div class="price-range-box" v-if="selectedVariantIds.length > 0 && detailPriceBounds.max > 0">
+          <div class="price-range-head">
+            <div class="price-range-title">
+              <i class="fa-solid fa-sliders"></i> Khoảng giá
+            </div>
+            <div class="price-range-value">
+              {{ formatCurrency(sliderMinPrice) }} - {{ formatCurrency(sliderMaxPrice) }}
+            </div>
+          </div>
+
+          <div class="range-wrap">
+            <div class="range-track"></div>
+            <div class="range-progress" :style="rangeProgressStyle"></div>
+
+            <input
+              class="range-input thumb-min"
+              :class="{ top: isMinThumbOnTop }"
+              type="range"
+              :min="detailPriceBounds.min"
+              :max="detailPriceBounds.max"
+              :step="priceStep"
+              :value="sliderMinPrice"
+              @input="onMinRangeInput($event)"
+              @change="commitPriceRange"
+            />
+
+            <input
+              class="range-input thumb-max"
+              type="range"
+              :min="detailPriceBounds.min"
+              :max="detailPriceBounds.max"
+              :step="priceStep"
+              :value="sliderMaxPrice"
+              @input="onMaxRangeInput($event)"
+              @change="commitPriceRange"
+            />
+          </div>
+
+          <div class="price-range-foot">
+            <span>{{ formatCurrency(detailPriceBounds.min) }}</span>
+            <span>{{ formatCurrency(detailPriceBounds.max) }}</span>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="custom-table">
+            <thead>
+              <tr>
+                <th width="40" class="text-center">
+                  <input
+                    type="checkbox"
+                    class="custom-checkbox"
+                    @change="toggleAllVariants"
+                    :checked="isAllVariantsSelected"
+                  />
+                </th>
+                <th class="text-center" width="50">STT</th>
+                <th class="text-center" width="60">Ảnh</th>
+                <th>Mã SP (CT)</th>
+                <th class="text-center">Tên sản phẩm</th>
+                <th class="text-center">Giá bán</th>
+                <th class="text-center">Kích cỡ</th>
+                <th class="text-center">Màu sắc</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              <tr v-if="variantsDisplay.length === 0">
+                <td colspan="8" class="text-center text-muted py-5">
+                  <div class="empty-state">
+                    <i class="fa-solid fa-box-open fa-2x mb-2"></i>
+                    <p>Chưa có sản phẩm nào được chọn.</p>
+                  </div>
+                </td>
+              </tr>
+
+              <tr
+                v-for="(item, index) in paginatedVariantsDisplay"
+                :key="item.id"
+                @click="fillFilters(item)"
+                style="cursor: pointer"
+                title="Click để điền thông tin vào bộ lọc"
+              >
+                <td class="text-center" @click.stop>
+                  <input
+                    type="checkbox"
+                    class="custom-checkbox"
+                    :value="item.id"
+                    v-model="selectedVariantIds"
+                    @change="onDetailCheckboxChange"
+                  />
+                </td>
+
+                <td class="text-center">
+                  {{ (currentDetailPage - 1) * detailItemsPerPage + index + 1 }}
+                </td>
+
+                <!-- ✅ CHỈ HIỂN THỊ ẢNH CTSP Ở BẢNG DƯỚI -->
+                <td class="text-center">
+                  <div class="thumb-wrap">
+                    <img :src="getVariantThumb(item)" class="product-thumb-sm" @error="onImgError($event, item)" alt="thumb" />
+                    <span v-if="displayPercent" :class="['discount-badge', 'sm', mauGiamGiaClass]">
+                      -{{ displayPercent }}%
+                    </span>
+                  </div>
+                </td>
+
+                <td class="text-primary">{{ item.maChiTietSanPham }}</td>
+
+                <td class="text-wrap-name text-center">{{ item.tenSanPham }}</td>
+
+                <!-- ✅ HIỂN THỊ GIÁ THỰC TẾ + GIÁ SAU GIẢM -->
+                <td class="text-center price-cell">
+                  <template v-if="displayPercent">
+                    <span class="price-original">{{ formatCurrency(getGiaBienThe(item)) }}</span>
+                    <span class="price-discounted">
+                      {{ formatCurrency(getGiaBienThe(item) * (1 - displayPercent / 100)) }}
+                    </span>
+                  </template>
+                  <template v-else>
+                    {{ formatCurrency(getGiaBienThe(item)) }}
+                  </template>
+                </td>
+
+                <td class="text-center">{{ item.tenKichThuoc }}</td>
+
+                <td class="text-center">
+                  <span class="color-dot" :style="{ backgroundColor: mapColor(item.tenMauSac) }"></span>
+                  {{ item.tenMauSac }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pagination" v-if="totalDetailPages > 0">
+          <button class="page-btn" @click="changeDetailPage(currentDetailPage - 1)" :disabled="currentDetailPage === 1">
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+          <button class="page-btn active">{{ currentDetailPage }}</button>
+          <button
+            class="page-btn"
+            @click="changeDetailPage(currentDetailPage + 1)"
+            :disabled="currentDetailPage === totalDetailPages"
+          >
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from "vue";
+import { discountService } from "@/services/dotGiamGiaService";
+import { useRoute, useRouter } from "vue-router";
+import { getProductImageOverride } from "@/utils/productImageOverrides";
+import { getProductImageConfig } from "@/utils/productImageOverrides";
+import { fallbackImageForVariant } from "@/utils/productImageFallback";
+import { resolveApiOrigin } from "@/utils/apiOrigin";
+
+const router = useRouter();
+const route = useRoute();
+const basePath = computed(() => (route.path.startsWith("/employee") ? "/employee" : "/admin"));
+
+const confirmAction = async (message) => {
+  if (window?.confirmDialog) return window.confirmDialog(message);
+  return window.confirm(message);
+};
+
+const notifySuccess = (message) => {
+  if (window?.toast?.success) window.toast.success(message);
+  else window.alert(message);
+};
+
+const notifyError = (message) => {
+  if (window?.toast?.error) window.toast.error(message);
+  else window.alert(message);
+};
+
+const notifyWarning = (message) => {
+  if (window?.toast?.warning) window.toast.warning(message);
+  else window.alert(message);
+};
+
+/* =========================
+   FIX ẢNH: normalize + fallback
+   ========================= */
+const API_BASE = resolveApiOrigin().replace(/\/$/, "");
+
+const IMG_PLACEHOLDER =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='6' fill='%23F3F4F6'/%3E%3Cpath d='M12 26l6-6 4 4 6-6 4 4' stroke='%239CA3AF' stroke-width='2' fill='none'/%3E%3Ccircle cx='16' cy='16' r='2' fill='%239CA3AF'/%3E%3C/svg%3E";
+
+const normalizeImgUrl = (raw) => {
+  if (!raw) return "";
+  const s = String(raw).trim();
+  if (!s) return "";
+  if (s.startsWith("data:image/")) return s;
+  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+  if (s.startsWith("/assets/") || s.startsWith("/src/assets/")) return s;
+  if (s.startsWith("/")) return `${API_BASE}${s}`;
+  if (s.startsWith("uploads/")) return `${API_BASE}/${s}`;
+  return `${API_BASE}/uploads/${s}`;
+};
+
+const extractRawImg = (v) => {
+  const direct =
+    v?.anh ||
+    v?.urlAnh ||
+    v?.duongDanAnh ||
+    v?.anhDaiDien ||
+    v?.anhSanPham ||
+    v?.hinhAnh ||
+    v?.image ||
+    v?.imageUrl ||
+    v?.thumbnail ||
+    "";
+
+  if (direct) return direct;
+
+  const list =
+    v?.anhList ||
+    v?.images ||
+    v?.hinhAnhs ||
+    v?.dsAnh ||
+    v?.anhSanPhams ||
+    [];
+
+  if (Array.isArray(list) && list.length) {
+    const first = list[0];
+    if (typeof first === "string") return first;
+    return first?.duongDanAnh || first?.urlAnh || first?.url || first?.path || first?.image || "";
+  }
+
+  const override = getProductImageOverride({ id: v?.idSanPham, maSanPham: v?.maSanPham })[0];
+  return override || "";
+};
+
+const extractVariantRawImg = (v) => {
+  const direct =
+    v?.anhBienThe ||
+    v?.anh ||
+    v?.urlAnh ||
+    v?.duongDanAnh ||
+    v?.anhDaiDien ||
+    v?.hinhAnh ||
+    v?.image ||
+    v?.imageUrl ||
+    v?.thumbnail ||
+    "";
+
+  if (direct) return direct;
+
+  const list =
+    v?.anhList ||
+    v?.images ||
+    v?.hinhAnhs ||
+    v?.dsAnh ||
+    [];
+
+  if (Array.isArray(list) && list.length) {
+    const first = list[0];
+    if (typeof first === "string") return first;
+    return first?.duongDanAnh || first?.urlAnh || first?.url || first?.path || first?.image || "";
+  }
+
+  return "";
+};
+
+const getVariantColorConfigImage = (v) => {
+  const config = getProductImageConfig({ id: v?.idSanPham, maSanPham: v?.maSanPham });
+  if (!config) return "";
+
+  const colorId = Number(v?.idMauSac ?? v?.id_mau_sac ?? v?.mauSac?.id ?? v?.mauSacId ?? 0);
+  if (Number.isFinite(colorId) && colorId > 0 && Array.isArray(config.colorImages)) {
+    const colorImg = config.colorImages.find((item) => Number(item?.colorId) === colorId)?.image || "";
+    if (colorImg) return colorImg;
+  }
+  return "";
+};
+
+const getVariantThumb = (v) => {
+  const curatedFallback = normalizeImgUrl(
+    fallbackImageForVariant({
+      id: v?.idSanPham,
+      maSanPham: v?.maSanPham,
+      tenSanPham: v?.tenSanPham,
+      tenMauSac: v?.tenMauSac,
+      maChiTietSanPham: v?.maChiTietSanPham,
+    })
+  );
+  const codeNumber = Number(String(v?.maSanPham || "").replace(/\D+/g, ""));
+  const preferCurated = Number.isFinite(codeNumber) && codeNumber > 0 && codeNumber <= 20;
+  if (preferCurated && curatedFallback) return curatedFallback;
+
+  const colorConfigured = normalizeImgUrl(getVariantColorConfigImage(v));
+  if (colorConfigured) return colorConfigured;
+
+  const normalized = normalizeImgUrl(extractVariantRawImg(v));
+  if (normalized) return normalized;
+  return curatedFallback || IMG_PLACEHOLDER;
+};
+
+const getGroupThumb = (group) => {
+  if (!group?.variants?.length) return IMG_PLACEHOLDER;
+  const pick = group.variants.find((x) => normalizeImgUrl(extractVariantRawImg(x) || x?.anhSanPham || extractRawImg(x))) || group.variants[0];
+  return getVariantThumb(pick);
+};
+
+const onImgError = (e, v = null) => {
+  const img = e?.target;
+  if (!img) return;
+  const variantFallback = normalizeImgUrl(
+    fallbackImageForVariant({
+      id: v?.idSanPham,
+      maSanPham: v?.maSanPham,
+      tenSanPham: v?.tenSanPham,
+      tenMauSac: v?.tenMauSac,
+      maChiTietSanPham: v?.maChiTietSanPham,
+    })
+  );
+  if (variantFallback && img.src !== variantFallback) {
+    img.src = variantFallback;
+    return;
+  }
+  if (img.src === IMG_PLACEHOLDER) return;
+  img.src = IMG_PLACEHOLDER;
+};
+/* ========================= */
+
+const fmtDateDisplay = (val) => {
+  if (!val) return "";
+  const parts = val.split("-");
+  if (parts.length !== 3) return val;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+};
+
+const formData = reactive({
+  tenDotGiamGia: "",
+  loaiGiamGia: false, // ✅ mặc định %
+  giaTriGiamGia: null,
+  ngayBatDau: "",
+  ngayKetThuc: "",
+  doiTuongApDung: "ALL",
+  trangThai: true,
+});
+
+const normalizeCategoryKey = (value = "") => {
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toUpperCase()
+
+  if (normalized.includes("HOODIE")) return "HOODIE"
+  if (normalized.includes("BOMBER")) return "BOMBER"
+  if (normalized.includes("COACH")) return "COACH"
+  return "OTHER"
+}
+
+const isVariantMatchedApplyTarget = (variant) => {
+  const target = String(formData.doiTuongApDung || "ALL").toUpperCase()
+  if (target === "ALL") return true
+  return normalizeCategoryKey(variant?.tenLoaiSan) === target
+}
+
+const displayPercent = computed(() => {
+  const v = Number(formData.giaTriGiamGia);
+  if (!Number.isFinite(v) || v < 1 || v >= 100) return null;
+  return Math.round(v);
+});
+
+/* ✅ MÀU BADGE THEO KHOẢNG GIẢM:
+   - < 50%  : đỏ
+   - 50-70% : vàng
+   - > 70%  : xanh lá
+*/
+const mauGiamGiaClass = computed(() => {
+  const p = Number(displayPercent.value ?? 0);
+  if (!Number.isFinite(p) || p <= 0) return "ss-badge-low";
+  if (p < 50) return "ss-badge-low";
+  if (p <= 70) return "ss-badge-mid";
+  return "ss-badge-high";
+});
+
+const rawVariants = ref([]);
+const selectedVariantIds = ref([]);
+
+const searchKeyword = ref("");
+const isLoading = ref(false);
+
+const currentPage = ref(1);
+const itemsPerPage = 5;
+
+const currentDetailPage = ref(1);
+const detailItemsPerPage = 5;
+const sliderMinPrice = ref(0);
+const sliderMaxPrice = ref(0);
+const pendingSliderRange = reactive({ min: 0, max: 0 });
+let sliderAnimationFrame = 0;
+
+const expandedGroupIds = ref([]);
+
+/* =========================
+   ✅ COMBOBOX giống ProductManagePage.vue
+   ========================= */
+const combo = reactive({
+  sBrandOpen: false,
+  sOriginOpen: false,
+  dBrandOpen: false,
+  dMaterialOpen: false,
+  dSizeOpen: false,
+  dColorOpen: false,
+  dSoleOpen: false,
+});
+
+const closeT = {
+  sBrandOpen: 0,
+  sOriginOpen: 0,
+  dBrandOpen: 0,
+  dMaterialOpen: 0,
+  dSizeOpen: 0,
+  dColorOpen: 0,
+  dSoleOpen: 0,
+};
+
+const openCombo = (key) => {
+  if (isLoading.value) return;
+  combo[key] = true;
+};
+
+const closeCombo = (key) => {
+  clearTimeout(closeT[key]);
+  closeT[key] = window.setTimeout(() => {
+    combo[key] = false;
+  }, 140);
+};
+
+const lc = (s) => String(s ?? "").trim().toLowerCase();
+
+/* =========================
+   SOURCE FILTERS (bảng phải)
+   - sourceFilters: giá trị được chọn (match exact)
+   - sourceFilterText: text gõ tay (match includes)
+   ========================= */
+const sourceFilters = reactive({ brand: "", origin: "" });
+const sourceFilterText = reactive({ brand: "", origin: "" });
+
+const onSourceInput = (key) => {
+  sourceFilters[key] = "";
+  if (key === "brand") combo.sBrandOpen = true;
+  if (key === "origin") combo.sOriginOpen = true;
+};
+
+const selectSource = (key, val) => {
+  if (!val) {
+    sourceFilters[key] = "";
+    sourceFilterText[key] = "";
+  } else {
+    sourceFilters[key] = val;
+    sourceFilterText[key] = val;
+  }
+  if (key === "brand") combo.sBrandOpen = false;
+  if (key === "origin") combo.sOriginOpen = false;
+};
+
+const clearSourceFilters = () => {
+  sourceFilters.brand = "";
+  sourceFilters.origin = "";
+  sourceFilterText.brand = "";
+  sourceFilterText.origin = "";
+};
+
+const fillSourceFilters = (item) => {
+  selectSource("brand", item.tenThuongHieu || null);
+  selectSource("origin", item.tenXuatXu || null);
+};
+
+const onSourceCheckboxChange = (e) => {
+  if (!e.target.checked) clearSourceFilters();
+};
+
+const sourceFilterOptions = computed(() => {
+  const data = rawVariants.value;
+  const getOpts = (k) => [...new Set(data.map((i) => i[k]))].filter(Boolean).sort();
+  return {
+    brands: getOpts("tenThuongHieu"),
+    origins: getOpts("tenXuatXu"),
+  };
+});
+
+const sourceBrandSuggest = computed(() => {
+  const q = lc(sourceFilterText.brand);
+  const list = sourceFilterOptions.value.brands || [];
+  if (!q) return list.slice(0, 50);
+  return list.filter((x) => lc(x).includes(q)).slice(0, 50);
+});
+
+const sourceOriginSuggest = computed(() => {
+  const q = lc(sourceFilterText.origin);
+  const list = sourceFilterOptions.value.origins || [];
+  if (!q) return list.slice(0, 50);
+  return list.filter((x) => lc(x).includes(q)).slice(0, 50);
+});
+
+/* =========================
+   GROUP sản phẩm
+   ========================= */
+const productGroups = computed(() => {
+  const groups = {};
+  rawVariants.value.forEach((v) => {
+    const pId = v.idSanPham;
+    if (!groups[pId]) {
+      groups[pId] = {
+        idSanPham: pId,
+        tenSanPham: v.tenSanPham,
+        maSanPham: v.maSanPham || `SP-${pId}`,
+        variants: [],
+      };
+    }
+    groups[pId].variants.push(v);
+  });
+  return Object.values(groups)
+    .map((group) => ({
+      ...group,
+      variants: [...group.variants].sort((a, b) => String(a?.maChiTietSanPham || a?.id || "").localeCompare(String(b?.maChiTietSanPham || b?.id || ""), undefined, { numeric: true, sensitivity: "base" }))
+    }))
+    .sort((a, b) => String(a?.maSanPham || a?.idSanPham || "").localeCompare(String(b?.maSanPham || b?.idSanPham || ""), undefined, { numeric: true, sensitivity: "base" }));
+});
+
+const filteredParentProducts = computed(() => {
+  let groups = productGroups.value;
+
+  if (String(formData.doiTuongApDung || "ALL").toUpperCase() !== "ALL") {
+    groups = groups
+      .map((group) => ({
+        ...group,
+        variants: group.variants.filter((variant) => isVariantMatchedApplyTarget(variant))
+      }))
+      .filter((group) => group.variants.length > 0)
+  }
+
+  if (searchKeyword.value) {
+    const key = searchKeyword.value.toLowerCase();
+    groups = groups.filter(
+      (g) => (g.tenSanPham || "").toLowerCase().includes(key) || (g.maSanPham || "").toLowerCase().includes(key)
+    );
+  }
+
+  // ✅ match cả exact và includes
+  if (sourceFilters.brand || sourceFilters.origin || sourceFilterText.brand || sourceFilterText.origin) {
+    groups = groups.filter((g) =>
+      g.variants.some((v) => {
+        const th = lc(v.tenThuongHieu);
+        const xx = lc(v.tenXuatXu);
+
+        const matchBrand =
+          (!sourceFilters.brand && !sourceFilterText.brand) ||
+          (sourceFilters.brand && v.tenThuongHieu === sourceFilters.brand) ||
+          (!sourceFilters.brand && sourceFilterText.brand && th.includes(lc(sourceFilterText.brand)));
+
+        const matchOrigin =
+          (!sourceFilters.origin && !sourceFilterText.origin) ||
+          (sourceFilters.origin && v.tenXuatXu === sourceFilters.origin) ||
+          (!sourceFilters.origin && sourceFilterText.origin && xx.includes(lc(sourceFilterText.origin)));
+
+        return matchBrand && matchOrigin;
+      })
+    );
+  }
+
+  return groups;
+});
+
+const totalPages = computed(() => Math.ceil(filteredParentProducts.value.length / itemsPerPage));
+
+const paginatedParentProducts = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage;
+  const end = start + itemsPerPage;
+  return filteredParentProducts.value.slice(start, end);
+});
+
+const changePage = (page) => {
+  if (page >= 1 && page <= totalPages.value) currentPage.value = page;
+};
+
+watch(searchKeyword, () => (currentPage.value = 1));
+watch(
+  () => [sourceFilters.brand, sourceFilters.origin, sourceFilterText.brand, sourceFilterText.origin],
+  () => (currentPage.value = 1)
+);
+
+watch(
+  () => filteredParentProducts.value.length,
+  () => {
+    if (currentPage.value > totalPages.value) currentPage.value = Math.max(1, totalPages.value);
+  }
+);
+
+const allSelectedVariants = computed(() => rawVariants.value.filter((v) => selectedVariantIds.value.includes(v.id)));
+
+/* =========================
+   ✅ GIÁ THỰC TẾ (variant)
+   ========================= */
+const getGiaBienThe = (v) => {
+  const raw =
+    v?.giaBan ??
+    v?.gia_ban ??
+    v?.giaNiemYet ??
+    v?.gia_niem_yet ??
+    v?.donGia ??
+    v?.don_gia ??
+    v?.gia ??
+    v?.price ??
+    0;
+
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/* =========================
+   FILTERS bảng dưới
+   - detailFilters.xxx: giá trị được chọn (match exact)
+   - detailFilterText.xxx: text gõ tay (match includes)
+   ========================= */
+const detailFilters = reactive({
+  brand: "",
+  material: "",
+  color: "",
+  size: "",
+  sole: "",
+  minPrice: 0,
+  maxPrice: 0,
+});
+
+const detailFilterText = reactive({
+  brand: "",
+  material: "",
+  color: "",
+  size: "",
+  sole: "",
+});
+
+const onDetailInput = (key) => {
+  detailFilters[key] = "";
+  if (key === "brand") combo.dBrandOpen = true;
+  if (key === "material") combo.dMaterialOpen = true;
+  if (key === "size") combo.dSizeOpen = true;
+  if (key === "color") combo.dColorOpen = true;
+  if (key === "sole") combo.dSoleOpen = true;
+};
+
+const selectDetail = (key, val) => {
+  if (!val) {
+    detailFilters[key] = "";
+    detailFilterText[key] = "";
+  } else {
+    detailFilters[key] = val;
+    detailFilterText[key] = val;
+  }
+
+  if (key === "brand") combo.dBrandOpen = false;
+  if (key === "material") combo.dMaterialOpen = false;
+  if (key === "size") combo.dSizeOpen = false;
+  if (key === "color") combo.dColorOpen = false;
+  if (key === "sole") combo.dSoleOpen = false;
+};
+
+const filterOptions = computed(() => {
+  const data = allSelectedVariants.value;
+  const getOptions = (key) => [...new Set(data.map((item) => item[key]))].filter(Boolean).sort();
+  return {
+    brands: getOptions("tenThuongHieu"),
+    materials: getOptions("tenChatLieu"),
+    colors: getOptions("tenMauSac"),
+    sizes: getOptions("tenKichThuoc"),
+    soles: getOptions("tenLoaiSan"),
+  };
+});
+
+const detailBrandSuggest = computed(() => {
+  const q = lc(detailFilterText.brand);
+  const list = filterOptions.value.brands || [];
+  if (!q) return list.slice(0, 50);
+  return list.filter((x) => lc(x).includes(q)).slice(0, 50);
+});
+const detailMaterialSuggest = computed(() => {
+  const q = lc(detailFilterText.material);
+  const list = filterOptions.value.materials || [];
+  if (!q) return list.slice(0, 50);
+  return list.filter((x) => lc(x).includes(q)).slice(0, 50);
+});
+const detailSizeSuggest = computed(() => {
+  const q = lc(detailFilterText.size);
+  const list = filterOptions.value.sizes || [];
+  if (!q) return list.slice(0, 50);
+  return list.filter((x) => lc(x).includes(q)).slice(0, 50);
+});
+const detailColorSuggest = computed(() => {
+  const q = lc(detailFilterText.color);
+  const list = filterOptions.value.colors || [];
+  if (!q) return list.slice(0, 50);
+  return list.filter((x) => lc(x).includes(q)).slice(0, 50);
+});
+const detailSoleSuggest = computed(() => {
+  const q = lc(detailFilterText.sole);
+  const list = filterOptions.value.soles || [];
+  if (!q) return list.slice(0, 50);
+  return list.filter((x) => lc(x).includes(q)).slice(0, 50);
+});
+
+/* =========================
+   ✅ RANGE: min/max theo GIÁ THỰC TẾ của biến thể đã chọn
+   ========================= */
+const detailPriceBounds = computed(() => {
+  const data = allSelectedVariants.value;
+  const prices = data.map(getGiaBienThe).filter((n) => Number.isFinite(n) && n > 0);
+  if (!prices.length) return { min: 0, max: 0 };
+  return { min: Math.min(...prices), max: Math.max(...prices) };
+});
+
+const priceStep = computed(() => {
+  const max = detailPriceBounds.value.max || 0;
+  if (max <= 0) return 100;
+  if (max <= 2000000) return 100;
+  if (max <= 10000000) return 500;
+  return 1000;
+});
+
+const lastBounds = reactive({ min: 0, max: 0, step: 1000 });
+
+watch(
+  () => detailPriceBounds.value,
+  (b) => {
+    const hasSelection = allSelectedVariants.value.length > 0 && b.max > 0;
+
+    if (!hasSelection) {
+      detailFilters.minPrice = 0;
+      detailFilters.maxPrice = 0;
+      syncSliderRange(0, 0);
+      lastBounds.min = 0;
+      lastBounds.max = 0;
+      lastBounds.step = priceStep.value || 1000;
+      return;
+    }
+
+    const curMin = Number(detailFilters.minPrice);
+    const curMax = Number(detailFilters.maxPrice);
+    const prevStep = lastBounds.step || priceStep.value || 1;
+
+    const firstInit =
+      !lastBounds.max ||
+      !Number.isFinite(curMin) ||
+      !Number.isFinite(curMax) ||
+      (curMin === 0 && curMax === 0);
+
+    if (firstInit) {
+      // First product added: show full range
+      detailFilters.minPrice = b.min;
+      detailFilters.maxPrice = b.max;
+      syncSliderRange(b.min, b.max);
+    } else {
+      // If range expanded (cheaper or pricier product added), auto-extend to include all
+      const boundsExpanded = b.min < lastBounds.min || b.max > lastBounds.max;
+      if (boundsExpanded) {
+        detailFilters.minPrice = b.min;
+        detailFilters.maxPrice = b.max;
+        syncSliderRange(b.min, b.max);
+      } else {
+        // Bounds narrowed: clamp existing selection to valid range
+        detailFilters.minPrice = Math.max(b.min, Math.min(curMin, b.max));
+        detailFilters.maxPrice = Math.max(b.min, Math.min(curMax, b.max));
+        syncSliderRange(
+          Math.max(b.min, Math.min(Number(sliderMinPrice.value || curMin), b.max)),
+          Math.max(b.min, Math.min(Number(sliderMaxPrice.value || curMax), b.max))
+        );
+      }
+    }
+
+    if (detailFilters.minPrice > detailFilters.maxPrice) {
+      detailFilters.minPrice = detailFilters.maxPrice;
+    }
+    if (sliderMinPrice.value > sliderMaxPrice.value) {
+      syncSliderRange(sliderMaxPrice.value, sliderMaxPrice.value);
+    }
+
+    lastBounds.min = b.min;
+    lastBounds.max = b.max;
+    lastBounds.step = priceStep.value || prevStep;
+  },
+  { immediate: true }
+);
+
+const isMinThumbOnTop = computed(() => sliderMinPrice.value >= sliderMaxPrice.value - priceStep.value);
+
+function syncSliderRange(minValue, maxValue) {
+  sliderMinPrice.value = Number(minValue || 0);
+  sliderMaxPrice.value = Number(maxValue || 0);
+  pendingSliderRange.min = sliderMinPrice.value;
+  pendingSliderRange.max = sliderMaxPrice.value;
+}
+
+function flushSliderFrame() {
+  sliderAnimationFrame = 0;
+  const bounds = detailPriceBounds.value;
+  const boundMin = Number(bounds?.min || 0);
+  const boundMax = Number(bounds?.max || 0);
+
+  let nextMin = Number(pendingSliderRange.min || 0);
+  let nextMax = Number(pendingSliderRange.max || 0);
+
+  if (boundMax > 0) {
+    nextMin = Math.max(boundMin, Math.min(nextMin, boundMax));
+    nextMax = Math.max(boundMin, Math.min(nextMax, boundMax));
+  }
+
+  if (nextMin > nextMax) {
+    if (nextMin !== sliderMinPrice.value) nextMax = nextMin;
+    else nextMin = nextMax;
+  }
+
+  sliderMinPrice.value = nextMin;
+  sliderMaxPrice.value = nextMax;
+}
+
+function scheduleSliderFrame() {
+  if (sliderAnimationFrame) return;
+  sliderAnimationFrame = window.requestAnimationFrame(flushSliderFrame);
+}
+
+const rangeProgressStyle = computed(() => {
+  const b = detailPriceBounds.value;
+  if (!b.max || b.max <= b.min) return { left: "0%", right: "0%" };
+
+  const min = Number(sliderMinPrice.value);
+  const max = Number(sliderMaxPrice.value);
+
+  const range = b.max - b.min;
+  const left = ((min - b.min) / range) * 100;
+  const right = 100 - ((max - b.min) / range) * 100;
+
+  return { left: `${Math.max(0, Math.min(100, left))}%`, right: `${Math.max(0, Math.min(100, right))}%` };
+});
+
+const onMinRangeInput = (event) => {
+  pendingSliderRange.min = Number(event?.target?.value ?? sliderMinPrice.value ?? 0);
+  pendingSliderRange.max = Number(sliderMaxPrice.value ?? 0);
+  scheduleSliderFrame();
+};
+const onMaxRangeInput = (event) => {
+  pendingSliderRange.min = Number(sliderMinPrice.value ?? 0);
+  pendingSliderRange.max = Number(event?.target?.value ?? sliderMaxPrice.value ?? 0);
+  scheduleSliderFrame();
+};
+
+const commitPriceRange = () => {
+  if (sliderAnimationFrame) {
+    window.cancelAnimationFrame(sliderAnimationFrame);
+    flushSliderFrame();
+  }
+  detailFilters.minPrice = Number(sliderMinPrice.value || 0);
+  detailFilters.maxPrice = Number(sliderMaxPrice.value || 0);
+};
+
+onBeforeUnmount(() => {
+  if (!sliderAnimationFrame) return;
+  window.cancelAnimationFrame(sliderAnimationFrame);
+  sliderAnimationFrame = 0;
+});
+
+const variantsDisplay = computed(() => {
+  let list = [...allSelectedVariants.value].sort((a, b) => String(a?.maChiTietSanPham || a?.id || "").localeCompare(String(b?.maChiTietSanPham || b?.id || ""), undefined, { numeric: true, sensitivity: "base" }));
+
+  const matchKey = (selectedVal, textVal, candidate) => {
+    const s = String(selectedVal || "");
+    const t = String(textVal || "");
+    const c = String(candidate || "");
+    if (!s && !t) return true;
+    if (s) return c === s;
+    return lc(c).includes(lc(t));
+  };
+
+  list = list.filter((v) => matchKey(detailFilters.brand, detailFilterText.brand, v.tenThuongHieu));
+  list = list.filter((v) => matchKey(detailFilters.material, detailFilterText.material, v.tenChatLieu));
+  list = list.filter((v) => matchKey(detailFilters.color, detailFilterText.color, v.tenMauSac));
+  list = list.filter((v) => matchKey(detailFilters.size, detailFilterText.size, v.tenKichThuoc));
+  list = list.filter((v) => matchKey(detailFilters.sole, detailFilterText.sole, v.tenLoaiSan));
+
+  if (detailPriceBounds.value.max > 0) {
+    const min = Number(detailFilters.minPrice);
+    const max = Number(detailFilters.maxPrice);
+    list = list.filter((v) => {
+      const p = getGiaBienThe(v);
+      return p >= min && p <= max;
+    });
+  }
+
+  return list;
+});
+
+const clearDetailFilters = () => {
+  detailFilters.brand = "";
+  detailFilters.material = "";
+  detailFilters.color = "";
+  detailFilters.size = "";
+  detailFilters.sole = "";
+
+  detailFilterText.brand = "";
+  detailFilterText.material = "";
+  detailFilterText.color = "";
+  detailFilterText.size = "";
+  detailFilterText.sole = "";
+
+  detailFilters.minPrice = detailPriceBounds.value.min || 0;
+  detailFilters.maxPrice = detailPriceBounds.value.max || 0;
+  syncSliderRange(detailFilters.minPrice, detailFilters.maxPrice);
+};
+
+watch(
+  () => [detailFilters, detailFilterText],
+  () => (currentDetailPage.value = 1),
+  { deep: true }
+);
+
+const fillFilters = (item) => {
+  selectDetail("brand", item.tenThuongHieu || null);
+  selectDetail("material", item.tenChatLieu || null);
+  selectDetail("color", item.tenMauSac || null);
+  selectDetail("size", item.tenKichThuoc || null);
+  selectDetail("sole", item.tenLoaiSan || null);
+};
+
+const onDetailCheckboxChange = (e) => {
+  if (!e.target.checked) clearDetailFilters();
+};
+
+const totalDetailPages = computed(() => Math.ceil(variantsDisplay.value.length / detailItemsPerPage));
+
+const paginatedVariantsDisplay = computed(() => {
+  const start = (currentDetailPage.value - 1) * detailItemsPerPage;
+  const end = start + detailItemsPerPage;
+  return variantsDisplay.value.slice(start, end);
+});
+
+const changeDetailPage = (page) => {
+  if (page >= 1 && page <= totalDetailPages.value) currentDetailPage.value = page;
+};
+
+watch(
+  () => variantsDisplay.value.length,
+  () => {
+    if (currentDetailPage.value > totalDetailPages.value) currentDetailPage.value = Math.max(1, totalDetailPages.value);
+  }
+);
+
+const isAllVariantsSelected = computed(() => {
+  return variantsDisplay.value.length > 0 && variantsDisplay.value.every((v) => selectedVariantIds.value.includes(v.id));
+});
+
+/* =========================
+   METHODS khác
+   ========================= */
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(value ?? 0);
+};
+
+const toggleExpand = (groupId) => {
+  if (expandedGroupIds.value.includes(groupId)) expandedGroupIds.value = expandedGroupIds.value.filter((id) => id !== groupId);
+  else expandedGroupIds.value.push(groupId);
+};
+
+const isGroupSelected = (parentId) => {
+  const group = productGroups.value.find((g) => g.idSanPham === parentId);
+  if (!group) return false;
+  return group.variants.length > 0 && group.variants.every((v) => selectedVariantIds.value.includes(v.id));
+};
+
+const handleParentCheck = (parentId, isChecked) => {
+  const group = productGroups.value.find((g) => g.idSanPham === parentId);
+  if (!group) return;
+  const childIds = group.variants.map((v) => v.id);
+
+  if (isChecked) selectedVariantIds.value = [...new Set([...selectedVariantIds.value, ...childIds])];
+  else {
+    selectedVariantIds.value = selectedVariantIds.value.filter((id) => !childIds.includes(id));
+    clearSourceFilters();
+  }
+};
+
+const toggleAllVariants = (e) => {
+  const visibleIds = variantsDisplay.value.map((v) => v.id);
+  if (e.target.checked) selectedVariantIds.value = Array.from(new Set([...selectedVariantIds.value, ...visibleIds]));
+  else selectedVariantIds.value = selectedVariantIds.value.filter((id) => !visibleIds.includes(id));
+};
+
+const removeAll = () => {
+  selectedVariantIds.value = [];
+  clearDetailFilters();
+  currentDetailPage.value = 1;
+  syncSliderRange(0, 0);
+
+  lastBounds.min = 0;
+  lastBounds.max = 0;
+  lastBounds.step = priceStep.value || 1000;
+};
+
+const normalizeDate = (d, isEnd = false) => {
+  const x = new Date(d);
+  if (Number.isNaN(x.getTime())) return null;
+  if (isEnd) x.setHours(23, 59, 59, 999);
+  else x.setHours(0, 0, 0, 0);
+  return x;
+};
+
+const dateError = computed(() => {
+  if (!formData.ngayBatDau || !formData.ngayKetThuc) return "";
+  const s = normalizeDate(formData.ngayBatDau, false);
+  const e = normalizeDate(formData.ngayKetThuc, true);
+  if (!s || !e) return "Ngày không hợp lệ.";
+  if (s > e) return "Ngày bắt đầu không được lớn hơn ngày kết thúc.";
+  return "";
+});
+
+const canSubmit = computed(() => {
+  if (!formData.tenDotGiamGia?.trim()) return false;
+  if (!formData.ngayBatDau || !formData.ngayKetThuc) return false;
+  if (dateError.value) return false;
+  if (formData.giaTriGiamGia === null || formData.giaTriGiamGia === "") return false;
+  const v = Number(formData.giaTriGiamGia);
+  if (Number.isNaN(v) || v < 1 || v >= 100) return false;
+  return true;
+});
+
+const submitCreate = async () => {
+  if (!canSubmit.value) {
+    notifyWarning("Vui lòng nhập đúng và đủ thông tin bắt buộc (tên, ngày, % giảm 1-99).");
+    return;
+  }
+
+  if (selectedVariantIds.value.length === 0) {
+    notifyWarning("Bạn chưa chọn sản phẩm áp dụng. Vui lòng chọn ít nhất 1 sản phẩm trước khi lưu.");
+    return;
+  }
+
+  const payload = { ...formData, idChiTietSanPhams: selectedVariantIds.value };
+
+  try {
+    isLoading.value = true;
+    const result = await discountService.createDiscountComposite(payload);
+    if (result?._syncFailed) {
+      notifyWarning("Đã tạo đợt giảm giá thành công nhưng không thể đồng bộ sản phẩm tự động. Sản phẩm sẽ được liên kết khi hệ thống đồng bộ tiếp theo.");
+    } else {
+      notifySuccess("Tạo đợt giảm giá thành công");
+    }
+    router.push(`${basePath.value}/khuyen-mai/list`);
+  } catch (e) {
+    notifyError("Lỗi tạo mới: " + (e.response?.data?.message || e.message));
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+const mapColor = (colorName) => {
+  if (!colorName) return "#ccc";
+  const lower = colorName.toLowerCase();
+  if (lower.includes("đỏ")) return "#ef4444";
+  if (lower.includes("xanh lá") || lower.includes("lục")) return "#22c55e";
+  if (lower.includes("xanh dương") || lower.includes("xanh")) return "#3b82f6";
+  if (lower.includes("đen")) return "#000";
+  if (lower.includes("trắng")) return "#f8fafc";
+  if (lower.includes("vàng")) return "#eab308";
+  if (lower.includes("cam")) return "#f97316";
+  if (lower.includes("tím")) return "#a855f7";
+  if (lower.includes("hồng")) return "#ec4899";
+  if (lower.includes("xám") || lower.includes("ghi")) return "#64748b";
+  if (lower.includes("nâu")) return "#78350f";
+  return "#ccc";
+};
+
+const loadData = async () => {
+  isLoading.value = true;
+  try {
+    const res = await discountService.getAllProductDetails();
+    const arr = Array.isArray(res) ? res : res?.content ?? [];
+    rawVariants.value = arr;
+  } catch (e) {
+    console.error("Lỗi tải dữ liệu sản phẩm: ", e);
+    notifyError("Lỗi: Không thể tải danh sách sản phẩm.");
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+onMounted(loadData);
+</script>
+
+<style scoped>
+@import url("https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css");
+
+* { box-sizing: border-box; }
+.discount-page { padding-bottom: 30px; font-family: "Inter", "Segoe UI", sans-serif; }
+
+/* Header */
+.header-section { display:flex; justify-content: space-between; align-items:center; margin-bottom: 30px; margin-top: 10px; }
+.page-title { font-size: 22px; font-weight: 600; color: #1e293b; margin: 0; }
+.btn-back { background: #64748b; color: white; border:none; padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor:pointer; display:flex; align-items:center; gap: 6px; transition: 0.2s; }
+.btn-back:hover { background: #475569; }
+
+/* Layout */
+.content-wrapper { display:grid; grid-template-columns: 1fr 2fr; gap: 24px; margin-bottom: 24px; }
+.left-column, .right-column { min-width:0; display:flex; flex-direction: column; }
+
+.bottom-section { margin-top: 12px; }
+.detail-card { width: 100%; }
+
+/* Card */
+.card { background:#fff; border-radius:10px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border:none; display:flex; flex-direction: column; }
+.card-title { font-size:16px; font-weight:600; color:#334155; margin-bottom:20px; border-bottom:1px solid #f1f5f9; padding-bottom:10px; }
+.info-card, .product-select-card { height: 100%; }
+
+/* Form */
+.form-group { margin-bottom: 16px; }
+.label { font-size:13px; font-weight:500; color:#64748b; margin-bottom: 8px; display:block; }
+.text-red { color:#ef4444; }
+.form-control { width:100%; height:40px; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; outline:none; transition: 0.2s; }
+.form-control:focus { border-color:#3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+
+/* Date DD/MM/YYYY overlay */
+.date-wrap { position: relative; }
+.date-native { color: transparent !important; }
+.date-native::-webkit-datetime-edit { color: transparent; }
+.date-native::-webkit-calendar-picker-indicator { position: relative; z-index: 2; cursor: pointer; }
+.date-overlay { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 14px; color: #334155; }
+.date-placeholder { color: #94a3b8; }
+
+.hint { margin-top: 6px; font-size: 12px; color: #ef4444; }
+
+/* Buttons */
+.action-buttons { display:flex; gap:10px; margin-top:auto; justify-content:center; }
+.btn-update { background: linear-gradient(90deg, #7c1021 0%, #a9162d 35%, #cf243a 68%, #e64555 100%); color:#fff; border:none; padding:10px 20px; border-radius:6px; font-weight:500; cursor:pointer; display:flex; align-items:center; transition: 0.2s; flex:1; justify-content:center; }
+.btn-update:hover { filter: brightness(0.98); }
+.btn-update:disabled { opacity:0.7; cursor:not-allowed; }
+
+/* Search */
+.search-bar { margin-bottom: 16px; }
+.input-wrapper { position: relative; width: 100%; }
+.input-wrapper input { padding-left: 36px; width:100%; height:40px; border:1px solid #e2e8f0; border-radius:6px; background-color:#fff; outline:none; }
+.search-icon { position:absolute; left:12px; top:50%; transform: translateY(-50%); color:#94a3b8; }
+
+/* Table */
+.table-wrapper-mini { height: 450px; overflow-y:auto; border:1px solid #e2e8f0; border-radius: 8px; }
+.table-responsive { overflow-x:auto; border:1px solid #e2e8f0; border-radius:8px; }
+
+.custom-table { width:100%; border-collapse: collapse; font-size:14px; }
+.custom-table thead tr { background: linear-gradient(90deg, #7c1021 0%, #a9162d 35%, #cf243a 68%, #e64555 100%); }
+.custom-table th { background:transparent; color:#fff; font-weight:500; font-size:13px; letter-spacing:0.3px; padding:14px 16px; border-bottom:1px solid rgba(17,24,39,0.08); white-space: nowrap; position: sticky; top: 0; z-index: 10; }
+.custom-table thead th:first-child { border-top-left-radius: 8px; }
+.custom-table thead th:last-child { border-top-right-radius: 8px; }
+.custom-table td { padding:12px 16px; border-bottom:1px solid #f1f5f9; vertical-align: middle; color:#334155; }
+.custom-table tr:hover td { background-color:#f8fafc; }
+
+.parent-row td { background: #fff; }
+.child-row td { background-color:#f8fafc; border-bottom:1px solid #f1f5f9; }
+
+.td-click { cursor: pointer; }
+
+/* Pagination */
+.pagination { display:flex; justify-content:center; gap:8px; margin-top:auto; padding-top:16px; }
+.page-btn { width:32px; height:32px; border:1px solid #e2e8f0; background:white; border-radius:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition: all 0.2s; color:#64748b; }
+.page-btn:hover:not(:disabled) { background:#f8fafc; border-color:#cbd5e1; }
+.page-btn.active { background:#1e293b; color:#fff; border-color:#1e293b; }
+.page-btn:disabled { opacity:0.5; cursor:not-allowed; }
+.page-btn__arrow { font-size:16px; line-height:1; font-weight:700; }
+
+/* Detail header */
+.detail-header { display:flex; justify-content: space-between; align-items:center; margin-bottom:15px; }
+.section-title { font-size:16px; font-weight:600; color:#1e293b; margin:0; }
+.count-tag { background:#e0f2fe; color:#0284c7; padding:2px 8px; border-radius:10px; font-size:12px; margin-left:8px; }
+.btn-danger-outline { background:transparent; border:1px solid #ef4444; color:#ef4444; border-radius:4px; padding:4px 10px; font-size:12px; cursor:pointer; transition:0.2s; }
+.btn-danger-outline:hover { background:#fef2f2; }
+
+/* Misc */
+.text-center { text-align:center; }
+.text-primary { color:#2563eb; }
+.text-muted { color:#94a3b8; }
+
+.product-thumb-sm { width:32px; height:32px; object-fit: cover; border-radius:4px; border:1px solid #eee; background:#fff; }
+
+.btn-expand { background:none; border:none; cursor:pointer; color:#64748b; width:24px; height:24px; }
+.btn-expand__symbol { font-size:18px; line-height:1; font-weight:700; }
+.btn-expand:hover { color:#0f172a; }
+
+.filter-grid { display:flex; gap:10px; flex-wrap: wrap; align-items:center; }
+.bg-white { background-color:#fff !important; }
+
+.btn-clear-filter { background:#f1f5f9; border:1px solid #e2e8f0; color:#64748b; width:34px; height:34px; border-radius:6px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.btn-clear-filter:hover { color:#ef4444; border-color:#ef4444; }
+
+.color-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; border:1px solid #cbd5e1; }
+.custom-checkbox { width:16px; height:16px; cursor:pointer; accent-color:#ef4444; background-color:#fff; }
+.empty-state { text-align:center; color:#cbd5e1; padding:20px; }
+.text-wrap-name { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ✅ Giá gốc gạch ngang + giá sau giảm */
+.price-cell { line-height: 1.6; }
+.price-original { text-decoration: line-through; color: #94a3b8; font-size: 12px; display: block; }
+.price-discounted { color: #ef4444; font-weight: 600; font-size: 14px; display: block; }
+
+/* ✅ Badge -% trên ảnh (có phân loại màu theo khoảng giảm) */
+.thumb-wrap { position: relative; display: inline-block; vertical-align: middle; }
+.discount-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 999px;
+  border: 1.5px solid #fff;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3);
+  pointer-events: none;
+  white-space: nowrap;
+  line-height: 1.3;
+  z-index: 2;
+}
+.discount-badge.sm { font-size: 8px; padding: 1px 3px; top: -3px; right: -3px; }
+
+/* ✅ Màu theo khoảng giảm */
+.discount-badge.ss-badge-low { background: #ef4444; box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3); }
+.discount-badge.ss-badge-mid { background: #f59e0b; box-shadow: 0 2px 6px rgba(245, 158, 11, 0.32); }
+.discount-badge.ss-badge-high { background: #22c55e; box-shadow: 0 2px 6px rgba(34, 197, 94, 0.32); }
+
+/* ✅ Combobox giống ProductManagePage.vue */
+.ss-combo { position: relative; min-width: 160px; }
+.ss-combo.disabled { opacity: 0.98; }
+.ss-combo-input {
+  height: 34px;
+  border-radius: 8px !important;
+  border: 1px solid rgba(17, 24, 39, 0.14);
+  padding: 6px 34px 6px 10px !important;
+  font-size: 13px;
+  outline: none;
+  background: #fff;
+  color: rgba(17, 24, 39, 0.82);
+}
+.ss-combo-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
+}
+.ss-combo-ic {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 18px;
+  color: rgba(17, 24, 39, 0.55);
+  pointer-events: none;
+}
+.ss-combo-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: #fff;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 14px 34px rgba(17, 24, 39, 0.12);
+  max-height: 260px;
+  overflow: auto;
+  padding: 6px;
+}
+.ss-combo-item {
+  padding: 10px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: rgba(17, 24, 39, 0.82);
+  cursor: pointer;
+}
+.ss-combo-item:hover { background: rgba(17, 24, 39, 0.05); }
+.ss-combo-item.active { background: rgba(255, 77, 79, 0.10); }
+.ss-combo-empty { padding: 10px 10px; font-size: 13px; color: rgba(17, 24, 39, 0.55); }
+
+/* ✅ Range lọc giá */
+.price-range-box { border: 1px dashed #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; background: #fff; }
+.price-range-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.price-range-title { font-size: 13px; font-weight: 600; color: #334155; display: flex; align-items: center; gap: 8px; }
+.price-range-value { font-size: 13px; color: #0f172a; font-weight: 600; }
+
+.range-wrap { position: relative; height: 30px; }
+.range-track { position: absolute; left: 0; right: 0; top: 50%; height: 6px; border-radius: 999px; background: #e2e8f0; transform: translateY(-50%); }
+.range-progress { position: absolute; top: 50%; height: 6px; border-radius: 999px; background: #1e293b; transform: translateY(-50%); }
+
+.range-input { position: absolute; left: 0; right: 0; top: 50%; width: 100%; transform: translateY(-50%); background: transparent; -webkit-appearance: none; appearance: none; pointer-events: none; z-index: 3; }
+.range-input.thumb-min { z-index: 4; }
+.range-input.thumb-min.top { z-index: 6; }
+.range-input.thumb-max { z-index: 5; }
+.range-input::-webkit-slider-runnable-track { height: 6px; background: transparent; }
+.range-input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #ef4444; border: 2px solid #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); pointer-events: auto; cursor: pointer; }
+.range-input::-moz-range-track { height: 6px; background: transparent; }
+.range-input::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #ef4444; border: 2px solid #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); pointer-events: auto; cursor: pointer; }
+
+.price-range-foot { display: flex; justify-content: space-between; color: #64748b; font-size: 12px; margin-top: 8px; }
+
+@media (max-width: 1024px) { .content-wrapper { grid-template-columns: 1fr; } }
+</style>

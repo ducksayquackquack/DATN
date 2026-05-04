@@ -1,0 +1,35 @@
+{
+  "framework": "vite",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "routes": [
+    {
+      "src": "^/api/vnpay/(.*)$",
+      "dest": "https://ninety-bugs-flash.loca.lt/api/vnpay/$1"
+    },
+    {
+      "src": "^/api/stock/(.*)$",
+      "dest": "https://ninety-bugs-flash.loca.lt/api/stock/$1"
+    },
+    {
+      "src": "^/api/mail/(.*)$",
+      "dest": "https://ninety-bugs-flash.loca.lt/api/mail/$1"
+    },
+    {
+      "src": "^/api/(.*)$",
+      "dest": "https://clocks-wanted-convergence-centres.trycloudflare.com/api/$1"
+    },
+    {
+      "src": "^/uploads/(.*)$",
+      "dest": "https://clocks-wanted-convergence-centres.trycloudflare.com/uploads/$1"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/.*",
+      "dest": "/index.html"
+    }
+  ]
+}

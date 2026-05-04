@@ -1,0 +1,34 @@
+{
+  "name": "dirtywave-vue",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run dev:clean",
+    "dev:clean": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$p=(Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess); if($p){ taskkill /PID $p /T /F | Out-Null }; vite\"",
+    "dev:cloudflare": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cloudflare-frontend.ps1",
+    "dev:cloudflare:named": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cloudflare-named-frontend.ps1",
+    "dev:vnpay": "npm --prefix backend run dev",
+    "live": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cloudflare-full-stack.ps1",
+    "live:skip-backend": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cloudflare-full-stack.ps1 -NoBackend",
+    "live:named": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cloudflare-named-full-stack.ps1",
+    "live:named:skip-backend": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cloudflare-named-full-stack.ps1 -NoBackend",
+    "live:dirtywave": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-dirtywave-live.ps1",
+    "live:dirtywave:skip-backend": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-dirtywave-live.ps1 -NoBackend",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "axios": "^1.13.6",
+    "lucide-vue-next": "^0.576.0",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.25",
+    "vue-router": "^5.0.3",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "^2.2.0",
+    "@vitejs/plugin-vue": "^6.0.2",
+    "vite": "^7.3.1"
+  }
+}
