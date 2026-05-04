@@ -976,7 +976,8 @@ onUnmounted(() => {
   appearance: none;
   -webkit-appearance: none;
   font: inherit;
-  color: #f8fafc;
+  color: #f8fafc !important;
+  -webkit-text-fill-color: #f8fafc;
   font-size: 14px;
 }
 
