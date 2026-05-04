@@ -44,24 +44,22 @@ const extractList = (payload) => {
   return []
 }
 
-const parseCodeNumber = (value = '', prefix = '') => {
+const parseKichThuocCodeNumber = (value = '') => {
   const raw = String(value || '').trim().toUpperCase()
-  if (!raw.startsWith(prefix)) return null
-  const suffix = raw.slice(prefix.length)
-  if (!/^\d+$/.test(suffix)) return null
-  return Number(suffix)
+  const match = raw.match(/^K(?:T)?(\d+)$/)
+  return match ? Number(match[1]) : null
 }
 
 const generateNextKichThuocCode = async () => {
-  form.maKichThuoc = 'KT001'
+  form.maKichThuoc = 'K001'
   try {
     const res = await getAllKichThuoc()
     const list = extractList(res?.data)
     const maxNumber = list.reduce((acc, item) => {
-      const parsed = parseCodeNumber(item?.maKichThuoc, 'KT')
+      const parsed = parseKichThuocCodeNumber(item?.maKichThuoc)
       return parsed && parsed > acc ? parsed : acc
     }, 0)
-    form.maKichThuoc = `KT${String(maxNumber + 1).padStart(3, '0')}`
+    form.maKichThuoc = `K${String(maxNumber + 1).padStart(3, '0')}`
   } catch {}
 }
 
@@ -142,7 +140,7 @@ async function save() {
             <input
               class="input auto-code-input"
               readonly
-              :value="form.maKichThuoc || 'Mã tự sinh'"
+              :value="id ? 'Mã tự sinh' : (form.maKichThuoc || 'Mã tự sinh')"
             />
           </div>
 

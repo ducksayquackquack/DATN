@@ -34,7 +34,7 @@
             <input
               type="text"
               readonly
-              :value="form.code || 'Mã tự sinh'"
+              :value="id ? 'Mã tự sinh' : (form.code || 'Mã tự sinh')"
               class="auto-code-input"
             />
           </div>
@@ -102,24 +102,22 @@ const extractList = (payload) => {
   return []
 }
 
-const parseCodeNumber = (value = '', prefix = '') => {
+const parseMauCodeNumber = (value = '') => {
   const raw = String(value || '').trim().toUpperCase()
-  if (!raw.startsWith(prefix)) return null
-  const suffix = raw.slice(prefix.length)
-  if (!/^\d+$/.test(suffix)) return null
-  return Number(suffix)
+  const match = raw.match(/^M(?:S)?(\d+)$/)
+  return match ? Number(match[1]) : null
 }
 
 const generateNextMauCode = async () => {
-  form.code = 'MS001'
+  form.code = 'M001'
   try {
     const res = await getAllMauSac()
     const list = extractList(res?.data)
     const maxNumber = list.reduce((acc, item) => {
-      const parsed = parseCodeNumber(item?.maMau, 'MS')
+      const parsed = parseMauCodeNumber(item?.maMau)
       return parsed && parsed > acc ? parsed : acc
     }, 0)
-    form.code = `MS${String(maxNumber + 1).padStart(3, '0')}`
+    form.code = `M${String(maxNumber + 1).padStart(3, '0')}`
   } catch {}
 }
 

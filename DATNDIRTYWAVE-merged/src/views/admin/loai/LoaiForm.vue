@@ -37,16 +37,22 @@ const parseCodeNumber = (value = '', prefix = '') => {
   return Number(suffix)
 }
 
+const parseLoaiCodeNumber = (value = '') => {
+  const raw = String(value || '').trim().toUpperCase()
+  const match = raw.match(/^L(?:O)?(\d+)$/)
+  return match ? Number(match[1]) : null
+}
+
 const generateNextLoaiCode = async () => {
-  form.code = 'LO001'
+  form.code = 'L001'
   try {
     const res = await getAllLoai()
     const list = extractList(res?.data)
     const maxNumber = list.reduce((acc, item) => {
-      const parsed = parseCodeNumber(item?.maLoai, 'LO')
+      const parsed = parseLoaiCodeNumber(item?.maLoai)
       return parsed && parsed > acc ? parsed : acc
     }, 0)
-    form.code = `LO${String(maxNumber + 1).padStart(3, '0')}`
+    form.code = `L${String(maxNumber + 1).padStart(3, '0')}`
   } catch {}
 }
 
@@ -169,7 +175,7 @@ async function save() {
             <input
               type="text"
               readonly
-              :value="form.code || 'Mã tự sinh'"
+              :value="id ? 'Mã tự sinh' : (form.code || 'Mã tự sinh')"
               class="auto-code-input"
             />
           </div>
