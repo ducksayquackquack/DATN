@@ -519,6 +519,7 @@ onUnmounted(() => {
                 v-model="searchQuery"
                 type="text"
                 placeholder="Tìm áo, quần, jeans, phụ kiện..."
+                style="color:#f8fafc;-webkit-text-fill-color:#f8fafc"
                 @focus="onSearchFocus"
               />
             </form>

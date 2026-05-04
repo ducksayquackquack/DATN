@@ -111,6 +111,7 @@ const parseCodeNumber = (value = '', prefix = '') => {
 }
 
 const generateNextMauCode = async () => {
+  form.code = 'MS001'
   try {
     const res = await getAllMauSac()
     const list = extractList(res?.data)
@@ -119,9 +120,7 @@ const generateNextMauCode = async () => {
       return parsed && parsed > acc ? parsed : acc
     }, 0)
     form.code = `MS${String(maxNumber + 1).padStart(3, '0')}`
-  } catch {
-    form.code = 'MS001'
-  }
+  } catch {}
 }
 
 onMounted(async () => {

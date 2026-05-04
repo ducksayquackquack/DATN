@@ -53,6 +53,7 @@ const parseCodeNumber = (value = '', prefix = '') => {
 }
 
 const generateNextKichThuocCode = async () => {
+  form.maKichThuoc = 'KT001'
   try {
     const res = await getAllKichThuoc()
     const list = extractList(res?.data)
@@ -61,9 +62,7 @@ const generateNextKichThuocCode = async () => {
       return parsed && parsed > acc ? parsed : acc
     }, 0)
     form.maKichThuoc = `KT${String(maxNumber + 1).padStart(3, '0')}`
-  } catch {
-    form.maKichThuoc = 'KT001'
-  }
+  } catch {}
 }
 
 onMounted(async () => {

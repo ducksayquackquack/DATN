@@ -17,7 +17,7 @@ const form = reactive({
   code: '',
   name: '',
   applyFor: 'Tất cả',
-  status: 'Active',
+  status: 'Hoạt động',
   description: ''
 })
 
@@ -38,6 +38,7 @@ const parseCodeNumber = (value = '', prefix = '') => {
 }
 
 const generateNextLoaiCode = async () => {
+  form.code = 'LO001'
   try {
     const res = await getAllLoai()
     const list = extractList(res?.data)
@@ -46,9 +47,7 @@ const generateNextLoaiCode = async () => {
       return parsed && parsed > acc ? parsed : acc
     }, 0)
     form.code = `LO${String(maxNumber + 1).padStart(3, '0')}`
-  } catch {
-    form.code = 'LO001'
-  }
+  } catch {}
 }
 
 onMounted(async () => {
